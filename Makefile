@@ -92,7 +92,7 @@ checkbuildenv:
 # Building
 
 .PHONY: build
-build: icons checkbuildenv submodules
+build: checkbuildenv submodules
 	source "$(IDF_PATH)/export.sh" >/dev/null && idf.py -B $(BUILD) build -DDEVICE=$(DEVICE)
 
 # Hardware
