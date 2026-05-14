@@ -9,11 +9,9 @@ idf_component_register(
 		"main.c"
 	PRIV_REQUIRES
 		esp_lcd
-		fatfs
 		nvs_flash
-		bt
 		badge-bsp
-		tanmatsu-wifi
+		tanmatsu-lora
 		${extra_requires}
 	INCLUDE_DIRS
 		"."
