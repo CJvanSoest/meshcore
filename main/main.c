@@ -717,8 +717,8 @@ static void render_nodes(void) {
     }
 
     pax_simple_rect(&fb, COL_DARK, 0, fy, w, 26);
-    char footer[48];
-    snprintf(footer, sizeof(footer), "Nodes: %d  W/S: scroll  Tab: next  ESC: exit", node_count);
+    char footer[56];
+    snprintf(footer, sizeof(footer), "Nodes: %d  W/S: scroll  R: refresh  Tab: next", node_count);
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 6, footer);
     blit();
 }
@@ -868,6 +868,7 @@ static void handle_key(char c) {
             dirty     = false;
             edit_mode = false;
         }
+        // R on any view forces an immediate re-render (already happens via changed=true)
     } else if ((c == 'u' || c == 'U') && !c6_available && !edit_mode && current_view == VIEW_SETTINGS) {
         enter_radio_bootloader();
     }
@@ -1005,7 +1006,10 @@ void app_main(void) {
 
     while (1) {
         bsp_input_event_t event;
-        if (xQueueReceive(input_event_queue, &event, portMAX_DELAY) != pdTRUE) continue;
+        if (xQueueReceive(input_event_queue, &event, pdMS_TO_TICKS(1000)) != pdTRUE) {
+            render();  // periodic refresh: update RX count, last-seen timers
+            continue;
+        }
 
         bool changed = false;
 
