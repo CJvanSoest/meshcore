@@ -712,14 +712,10 @@ static void render_nodes(void) {
         xSemaphoreGive(node_mutex);
     }
 
-    // Header subtitle
-    char hdr[32];
-    snprintf(hdr, sizeof(hdr), "Nodes (%d)", node_count);
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 8, NODES_Y0 - 14, hdr);
-
     pax_simple_rect(&fb, COL_DARK, 0, fy, w, 26);
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 6,
-                  "W/S: scroll  Tab: next view  ESC/F1: exit");
+    char footer[48];
+    snprintf(footer, sizeof(footer), "Nodes: %d  W/S: scroll  Tab: next  ESC: exit", node_count);
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 6, footer);
     blit();
 }
 
