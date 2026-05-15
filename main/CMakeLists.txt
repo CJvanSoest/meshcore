@@ -7,6 +7,8 @@ endif()
 idf_component_register(
 	SRCS
 		"main.c"
+		"meshcore/packet.c"
+		"meshcore/payload/advert.c"
 	PRIV_REQUIRES
 		esp_lcd
 		nvs_flash
@@ -17,6 +19,7 @@ idf_component_register(
 		${extra_requires}
 	INCLUDE_DIRS
 		"."
+		"meshcore"
 )
 
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=unused-variable" APPEND)

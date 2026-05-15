@@ -20,6 +20,8 @@
 #include "freertos/semphr.h"
 #include "lora.h"
 #include "wifi_connection.h"
+#include "meshcore/packet.h"
+#include "meshcore/payload/advert.h"
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 #include "esp_hosted.h"
 #endif
@@ -66,7 +68,24 @@ static rx_entry_t        rx_buf[RX_BUF_SIZE];
 static int               rx_head    = 0;
 static int               rx_count   = 0;
 static SemaphoreHandle_t rx_mutex   = NULL;
-static bool              lora_rx_ok = false;  // RX task running
+static bool              lora_rx_ok = false;
+
+// ── Node list ─────────────────────────────────────────────────────────────────
+#define MAX_NODES 20
+
+typedef struct {
+    bool                   active;
+    uint8_t                pub_key[MESHCORE_PUB_KEY_SIZE];
+    char                   name[MESHCORE_MAX_NAME_SIZE + 1];
+    meshcore_device_role_t role;
+    uint32_t               last_seen_ms;
+    uint16_t               packet_count;
+} node_entry_t;
+
+static node_entry_t      node_list[MAX_NODES];
+static int               node_count  = 0;
+static int               node_scroll = 0;
+static SemaphoreHandle_t node_mutex  = NULL;
 
 // ── Settings: field identifiers ───────────────────────────────────────────────
 typedef enum {
@@ -222,6 +241,76 @@ static void save_lora_config(void) {
     }
 }
 
+// ── Node list helpers ─────────────────────────────────────────────────────────
+static const char* role_label(meshcore_device_role_t role) {
+    switch (role) {
+        case MESHCORE_DEVICE_ROLE_CHAT_NODE:   return "Chat";
+        case MESHCORE_DEVICE_ROLE_REPEATER:    return "Rptr";
+        case MESHCORE_DEVICE_ROLE_ROOM_SERVER: return "Room";
+        case MESHCORE_DEVICE_ROLE_SENSOR:      return "Sens";
+        default:                               return "?";
+    }
+}
+
+static void update_node(const meshcore_advert_t* advert, uint32_t now_ms) {
+    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+
+    // Find existing node by pub_key
+    int slot = -1;
+    for (int i = 0; i < MAX_NODES; i++) {
+        if (node_list[i].active && memcmp(node_list[i].pub_key, advert->pub_key, MESHCORE_PUB_KEY_SIZE) == 0) {
+            slot = i;
+            break;
+        }
+    }
+    // Find empty slot if new
+    if (slot < 0) {
+        for (int i = 0; i < MAX_NODES; i++) {
+            if (!node_list[i].active) { slot = i; break; }
+        }
+    }
+    // Evict oldest if full
+    if (slot < 0) {
+        uint32_t oldest_ms = UINT32_MAX;
+        for (int i = 0; i < MAX_NODES; i++) {
+            if (node_list[i].last_seen_ms < oldest_ms) {
+                oldest_ms = node_list[i].last_seen_ms;
+                slot = i;
+            }
+        }
+    }
+
+    if (slot >= 0) {
+        node_entry_t* n = &node_list[slot];
+        bool is_new = !n->active;
+        n->active       = true;
+        n->role         = advert->role;
+        n->last_seen_ms = now_ms;
+        memcpy(n->pub_key, advert->pub_key, MESHCORE_PUB_KEY_SIZE);
+        if (!is_new) n->packet_count++;
+        else         n->packet_count = 1;
+
+        if (advert->name_valid && advert->name[0] != '\0') {
+            strncpy(n->name, advert->name, MESHCORE_MAX_NAME_SIZE);
+            n->name[MESHCORE_MAX_NAME_SIZE] = '\0';
+        } else if (is_new) {
+            // Use first 4 bytes of pub_key as fallback ID
+            snprintf(n->name, sizeof(n->name), "%02X%02X%02X%02X",
+                     advert->pub_key[0], advert->pub_key[1],
+                     advert->pub_key[2], advert->pub_key[3]);
+        }
+
+        // Recalculate node_count
+        node_count = 0;
+        for (int i = 0; i < MAX_NODES; i++) {
+            if (node_list[i].active) node_count++;
+        }
+        ESP_LOGI(TAG, "Node %s (%s) seen — total %d nodes", n->name, role_label(n->role), node_count);
+    }
+
+    xSemaphoreGive(node_mutex);
+}
+
 // ── LoRa RX task ─────────────────────────────────────────────────────────────
 static void lora_rx_task(void *arg) {
     ESP_LOGI(TAG, "LoRa RX task started");
@@ -229,18 +318,33 @@ static void lora_rx_task(void *arg) {
         lora_protocol_lora_packet_t pkt = {0};
         esp_err_t res = lora_receive_packet(&pkt, pdMS_TO_TICKS(10000));
         if (res == ESP_OK && pkt.length > 0) {
+            uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+
             ESP_LOGI(TAG, "RX %d bytes: %02X %02X %02X %02X",
                      pkt.length,
                      pkt.length > 0 ? pkt.data[0] : 0,
                      pkt.length > 1 ? pkt.data[1] : 0,
                      pkt.length > 2 ? pkt.data[2] : 0,
                      pkt.length > 3 ? pkt.data[3] : 0);
+
+            // Store raw packet
             if (xSemaphoreTake(rx_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
                 rx_buf[rx_head].pkt          = pkt;
-                rx_buf[rx_head].timestamp_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+                rx_buf[rx_head].timestamp_ms = now_ms;
                 rx_head  = (rx_head + 1) % RX_BUF_SIZE;
                 if (rx_count < RX_BUF_SIZE) rx_count++;
                 xSemaphoreGive(rx_mutex);
+            }
+
+            // Parse MeshCore packet
+            meshcore_message_t mc_msg;
+            if (meshcore_deserialize(pkt.data, pkt.length, &mc_msg) >= 0) {
+                if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_ADVERT) {
+                    meshcore_advert_t advert;
+                    if (meshcore_advert_deserialize(mc_msg.payload, mc_msg.payload_length, &advert) >= 0) {
+                        update_node(&advert, now_ms);
+                    }
+                }
             }
         }
     }
@@ -513,6 +617,9 @@ static void render_settings(void) {
 }
 
 // ── Render: nodes screen ──────────────────────────────────────────────────────
+#define NODES_ROW_H  36
+#define NODES_Y0     36
+
 static void render_nodes(void) {
     int w = (int)pax_buf_get_width(&fb);
     int h = (int)pax_buf_get_height(&fb);
@@ -520,50 +627,99 @@ static void render_nodes(void) {
     pax_background(&fb, COL_BLACK);
     render_tab_bar();
 
-    int rx_cnt = 0;
-    if (xSemaphoreTake(rx_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        rx_cnt = rx_count;
-        xSemaphoreGive(rx_mutex);
-    }
+    int fy        = h - 26;
+    int list_h    = fy - NODES_Y0;
+    int rows_vis  = list_h / NODES_ROW_H;
+    uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
-    int y = 44;
     if (!lora_rx_ok) {
-        pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 16, 10, y, "LoRa radio not available");
-    } else {
-        char buf[48];
-        snprintf(buf, sizeof(buf), "Listening... (%d packets received)", rx_cnt);
-        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 10, y, buf); y += 24;
-
-        if (rx_cnt == 0) {
-            pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 10, y, "No nodes heard yet.");
+        pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 16, 10, NODES_Y0 + 10, "LoRa radio not available");
+    } else if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        if (node_count == 0) {
+            pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 15, 10, NODES_Y0 + 10, "Listening... no nodes heard yet.");
         } else {
-            pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 10, y, "Node parsing coming in next step..."); y += 22;
-            // Show last few raw packets for debugging
-            if (xSemaphoreTake(rx_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                int show = rx_cnt < 5 ? rx_cnt : 5;
-                for (int i = 0; i < show && y < h - 50; i++) {
-                    int idx = (rx_head - 1 - i + RX_BUF_SIZE) % RX_BUF_SIZE;
-                    rx_entry_t *e = &rx_buf[idx];
-                    char line[64];
-                    snprintf(line, sizeof(line), "  [%lus] %db: %02X %02X %02X %02X",
-                             (unsigned long)(e->timestamp_ms / 1000),
-                             e->pkt.length,
-                             e->pkt.length > 0 ? e->pkt.data[0] : 0,
-                             e->pkt.length > 1 ? e->pkt.data[1] : 0,
-                             e->pkt.length > 2 ? e->pkt.data[2] : 0,
-                             e->pkt.length > 3 ? e->pkt.data[3] : 0);
-                    pax_draw_text(&fb, COL_GREEN, pax_font_sky_mono, 13, 10, y, line);
-                    y += 18;
+            // Clamp scroll
+            int max_scroll = node_count - rows_vis;
+            if (max_scroll < 0) max_scroll = 0;
+            if (node_scroll > max_scroll) node_scroll = max_scroll;
+            if (node_scroll < 0)         node_scroll = 0;
+
+            // Build sorted view (by last_seen descending)
+            int indices[MAX_NODES];
+            int idx_count = 0;
+            for (int i = 0; i < MAX_NODES; i++) {
+                if (node_list[i].active) indices[idx_count++] = i;
+            }
+            // Simple insertion sort by last_seen_ms descending
+            for (int i = 1; i < idx_count; i++) {
+                int key = indices[i];
+                int j   = i - 1;
+                while (j >= 0 && node_list[indices[j]].last_seen_ms < node_list[key].last_seen_ms) {
+                    indices[j + 1] = indices[j];
+                    j--;
                 }
-                xSemaphoreGive(rx_mutex);
+                indices[j + 1] = key;
+            }
+
+            for (int row = 0; row < rows_vis; row++) {
+                int list_idx = row + node_scroll;
+                if (list_idx >= idx_count) break;
+                node_entry_t* n = &node_list[indices[list_idx]];
+
+                int y = NODES_Y0 + row * NODES_ROW_H;
+
+                // Alternating row background
+                if (row % 2 == 0) pax_simple_rect(&fb, 0xFF111111, 0, y, w, NODES_ROW_H);
+
+                // Role badge
+                const char* rl = role_label(n->role);
+                pax_col_t role_col = (n->role == MESHCORE_DEVICE_ROLE_REPEATER)    ? COL_ACCENT :
+                                     (n->role == MESHCORE_DEVICE_ROLE_ROOM_SERVER)  ? 0xFFAA44FF :
+                                     (n->role == MESHCORE_DEVICE_ROLE_SENSOR)       ? COL_YELLOW :
+                                                                                      COL_GREEN;
+                pax_draw_text(&fb, role_col, pax_font_sky_mono, 13, 8, y + 3, rl);
+
+                // Node name
+                pax_draw_text(&fb, COL_WHITE, pax_font_sky_mono, 16, 50, y + 2, n->name);
+
+                // Last seen
+                uint32_t age_s = (now_ms - n->last_seen_ms) / 1000;
+                char age_buf[20];
+                if (age_s < 60)        snprintf(age_buf, sizeof(age_buf), "%lus ago", (unsigned long)age_s);
+                else if (age_s < 3600) snprintf(age_buf, sizeof(age_buf), "%lum ago", (unsigned long)(age_s / 60));
+                else                   snprintf(age_buf, sizeof(age_buf), "%luh ago", (unsigned long)(age_s / 3600));
+                pax_vec2f sz = pax_text_size(pax_font_sky_mono, 13, age_buf);
+                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, w - (int)sz.x - 8, y + 5, age_buf);
+
+                // Packet count
+                char cnt_buf[12];
+                snprintf(cnt_buf, sizeof(cnt_buf), "#%d", n->packet_count);
+                pax_vec2f csz = pax_text_size(pax_font_sky_mono, 13, cnt_buf);
+                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13,
+                              w - (int)sz.x - (int)csz.x - 16, y + 5, cnt_buf);
+
+                // Row separator
+                pax_simple_rect(&fb, COL_DARK, 0, y + NODES_ROW_H - 1, w, 1);
+            }
+
+            // Scroll indicator
+            if (node_count > rows_vis) {
+                char sc[24];
+                snprintf(sc, sizeof(sc), "%d/%d", node_scroll + 1, node_count);
+                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, w - 50, fy - 16, sc);
             }
         }
+        xSemaphoreGive(node_mutex);
     }
 
-    int fy = h - 26;
+    // Header subtitle
+    char hdr[32];
+    snprintf(hdr, sizeof(hdr), "Nodes (%d)", node_count);
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 8, NODES_Y0 - 14, hdr);
+
     pax_simple_rect(&fb, COL_DARK, 0, fy, w, 26);
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 6,
-                  "Tab: next view  ESC/F1: exit");
+                  "W/S: scroll  Tab: next view  ESC/F1: exit");
     blit();
 }
 
@@ -680,11 +836,15 @@ static void handle_key(char c) {
         if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) selected = (selected - 1 + FIELD_COUNT) % FIELD_COUNT;
             else if (selected != FIELD_OWNER) field_adjust(selected, +1);
+        } else if (current_view == VIEW_NODES) {
+            if (node_scroll > 0) node_scroll--;
         }
     } else if (c == 's' || c == 'S') {
         if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) selected = (selected + 1) % FIELD_COUNT;
             else if (selected != FIELD_OWNER) field_adjust(selected, -1);
+        } else if (current_view == VIEW_NODES) {
+            node_scroll++;
         }
     } else if (c == '<' || c == ',') {
         if (current_view == VIEW_SETTINGS && edit_mode && selected != FIELD_OWNER) field_adjust(selected, -1);
@@ -762,8 +922,10 @@ void app_main(void) {
 
     ESP_ERROR_CHECK(bsp_input_get_queue(&input_event_queue));
 
-    // RX mutex
-    rx_mutex = xSemaphoreCreateMutex();
+    // Mutexes
+    rx_mutex   = xSemaphoreCreateMutex();
+    node_mutex = xSemaphoreCreateMutex();
+    memset(node_list, 0, sizeof(node_list));
 
     int  diag_y    = 40;
     int  diag_line = 20;
