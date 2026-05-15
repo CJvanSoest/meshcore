@@ -18,6 +18,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lora.h"
+#include "wifi_connection.h"
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+#include "esp_hosted.h"
+#endif
 
 static char const TAG[] = "main";
 
@@ -56,13 +60,32 @@ typedef enum {
 static const uint16_t BW_OPTIONS[] = {7, 10, 15, 20, 31, 41, 62, 125, 250, 500};
 static const int      BW_COUNT     = (int)(sizeof(BW_OPTIONS) / sizeof(BW_OPTIONS[0]));
 
+// NVS keys for LoRa — same namespace/keys as launcher so settings are shared
+#define NVS_LORA_FREQ  "lora.freq"
+#define NVS_LORA_SF    "lora.sf"
+#define NVS_LORA_BW    "lora.bandwidth"
+#define NVS_LORA_CR    "lora.codingrate"
+#define NVS_LORA_POWER "lora.power"
+
+// Launcher defaults (used when NVS is empty)
+#define LORA_DEF_FREQ     869618000u
+#define LORA_DEF_SF       8
+#define LORA_DEF_BW       62
+#define LORA_DEF_CR       8
+#define LORA_DEF_POWER    22
+#define LORA_DEF_SYNC     0x12
+#define LORA_DEF_PREAMBLE 16
+#define LORA_DEF_RAMP     40
+
 // App state
-static int                           selected   = 0;
-static bool                          edit_mode  = false;
-static bool                          dirty      = false;
-static bool                          lora_ready = false;
+static int                           selected              = 0;
+static bool                          edit_mode             = false;
+static bool                          dirty                 = false;
+static bool                          lora_ready            = false;  // NVS or C6 values loaded
+static bool                          c6_available          = false;  // C6 actually responding
+static bool                          radio_bootloader_mode = false;
 static char                          owner_name[33] = {0};
-static lora_protocol_config_params_t lora_cfg   = {0};
+static lora_protocol_config_params_t lora_cfg       = {0};
 
 static void blit(void) {
     esp_err_t res = bsp_display_blit(0, 0, display_h_res, display_v_res, pax_buf_get_pixels(&fb));
@@ -99,22 +122,81 @@ static void save_owner_name(void) {
     ESP_LOGI(TAG, "Owner name saved: %s", owner_name);
 }
 
+static void load_lora_from_nvs(void) {
+    // Apply launcher defaults first
+    lora_cfg.frequency                  = LORA_DEF_FREQ;
+    lora_cfg.spreading_factor           = LORA_DEF_SF;
+    lora_cfg.bandwidth                  = LORA_DEF_BW;
+    lora_cfg.coding_rate                = LORA_DEF_CR;
+    lora_cfg.power                      = LORA_DEF_POWER;
+    lora_cfg.sync_word                  = LORA_DEF_SYNC;
+    lora_cfg.preamble_length            = LORA_DEF_PREAMBLE;
+    lora_cfg.ramp_time                  = LORA_DEF_RAMP;
+    lora_cfg.crc_enabled                = true;
+    lora_cfg.invert_iq                  = false;
+    lora_cfg.low_data_rate_optimization = false;
+
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
+    uint32_t freq = 0;
+    uint8_t  sf = 0, cr = 0, power = 0;
+    uint16_t bw = 0;
+    if (nvs_get_u32(handle, NVS_LORA_FREQ,  &freq)  == ESP_OK && freq  != 0) lora_cfg.frequency        = freq;
+    if (nvs_get_u8 (handle, NVS_LORA_SF,    &sf)    == ESP_OK && sf    != 0) lora_cfg.spreading_factor = sf;
+    if (nvs_get_u16(handle, NVS_LORA_BW,    &bw)    == ESP_OK && bw    != 0) lora_cfg.bandwidth        = bw;
+    if (nvs_get_u8 (handle, NVS_LORA_CR,    &cr)    == ESP_OK && cr    != 0) lora_cfg.coding_rate      = cr;
+    if (nvs_get_u8 (handle, NVS_LORA_POWER, &power) == ESP_OK)               lora_cfg.power            = power;
+    nvs_close(handle);
+}
+
+static void save_lora_to_nvs(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    nvs_set_u32(handle, NVS_LORA_FREQ,  lora_cfg.frequency);
+    nvs_set_u8 (handle, NVS_LORA_SF,   lora_cfg.spreading_factor);
+    nvs_set_u16(handle, NVS_LORA_BW,   (uint16_t)lora_cfg.bandwidth);
+    nvs_set_u8 (handle, NVS_LORA_CR,   lora_cfg.coding_rate);
+    nvs_set_u8 (handle, NVS_LORA_POWER, lora_cfg.power);
+    nvs_commit(handle);
+    nvs_close(handle);
+    ESP_LOGI(TAG, "LoRa config saved to NVS");
+}
+
 static void load_lora_config(void) {
-    esp_err_t res = lora_get_config(&lora_cfg);
-    if (res != ESP_OK) {
-        ESP_LOGE(TAG, "lora_get_config failed: %d", res);
-        lora_ready = false;
+    // Always load from NVS first (works even if C6 is unavailable)
+    load_lora_from_nvs();
+    lora_ready   = true;
+    c6_available = false;
+
+    // Try C6 — availability is determined by ESP_OK, not by config values
+    lora_protocol_config_params_t c6_cfg = {0};
+    esp_err_t res = lora_get_config(&c6_cfg);
+    if (res == ESP_OK) {
+        c6_available = true;
+        if (c6_cfg.frequency != 0) {
+            // C6 has valid config — use it as authoritative and sync NVS
+            lora_cfg = c6_cfg;
+            save_lora_to_nvs();
+            ESP_LOGI(TAG, "LoRa config from C6: freq=%luHz sf=%d", (unsigned long)lora_cfg.frequency, lora_cfg.spreading_factor);
+        } else {
+            // C6 is fresh (empty config) — push NVS values to initialize it
+            ESP_LOGI(TAG, "C6 has empty config, pushing NVS values to C6");
+            lora_set_config(&lora_cfg);
+        }
     } else {
-        lora_ready = true;
+        ESP_LOGW(TAG, "C6 unavailable (err=%d) — using NVS values", res);
     }
 }
 
 static void save_lora_config(void) {
-    esp_err_t res = lora_set_config(&lora_cfg);
-    if (res != ESP_OK) {
-        ESP_LOGE(TAG, "lora_set_config failed: %d", res);
-    } else {
-        ESP_LOGI(TAG, "LoRa config saved");
+    save_lora_to_nvs();  // always persist to NVS
+    if (c6_available) {
+        esp_err_t res = lora_set_config(&lora_cfg);
+        if (res != ESP_OK) {
+            ESP_LOGE(TAG, "lora_set_config failed: %d", res);
+        } else {
+            ESP_LOGI(TAG, "LoRa config pushed to C6");
+        }
     }
 }
 
@@ -176,7 +258,58 @@ static void field_adjust(int field, int delta) {
     dirty = true;
 }
 
+static void render(void);
+
+static void start_radio_bootloader(void) {
+    // Stop ESP-Hosted cleanly so P4 doesn't restart when C6 goes offline
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+    esp_hosted_configure_heartbeat(false, 1);
+    esp_hosted_deinit();
+    vTaskDelay(pdMS_TO_TICKS(200));
+#endif
+    bsp_power_set_radio_state(BSP_POWER_RADIO_STATE_OFF);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    bsp_power_set_radio_state(BSP_POWER_RADIO_STATE_BOOTLOADER);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    render();  // show "C6 in bootloader, flash via USB" screen
+}
+
+static void enter_radio_bootloader(void) {
+    pax_background(&fb, COL_BLACK);
+    pax_draw_text(&fb, COL_WHITE, pax_font_sky_mono, 18, 10, 10, "Radio Firmware Update");
+    pax_draw_text(&fb, COL_GRAY,  pax_font_sky_mono, 14, 10, 48, "Stopping ESP-Hosted...");
+    blit();
+    radio_bootloader_mode = true;
+    start_radio_bootloader();
+}
+
+static void render_bootloader(void) {
+    int w = (int)pax_buf_get_width(&fb);
+    int h = (int)pax_buf_get_height(&fb);
+    pax_background(&fb, COL_BLACK);
+    pax_simple_rect(&fb, COL_ACCENT, 0, 0, w, 32);
+    pax_draw_text(&fb, COL_BLACK, pax_font_sky_mono, 18, 10, 7, "Radio Bootloader Mode");
+    int y = 44;
+    pax_draw_text(&fb, COL_GREEN, pax_font_sky_mono, 14, 10, y, "C6 is in bootloader mode."); y += 22;
+    pax_draw_text(&fb, COL_WHITE, pax_font_sky_mono, 14, 10, y, "On your Mac:"); y += 20;
+    pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 13, 10, y, "ls /dev/cu.usbmodem*"); y += 18;
+    pax_draw_text(&fb, COL_GRAY,   pax_font_sky_mono, 13, 10, y, "(find the new C6 USB device)"); y += 22;
+    pax_draw_text(&fb, COL_WHITE,  pax_font_sky_mono, 13, 10, y, "cd tanmatsu-radio"); y += 18;
+    pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 12, 10, y, "esptool.py --chip esp32c6"); y += 16;
+    pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 12, 10, y, "  --port /dev/cu.NEW_DEVICE"); y += 16;
+    pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 12, 10, y, "  write_flash 0x0 build/tanmatsu/"); y += 16;
+    pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 12, 10, y, "    tanmatsu-radio.bin"); y += 4;
+    int fy = h - 26;
+    pax_simple_rect(&fb, COL_DARK, 0, fy, w, 26);
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 6, "ESC/F1: restart badge after flashing");
+    blit();
+}
+
 static void render(void) {
+    if (radio_bootloader_mode) {
+        render_bootloader();
+        return;
+    }
     int w = (int)pax_buf_get_width(&fb);
     int h = (int)pax_buf_get_height(&fb);
 
@@ -200,46 +333,33 @@ static void render(void) {
     snprintf(rows[FIELD_OWNER].value,   sizeof(rows[FIELD_OWNER].value),   "%s", owner_name);
     rows[FIELD_OWNER].label = "Owner name";
 
-    if (lora_ready) {
-        rows[FIELD_FREQ].label = "Frequency";
-        snprintf(rows[FIELD_FREQ].value, sizeof(rows[FIELD_FREQ].value),
-                 "%.3f MHz", (double)lora_cfg.frequency / 1000000.0);
+    rows[FIELD_FREQ].label = "Frequency";
+    snprintf(rows[FIELD_FREQ].value, sizeof(rows[FIELD_FREQ].value),
+             "%.3f MHz", (double)lora_cfg.frequency / 1000000.0);
 
-        rows[FIELD_SF].label = "Spreading factor";
-        snprintf(rows[FIELD_SF].value, sizeof(rows[FIELD_SF].value),
-                 "SF%d", lora_cfg.spreading_factor);
+    rows[FIELD_SF].label = "Spreading factor";
+    snprintf(rows[FIELD_SF].value, sizeof(rows[FIELD_SF].value),
+             "SF%d", lora_cfg.spreading_factor);
 
-        rows[FIELD_BW].label = "Bandwidth";
-        snprintf(rows[FIELD_BW].value, sizeof(rows[FIELD_BW].value),
-                 "%d kHz", (int)lora_cfg.bandwidth);
+    rows[FIELD_BW].label = "Bandwidth";
+    snprintf(rows[FIELD_BW].value, sizeof(rows[FIELD_BW].value),
+             "%d kHz", (int)lora_cfg.bandwidth);
 
-        rows[FIELD_CR].label = "Coding rate";
-        snprintf(rows[FIELD_CR].value, sizeof(rows[FIELD_CR].value),
-                 "4/%d", lora_cfg.coding_rate);
+    rows[FIELD_CR].label = "Coding rate";
+    snprintf(rows[FIELD_CR].value, sizeof(rows[FIELD_CR].value),
+             "4/%d", lora_cfg.coding_rate);
 
-        rows[FIELD_POWER].label = "TX power";
-        snprintf(rows[FIELD_POWER].value, sizeof(rows[FIELD_POWER].value),
-                 "%d dBm", (int)lora_cfg.power);
+    rows[FIELD_POWER].label = "TX power";
+    snprintf(rows[FIELD_POWER].value, sizeof(rows[FIELD_POWER].value),
+             "%d dBm", (int)lora_cfg.power);
 
-        rows[FIELD_SYNC].label = "Sync word";
-        snprintf(rows[FIELD_SYNC].value, sizeof(rows[FIELD_SYNC].value),
-                 "0x%02X", (unsigned)lora_cfg.sync_word);
+    rows[FIELD_SYNC].label = "Sync word";
+    snprintf(rows[FIELD_SYNC].value, sizeof(rows[FIELD_SYNC].value),
+             "0x%02X", (unsigned)lora_cfg.sync_word);
 
-        rows[FIELD_PREAMBLE].label = "Preamble length";
-        snprintf(rows[FIELD_PREAMBLE].value, sizeof(rows[FIELD_PREAMBLE].value),
-                 "%d", (int)lora_cfg.preamble_length);
-    } else {
-        rows[FIELD_FREQ].label     = "Frequency";
-        rows[FIELD_SF].label       = "Spreading factor";
-        rows[FIELD_BW].label       = "Bandwidth";
-        rows[FIELD_CR].label       = "Coding rate";
-        rows[FIELD_POWER].label    = "TX power";
-        rows[FIELD_SYNC].label     = "Sync word";
-        rows[FIELD_PREAMBLE].label = "Preamble length";
-        for (int i = FIELD_FREQ; i < FIELD_COUNT; i++) {
-            snprintf(rows[i].value, sizeof(rows[i].value), "(LoRa unavailable)");
-        }
-    }
+    rows[FIELD_PREAMBLE].label = "Preamble length";
+    snprintf(rows[FIELD_PREAMBLE].value, sizeof(rows[FIELD_PREAMBLE].value),
+             "%d", (int)lora_cfg.preamble_length);
 
     // Rows
     int row_h = (h - 32 - 28) / FIELD_COUNT;
@@ -266,8 +386,8 @@ static void render(void) {
 
         // Value
         pax_col_t val_col;
-        if (i >= FIELD_FREQ && !lora_ready) {
-            val_col = COL_RED;
+        if (i >= FIELD_FREQ && !c6_available) {
+            val_col = COL_YELLOW;  // NVS values — C6 not synced
         } else if (is_sel && edit_mode) {
             val_col = COL_YELLOW;
         } else if (is_sel) {
@@ -292,6 +412,9 @@ static void render(void) {
     if (edit_mode && selected != FIELD_OWNER) {
         pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 6,
                       "Up/Down or W/S: adjust  Enter: save  ESC/F1: cancel");
+    } else if (!c6_available) {
+        pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 14, 8, fy + 6,
+                      "NVS only - C6 unavailable  U: flash radio  ESC: exit");
     } else {
         pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 6,
                       "W/S: navigate  Enter: edit  R: reload  ESC/F1: exit");
@@ -304,13 +427,21 @@ static void render(void) {
 }
 
 static void handle_nav(uint32_t key) {
+    if (radio_bootloader_mode) {
+        if (key == BSP_INPUT_NAVIGATION_KEY_F1 || key == BSP_INPUT_NAVIGATION_KEY_ESC) {
+            bsp_led_set_mode(true);
+            bsp_device_restart_to_launcher();
+        }
+        return;
+    }
     if (key == BSP_INPUT_NAVIGATION_KEY_F1 || key == BSP_INPUT_NAVIGATION_KEY_ESC) {
         if (edit_mode) {
             edit_mode = false;
             dirty     = false;
             load_owner_name();
-            if (lora_ready) load_lora_config();
+            load_lora_config();
         } else {
+            bsp_led_set_mode(true);  // Restore automatic LED mode for launcher
             bsp_device_restart_to_launcher();
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
@@ -339,7 +470,7 @@ static void handle_nav(uint32_t key) {
         } else {
             if (selected == FIELD_OWNER) {
                 save_owner_name();
-            } else if (lora_ready) {
+            } else {
                 save_lora_config();
             }
             edit_mode = false;
@@ -349,13 +480,21 @@ static void handle_nav(uint32_t key) {
 }
 
 static void handle_key(char c) {
+    if (radio_bootloader_mode) {
+        if (c == 27) { // ESC
+            bsp_led_set_mode(true);
+            bsp_device_restart_to_launcher();
+        }
+        return;
+    }
     if (c == 27) { // ESC
         if (edit_mode) {
             edit_mode = false;
             dirty     = false;
             load_owner_name();
-            if (lora_ready) load_lora_config();
+            load_lora_config();
         } else {
+            bsp_led_set_mode(true);  // Restore automatic LED mode for launcher
             bsp_device_restart_to_launcher();
         }
     } else if (c == 'w' || c == 'W') {
@@ -373,15 +512,17 @@ static void handle_key(char c) {
             edit_mode = true;
         } else {
             if (selected == FIELD_OWNER) save_owner_name();
-            else if (lora_ready) save_lora_config();
+            else save_lora_config();
             edit_mode = false;
             dirty     = false;
         }
     } else if (c == 'r' || c == 'R') {
         load_owner_name();
-        if (lora_ready) load_lora_config();
+        load_lora_config();
         dirty     = false;
         edit_mode = false;
+    } else if ((c == 'u' || c == 'U') && !c6_available && !edit_mode) {
+        enter_radio_bootloader();
     }
 }
 
@@ -435,25 +576,73 @@ void app_main(void) {
     }
 
     ESP_ERROR_CHECK(bsp_input_get_queue(&input_event_queue));
-    bsp_led_set_mode(false);
 
-    // Show loading screen
-    pax_background(&fb, COL_BLACK);
-    pax_draw_text(&fb, COL_ACCENT, pax_font_sky_mono, 18, 10, 10, "MeshCore Settings");
-    pax_draw_text(&fb, COL_GRAY,   pax_font_sky_mono, 16, 10, 40, "Loading settings...");
+    // Helper to print a diagnostic line on the loading screen
+    int    diag_y    = 40;
+    int    diag_line = 20;
+#define DIAG(col, fmt, ...) do { \
+        char _buf[80]; \
+        snprintf(_buf, sizeof(_buf), fmt, ##__VA_ARGS__); \
+        ESP_LOGI(TAG, "%s", _buf); \
+        pax_draw_text(&fb, (col), pax_font_sky_mono, 14, 10, diag_y, _buf); \
+        diag_y += diag_line; \
+        blit(); \
+    } while(0)
+
+    pax_background(&fb, COL_RED);
+    pax_draw_text(&fb, COL_WHITE, pax_font_sky_mono, 18, 10, 10, "MeshCore Settings v3");
     blit();
+    vTaskDelay(pdMS_TO_TICKS(2000));
 
-    // Load owner name from NVS
+    DIAG(COL_GRAY, "wifi_connection_init_stack...");
+    res = wifi_connection_init_stack();
+    DIAG(res == ESP_OK ? COL_GREEN : COL_RED, "  wifi init: %s (%d)",
+         res == ESP_OK ? "OK" : "FAIL", res);
+    if (res == ESP_OK) {
+        DIAG(COL_GRAY, "wifi_connect_try_all...");
+        res = wifi_connect_try_all();
+        DIAG(res == ESP_OK ? COL_GREEN : COL_YELLOW, "  wifi connect: %s (%d)",
+             res == ESP_OK ? "OK" : "no saved networks", res);
+    }
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
     load_owner_name();
 
-    // Initialize LoRa and load config
+    DIAG(COL_GRAY, "lora_init...");
     res = lora_init(4);
+    DIAG(res == ESP_OK ? COL_GREEN : COL_RED, "  lora_init: %s (%d)",
+         res == ESP_OK ? "OK" : "FAIL", res);
+
+    load_lora_from_nvs();
+    lora_ready = true;
+    DIAG(COL_GREEN, "NVS: freq=%.3fMHz SF%d BW%d",
+         (double)lora_cfg.frequency / 1000000.0, lora_cfg.spreading_factor, (int)lora_cfg.bandwidth);
+
     if (res == ESP_OK) {
-        load_lora_config();
+        DIAG(COL_GRAY, "lora_get_config from C6...");
+        lora_protocol_config_params_t c6_cfg = {0};
+        esp_err_t cfg_res = lora_get_config(&c6_cfg);
+        if (cfg_res == ESP_OK) {
+            c6_available = true;
+            if (c6_cfg.frequency != 0) {
+                lora_cfg = c6_cfg;
+                save_lora_to_nvs();
+                DIAG(COL_GREEN, "  C6 OK! freq=%.3fMHz SF%d",
+                     (double)lora_cfg.frequency / 1000000.0, lora_cfg.spreading_factor);
+            } else {
+                DIAG(COL_YELLOW, "  C6 fresh - pushing NVS config");
+                lora_set_config(&lora_cfg);
+            }
+        } else {
+            DIAG(COL_YELLOW, "  C6 unavail (err=%d) - using NVS", cfg_res);
+        }
     } else {
-        ESP_LOGW(TAG, "LoRa init failed (%d), LoRa settings unavailable", res);
-        lora_ready = false;
+        DIAG(COL_YELLOW, "lora_init failed - using NVS values");
     }
+
+    // Pause so user can read the diagnostics
+    vTaskDelay(pdMS_TO_TICKS(4000));
+#undef DIAG
 
     render();
 

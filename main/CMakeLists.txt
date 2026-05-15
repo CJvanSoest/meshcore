@@ -12,6 +12,8 @@ idf_component_register(
 		nvs_flash
 		badge-bsp
 		tanmatsu-lora
+		tanmatsu-wifi
+		wifi-manager
 		${extra_requires}
 	INCLUDE_DIRS
 		"."
