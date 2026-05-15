@@ -26,6 +26,8 @@
 #include "mbedtls/aes.h"
 #include "mbedtls/md.h"
 #include "mbedtls/sha256.h"
+#include "esp_random.h"
+#include "ed25519.h"
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 #include "esp_hosted.h"
 #endif
@@ -157,6 +159,11 @@ static const int      BW_COUNT     = (int)(sizeof(BW_OPTIONS) / sizeof(BW_OPTION
 #define LORA_DEF_PREAMBLE 16
 #define LORA_DEF_RAMP     40
 
+// ── Node identity ─────────────────────────────────────────────────────────────
+static uint8_t node_pub_key[32] = {0};
+static uint8_t node_prv_key[64] = {0};  // expanded: prv[0..31]=scalar, prv[32..63]=nonce
+static bool    identity_ready   = false;
+
 // ── App state ─────────────────────────────────────────────────────────────────
 static int                           selected              = 0;
 static bool                          edit_mode             = false;
@@ -278,6 +285,104 @@ static void save_lora_config(void) {
                 lora_set_mode(LORA_PROTOCOL_MODE_RX);
             }
         }
+    }
+}
+
+// ── Node identity ─────────────────────────────────────────────────────────────
+#define NVS_IDENTITY_SEED "node.seed"
+
+static void identity_init(void) {
+    uint8_t seed[32] = {0};
+
+    // Try loading existing seed from NVS
+    nvs_handle_t handle;
+    bool need_save = false;
+    if (nvs_open("system", NVS_READWRITE, &handle) == ESP_OK) {
+        size_t len = sizeof(seed);
+        if (nvs_get_blob(handle, NVS_IDENTITY_SEED, seed, &len) != ESP_OK || len != 32) {
+            // No seed yet — generate and save
+            esp_fill_random(seed, sizeof(seed));
+            nvs_set_blob(handle, NVS_IDENTITY_SEED, seed, sizeof(seed));
+            need_save = true;
+            ESP_LOGI(TAG, "New node identity generated");
+        } else {
+            ESP_LOGI(TAG, "Node identity loaded from NVS");
+        }
+        if (need_save) nvs_commit(handle);
+        nvs_close(handle);
+    } else {
+        // Can't persist — use a random ephemeral identity
+        esp_fill_random(seed, sizeof(seed));
+        ESP_LOGW(TAG, "NVS unavailable — ephemeral identity");
+    }
+
+    ed25519_create_keypair(node_pub_key, node_prv_key, seed);
+    identity_ready = true;
+    ESP_LOGI(TAG, "Pub key: %02X%02X%02X%02X...",
+             node_pub_key[0], node_pub_key[1], node_pub_key[2], node_pub_key[3]);
+}
+
+static void send_advert(void) {
+    if (!c6_available || !identity_ready) return;
+
+    meshcore_advert_t advert = {0};
+    memcpy(advert.pub_key, node_pub_key, MESHCORE_PUB_KEY_SIZE);
+    advert.timestamp = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
+    advert.role      = MESHCORE_DEVICE_ROLE_CHAT_NODE;
+
+    if (owner_name[0] && owner_name[0] != '(') {
+        strncpy(advert.name, owner_name, MESHCORE_MAX_NAME_SIZE);
+        advert.name_valid = true;
+    }
+
+    // Build the payload that will be signed (everything except the sig field)
+    uint8_t payload[MESHCORE_MAX_PAYLOAD_SIZE];
+    uint8_t payload_len = 0;
+    if (meshcore_advert_serialize(&advert, payload, &payload_len) < 0) return;
+
+    // The signature covers the bytes before the sig field (pub_key + timestamp)
+    // plus the bytes after it (flags + name), i.e. everything except sig itself.
+    // Serialized layout: pub_key[32] | timestamp[4] | sig[64] | flags[1] | name
+    // So signed data = first 36 bytes + bytes from offset 100 onward.
+    uint8_t to_sign[MESHCORE_MAX_PAYLOAD_SIZE];
+    uint8_t to_sign_len = 0;
+    // pub_key + timestamp (before sig)
+    memcpy(to_sign, payload, MESHCORE_PUB_KEY_SIZE + 4);
+    to_sign_len = MESHCORE_PUB_KEY_SIZE + 4;
+    // flags + name (after sig)
+    uint8_t after_sig_offset = MESHCORE_PUB_KEY_SIZE + 4 + MESHCORE_SIGNATURE_SIZE;
+    if (payload_len > after_sig_offset) {
+        memcpy(to_sign + to_sign_len, payload + after_sig_offset, payload_len - after_sig_offset);
+        to_sign_len += payload_len - after_sig_offset;
+    }
+
+    ed25519_sign(advert.signature, to_sign, to_sign_len, node_pub_key, node_prv_key);
+
+    // Re-serialize with the actual signature
+    if (meshcore_advert_serialize(&advert, payload, &payload_len) < 0) return;
+
+    meshcore_message_t msg = {0};
+    msg.type           = MESHCORE_PAYLOAD_TYPE_ADVERT;
+    msg.route          = MESHCORE_ROUTE_TYPE_FLOOD;
+    msg.payload_length = payload_len;
+    memcpy(msg.payload, payload, payload_len);
+
+    uint8_t pkt_data[MESHCORE_MAX_TRANS_UNIT];
+    uint8_t pkt_len = 0;
+    if (meshcore_serialize(&msg, pkt_data, &pkt_len) < 0) return;
+
+    lora_protocol_lora_packet_t pkt = {0};
+    pkt.length = pkt_len;
+    memcpy(pkt.data, pkt_data, pkt_len);
+
+    lora_set_mode(LORA_PROTOCOL_MODE_TX);
+    esp_err_t res = lora_send_packet(&pkt);
+    lora_set_mode(LORA_PROTOCOL_MODE_RX);
+
+    if (res == ESP_OK) {
+        ESP_LOGI(TAG, "ADVERT sent (%s)", advert.name_valid ? advert.name : "(no name)");
+    } else {
+        ESP_LOGE(TAG, "ADVERT send failed: %d", res);
     }
 }
 
@@ -488,6 +593,18 @@ static bool send_chat_message(const char* text) {
     }
     ESP_LOGE(TAG, "Chat send failed: %d", res);
     return false;
+}
+
+// ── ADVERT broadcast task ─────────────────────────────────────────────────────
+#define ADVERT_INTERVAL_MS 30000  // send every 30 seconds
+
+static void advert_task(void *arg) {
+    // Initial delay so the radio is fully up before first advert
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    while (1) {
+        send_advert();
+        vTaskDelay(pdMS_TO_TICKS(ADVERT_INTERVAL_MS));
+    }
 }
 
 // ── LoRa RX task ─────────────────────────────────────────────────────────────
@@ -1209,6 +1326,7 @@ void app_main(void) {
     memset(node_list,  0, sizeof(node_list));
     memset(chat_msgs,  0, sizeof(chat_msgs));
     chat_init();
+    identity_init();
 
     int  diag_y    = 40;
     int  diag_line = 20;
@@ -1269,8 +1387,9 @@ void app_main(void) {
             esp_err_t mode_res = lora_set_mode(LORA_PROTOCOL_MODE_RX);
             if (mode_res == ESP_OK) {
                 lora_rx_ok = true;
-                DIAG(COL_GREEN, "  RX mode OK - starting task");
-                xTaskCreate(lora_rx_task, "lora_rx", 4096, NULL, 5, NULL);
+                DIAG(COL_GREEN, "  RX mode OK - starting tasks");
+                xTaskCreate(lora_rx_task, "lora_rx",    4096, NULL, 5, NULL);
+                xTaskCreate(advert_task,  "lora_advert", 6144, NULL, 4, NULL);
             } else {
                 DIAG(COL_YELLOW, "  RX mode failed (%d)", mode_res);
             }
