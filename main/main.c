@@ -342,9 +342,9 @@ static void render_tab_bar(void) {
         status_x -= (int)sz.x;
         pax_draw_text(&fb, bat_col, pax_font_sky_mono, 13, status_x, 9, status_right);
         // Separator
-        status_x -= 4;
+        status_x -= 8;
         pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, status_x - 4, 9, "|");
-        status_x -= 10;
+        status_x -= 12;
     }
 
     // RX count
