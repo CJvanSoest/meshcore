@@ -310,7 +310,7 @@ static void render(void);
 static void render_tab_bar(void) {
     int w = (int)pax_buf_get_width(&fb);
     static const char *tab_labels[VIEW_COUNT] = {"Settings", "Nodes", "Chat"};
-    int tab_w = w / VIEW_COUNT;
+    int tab_w = (w - 170) / VIEW_COUNT;  // reserve 170px right for status indicators
 
     pax_simple_rect(&fb, COL_DARK, 0, 0, w, 32);
 
@@ -343,7 +343,7 @@ static void render_tab_bar(void) {
         pax_draw_text(&fb, bat_col, pax_font_sky_mono, 13, status_x, 9, status_right);
         // Separator
         status_x -= 4;
-        pax_draw_text(&fb, COL_DARK, pax_font_sky_mono, 13, status_x - 4, 9, "|");
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, status_x - 4, 9, "|");
         status_x -= 10;
     }
 
