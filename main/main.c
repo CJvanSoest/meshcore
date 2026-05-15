@@ -336,12 +336,15 @@ static void render_tab_bar(void) {
         if (pct < 0) pct = 0;
         if (pct > 100) pct = 100;
         const char *chr = bat.battery_charging ? "+" : "";
-        snprintf(status_right, sizeof(status_right), "%d%%%s", pct, chr);
+        snprintf(status_right, sizeof(status_right), "B:%d%%%s", pct, chr);
         pax_col_t bat_col = pct <= 20 ? COL_RED : (pct <= 50 ? COL_YELLOW : COL_GREEN);
         pax_vec2f sz = pax_text_size(pax_font_sky_mono, 13, status_right);
         status_x -= (int)sz.x;
         pax_draw_text(&fb, bat_col, pax_font_sky_mono, 13, status_x, 9, status_right);
-        status_x -= 6;
+        // Separator
+        status_x -= 4;
+        pax_draw_text(&fb, COL_DARK, pax_font_sky_mono, 13, status_x - 4, 9, "|");
+        status_x -= 10;
     }
 
     // RX count
