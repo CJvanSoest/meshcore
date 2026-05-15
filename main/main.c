@@ -237,6 +237,10 @@ static void save_lora_config(void) {
             ESP_LOGE(TAG, "lora_set_config failed: %d", res);
         } else {
             ESP_LOGI(TAG, "LoRa config pushed to C6");
+            // Re-enter RX mode — lora_set_config resets radio to standby
+            if (lora_rx_ok) {
+                lora_set_mode(LORA_PROTOCOL_MODE_RX);
+            }
         }
     }
 }
