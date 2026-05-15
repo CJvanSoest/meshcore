@@ -325,17 +325,37 @@ static void render_tab_bar(void) {
         pax_draw_text(&fb, col, pax_font_sky_mono, 16, tx, 8, tab_labels[i]);
     }
 
-    // RX indicator (right side): show packet count when radio is active
+    // Right side: battery % + RX count
+    char status_right[32] = {0};
+    int  status_x         = w - 6;
+
+    // Battery
+    bsp_power_battery_information_t bat = {0};
+    if (bsp_power_get_battery_information(&bat) == ESP_OK && bat.battery_available) {
+        int pct = (int)bat.remaining_percentage;
+        if (pct < 0) pct = 0;
+        if (pct > 100) pct = 100;
+        const char *chr = bat.battery_charging ? "+" : "";
+        snprintf(status_right, sizeof(status_right), "%d%%%s", pct, chr);
+        pax_col_t bat_col = pct <= 20 ? COL_RED : (pct <= 50 ? COL_YELLOW : COL_GREEN);
+        pax_vec2f sz = pax_text_size(pax_font_sky_mono, 13, status_right);
+        status_x -= (int)sz.x;
+        pax_draw_text(&fb, bat_col, pax_font_sky_mono, 13, status_x, 9, status_right);
+        status_x -= 6;
+    }
+
+    // RX count
     if (lora_rx_ok) {
         int cnt = 0;
         if (xSemaphoreTake(rx_mutex, 0) == pdTRUE) {
             cnt = rx_count;
             xSemaphoreGive(rx_mutex);
         }
-        char rxbuf[16];
+        char rxbuf[12];
         snprintf(rxbuf, sizeof(rxbuf), "RX:%d", cnt);
         pax_vec2f sz = pax_text_size(pax_font_sky_mono, 13, rxbuf);
-        pax_draw_text(&fb, COL_GREEN, pax_font_sky_mono, 13, w - (int)sz.x - 6, 9, rxbuf);
+        status_x -= (int)sz.x;
+        pax_draw_text(&fb, COL_GREEN, pax_font_sky_mono, 13, status_x, 9, rxbuf);
     }
 }
 
