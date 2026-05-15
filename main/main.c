@@ -22,6 +22,10 @@
 #include "wifi_connection.h"
 #include "meshcore/packet.h"
 #include "meshcore/payload/advert.h"
+#include "meshcore/payload/grp_txt.h"
+#include "mbedtls/aes.h"
+#include "mbedtls/md.h"
+#include "mbedtls/sha256.h"
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 #include "esp_hosted.h"
 #endif
@@ -86,6 +90,38 @@ static node_entry_t      node_list[MAX_NODES];
 static int               node_count  = 0;
 static int               node_scroll = 0;
 static SemaphoreHandle_t node_mutex  = NULL;
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+#define MAX_CHAT_MSGS  50
+#define MAX_MSG_TEXT   172
+#define MAX_INPUT_LEN  120
+#define CHAT_ROW_H     38
+#define CHAT_Y0        36
+#define CHAT_INPUT_H   30
+
+// Default MeshCore public channel key
+static const uint8_t PUBLIC_CHANNEL_KEY[16] = {
+    0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a,
+    0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72
+};
+static uint8_t channel_hash = 0;
+
+typedef struct {
+    bool    active;
+    bool    is_mine;
+    char    text[MAX_MSG_TEXT];
+    uint32_t timestamp_ms;
+} chat_msg_t;
+
+static chat_msg_t        chat_msgs[MAX_CHAT_MSGS];
+static int               chat_head   = 0;
+static int               chat_count  = 0;
+static int               chat_scroll = 0;
+static SemaphoreHandle_t chat_mutex  = NULL;
+
+static char chat_input[MAX_INPUT_LEN + 1] = {0};
+static int  chat_input_len                = 0;
+static bool chat_typing                   = false;
 
 // ── Settings: field identifiers ───────────────────────────────────────────────
 typedef enum {
@@ -315,6 +351,145 @@ static void update_node(const meshcore_advert_t* advert, uint32_t now_ms) {
     xSemaphoreGive(node_mutex);
 }
 
+// ── Chat helpers ──────────────────────────────────────────────────────────────
+static void chat_init(void) {
+    // Compute channel_hash = SHA256(key)[0]
+    uint8_t digest[32];
+    mbedtls_sha256(PUBLIC_CHANNEL_KEY, sizeof(PUBLIC_CHANNEL_KEY), digest, 0);
+    channel_hash = digest[0];
+    ESP_LOGI(TAG, "Channel hash: 0x%02X", channel_hash);
+}
+
+static void chat_add_message(const char* text, bool is_mine) {
+    if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+    chat_msg_t* m    = &chat_msgs[chat_head];
+    m->active        = true;
+    m->is_mine       = is_mine;
+    m->timestamp_ms  = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    strncpy(m->text, text, MAX_MSG_TEXT - 1);
+    m->text[MAX_MSG_TEXT - 1] = '\0';
+    chat_head = (chat_head + 1) % MAX_CHAT_MSGS;
+    if (chat_count < MAX_CHAT_MSGS) chat_count++;
+    // Auto-scroll to bottom
+    chat_scroll = chat_count;
+    xSemaphoreGive(chat_mutex);
+}
+
+static bool decrypt_grp_txt(meshcore_grp_txt_t* grp, const uint8_t* key) {
+    // Verify HMAC-SHA256 (2 bytes truncated)
+    uint8_t mac[32];
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                    key, MESHCORE_CIPHER_KEY_SIZE,
+                    grp->data, grp->data_length,
+                    mac);
+    if (memcmp(mac, grp->mac, MESHCORE_CIPHER_MAC_SIZE) != 0) return false;
+
+    // Decrypt AES-ECB in-place
+    grp->decrypted.data_length = grp->data_length;
+    memcpy(grp->decrypted.data, grp->data, grp->data_length);
+    mbedtls_aes_context aes;
+    mbedtls_aes_init(&aes);
+    mbedtls_aes_setkey_dec(&aes, key, 128);
+    for (int i = 0; i < grp->decrypted.data_length / MESHCORE_CIPHER_BLOCK_SIZE; i++) {
+        mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_DECRYPT,
+                               &grp->decrypted.data[i * MESHCORE_CIPHER_BLOCK_SIZE],
+                               &grp->decrypted.data[i * MESHCORE_CIPHER_BLOCK_SIZE]);
+    }
+    mbedtls_aes_free(&aes);
+
+    // Parse: timestamp(4) + text_type(1) + text
+    if (grp->decrypted.data_length < 5) return false;
+    memcpy(&grp->decrypted.timestamp, grp->decrypted.data, 4);
+    grp->decrypted.text_type = grp->decrypted.data[4];
+    grp->decrypted.data[grp->decrypted.data_length - 1] = '\0';  // ensure null term
+    grp->decrypted.text = (char*)&grp->decrypted.data[5];
+    return true;
+}
+
+static bool send_chat_message(const char* text) {
+    if (!c6_available) return false;
+
+    // Build plaintext: timestamp(4) + text_type(1) + text
+    uint32_t ts = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
+    uint8_t  plain[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
+    size_t   text_len = strlen(text);
+    // Include owner name prefix: "name: text"
+    char prefixed[MAX_MSG_TEXT];
+    if (owner_name[0] && owner_name[0] != '(') {
+        snprintf(prefixed, sizeof(prefixed), "%s: %s", owner_name, text);
+    } else {
+        snprintf(prefixed, sizeof(prefixed), "%s", text);
+    }
+    text_len = strlen(prefixed);
+
+    size_t plain_len = 4 + 1 + text_len;
+    // Pad to 16-byte boundary
+    size_t padded = ((plain_len + 15) / 16) * 16;
+    if (padded > sizeof(plain)) return false;
+
+    memcpy(plain, &ts, 4);
+    plain[4] = 0;  // text_type = normal
+    memcpy(&plain[5], prefixed, text_len);
+
+    // Encrypt AES-ECB
+    uint8_t cipher[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
+    mbedtls_aes_context aes;
+    mbedtls_aes_init(&aes);
+    mbedtls_aes_setkey_enc(&aes, PUBLIC_CHANNEL_KEY, 128);
+    for (size_t i = 0; i < padded / MESHCORE_CIPHER_BLOCK_SIZE; i++) {
+        mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT,
+                               &plain[i * MESHCORE_CIPHER_BLOCK_SIZE],
+                               &cipher[i * MESHCORE_CIPHER_BLOCK_SIZE]);
+    }
+    mbedtls_aes_free(&aes);
+
+    // HMAC-SHA256 (2 bytes)
+    uint8_t mac[32];
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                    PUBLIC_CHANNEL_KEY, MESHCORE_CIPHER_KEY_SIZE,
+                    cipher, (uint16_t)padded, mac);
+
+    // Build grp_txt payload
+    meshcore_grp_txt_t grp = {0};
+    grp.channel_hash = channel_hash;
+    memcpy(grp.mac, mac, MESHCORE_CIPHER_MAC_SIZE);
+    grp.data_length = (uint8_t)padded;
+    memcpy(grp.data, cipher, padded);
+
+    uint8_t payload[MESHCORE_MAX_PAYLOAD_SIZE];
+    uint8_t payload_len = 0;
+    if (meshcore_grp_txt_serialize(&grp, payload, &payload_len) < 0) return false;
+
+    // Build meshcore message
+    meshcore_message_t msg = {0};
+    msg.type           = MESHCORE_PAYLOAD_TYPE_GRP_TXT;
+    msg.route          = MESHCORE_ROUTE_TYPE_FLOOD;
+    msg.version        = 0;
+    msg.path_length    = 0;
+    msg.payload_length = payload_len;
+    memcpy(msg.payload, payload, payload_len);
+
+    uint8_t pkt_data[MESHCORE_MAX_TRANS_UNIT];
+    uint8_t pkt_len = 0;
+    if (meshcore_serialize(&msg, pkt_data, &pkt_len) < 0) return false;
+
+    lora_protocol_lora_packet_t pkt = {0};
+    pkt.length = pkt_len;
+    memcpy(pkt.data, pkt_data, pkt_len);
+
+    // Switch to TX, send, back to RX
+    lora_set_mode(LORA_PROTOCOL_MODE_TX);
+    esp_err_t res = lora_send_packet(&pkt);
+    lora_set_mode(LORA_PROTOCOL_MODE_RX);
+
+    if (res == ESP_OK) {
+        ESP_LOGI(TAG, "Chat sent: %s", prefixed);
+        return true;
+    }
+    ESP_LOGE(TAG, "Chat send failed: %d", res);
+    return false;
+}
+
 // ── LoRa RX task ─────────────────────────────────────────────────────────────
 static void lora_rx_task(void *arg) {
     ESP_LOGI(TAG, "LoRa RX task started");
@@ -347,6 +522,14 @@ static void lora_rx_task(void *arg) {
                     meshcore_advert_t advert;
                     if (meshcore_advert_deserialize(mc_msg.payload, mc_msg.payload_length, &advert) >= 0) {
                         update_node(&advert, now_ms);
+                    }
+                } else if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_GRP_TXT) {
+                    meshcore_grp_txt_t grp = {0};
+                    if (meshcore_grp_txt_deserialize(mc_msg.payload, mc_msg.payload_length, &grp) >= 0) {
+                        if (decrypt_grp_txt(&grp, PUBLIC_CHANNEL_KEY)) {
+                            ESP_LOGI(TAG, "Chat RX: %s", grp.decrypted.text);
+                            chat_add_message(grp.decrypted.text, false);
+                        }
                     }
                 }
             }
@@ -725,21 +908,77 @@ static void render_nodes(void) {
 
 // ── Render: chat screen ───────────────────────────────────────────────────────
 static void render_chat(void) {
-    int w = (int)pax_buf_get_width(&fb);
-    int h = (int)pax_buf_get_height(&fb);
+    int w  = (int)pax_buf_get_width(&fb);
+    int h  = (int)pax_buf_get_height(&fb);
+    int fy = h - CHAT_INPUT_H - 26;  // footer above input bar
 
     pax_background(&fb, COL_BLACK);
     render_tab_bar();
 
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 16, 10, 50,
-                  "Chat coming in next step.");
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 10, 80,
-                  "Protocol analysis needed first.");
+    int list_h   = fy - CHAT_Y0;
+    int rows_vis = list_h / CHAT_ROW_H;
 
-    int fy = h - 26;
-    pax_simple_rect(&fb, COL_DARK, 0, fy, w, 26);
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 6,
-                  "Tab: next view  ESC/F1: exit");
+    if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        if (chat_count == 0) {
+            pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 10, CHAT_Y0 + 10,
+                          "No messages yet. T to type.");
+        } else {
+            // Clamp scroll: 0 = top, chat_count = bottom (newest visible)
+            int max_scroll = chat_count;
+            if (chat_scroll > max_scroll) chat_scroll = max_scroll;
+            if (chat_scroll < rows_vis)   chat_scroll = rows_vis;
+
+            // Show rows_vis messages ending at chat_scroll
+            for (int row = 0; row < rows_vis; row++) {
+                int msg_idx_in_list = chat_scroll - rows_vis + row;
+                if (msg_idx_in_list < 0) continue;
+
+                // Map to ring buffer
+                int ring_idx = (chat_head - chat_count + msg_idx_in_list + MAX_CHAT_MSGS * 2) % MAX_CHAT_MSGS;
+                chat_msg_t* m = &chat_msgs[ring_idx];
+                if (!m->active) continue;
+
+                int y = CHAT_Y0 + row * CHAT_ROW_H;
+
+                if (m->is_mine) {
+                    // My messages right-aligned, accent color
+                    pax_vec2f sz = pax_text_size(pax_font_sky_mono, 14, m->text);
+                    int tx = w - (int)sz.x - 10;
+                    if (tx < 10) tx = 10;
+                    pax_draw_text(&fb, COL_ACCENT, pax_font_sky_mono, 14, tx, y + 4, m->text);
+                    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, tx, y + 20, "You");
+                } else {
+                    // Incoming messages left-aligned
+                    pax_draw_text(&fb, COL_WHITE, pax_font_sky_mono, 14, 10, y + 4, m->text);
+                }
+                pax_simple_rect(&fb, COL_DARK, 4, y + CHAT_ROW_H - 1, w - 8, 1);
+            }
+        }
+        xSemaphoreGive(chat_mutex);
+    }
+
+    // Input bar
+    int iy = h - CHAT_INPUT_H - 22;
+    pax_simple_rect(&fb, 0xFF1A1A1A, 0, iy, w, CHAT_INPUT_H);
+    pax_simple_rect(&fb, chat_typing ? COL_ACCENT : COL_DARK, 0, iy, w, 1);
+    if (chat_typing) {
+        char disp[MAX_INPUT_LEN + 4];
+        snprintf(disp, sizeof(disp), "> %s_", chat_input);
+        pax_draw_text(&fb, COL_WHITE, pax_font_sky_mono, 15, 8, iy + 7, disp);
+    } else {
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, iy + 8, "T: type a message");
+    }
+
+    // Footer
+    int footer_y = h - 22;
+    pax_simple_rect(&fb, COL_DARK, 0, footer_y, w, 22);
+    if (chat_typing) {
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 8, footer_y + 4,
+                      "Enter: send  ESC: cancel  Backspace: delete");
+    } else {
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 8, footer_y + 4,
+                      "T: type  W/S: scroll  Tab: next  ESC: exit");
+    }
     blit();
 }
 
@@ -792,7 +1031,15 @@ static void handle_nav(uint32_t key) {
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT) {
         if (current_view == VIEW_SETTINGS && edit_mode && selected != FIELD_OWNER) field_adjust(selected, +1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
-        if (current_view == VIEW_SETTINGS) {
+        if (current_view == VIEW_CHAT && chat_typing) {
+            if (chat_input_len > 0) {
+                send_chat_message(chat_input);      // best-effort TX
+                chat_add_message(chat_input, true); // always show locally
+                chat_input_len = 0;
+                chat_input[0]  = '\0';
+            }
+            chat_typing = false;
+        } else if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) {
                 edit_mode = true;
             } else {
@@ -812,6 +1059,38 @@ static void handle_key(char c) {
             bsp_device_restart_to_launcher();
         }
         return;
+    }
+
+    // Chat view input — intercept everything when typing
+    if (current_view == VIEW_CHAT) {
+        if (chat_typing) {
+            if (c == 27) {  // ESC: cancel
+                chat_typing    = false;
+                chat_input_len = 0;
+                chat_input[0]  = '\0';
+            } else if (c == '\r' || c == '\n') {  // Enter: send
+                if (chat_input_len > 0) {
+                    send_chat_message(chat_input);      // best-effort TX
+                    chat_add_message(chat_input, true); // always show locally
+                    chat_input_len = 0;
+                    chat_input[0]  = '\0';
+                }
+                chat_typing = false;
+            } else if (c == 127 || c == 8) {  // Backspace
+                if (chat_input_len > 0) {
+                    chat_input[--chat_input_len] = '\0';
+                }
+            } else if (c >= 32 && c < 127 && chat_input_len < MAX_INPUT_LEN) {
+                chat_input[chat_input_len++] = c;
+                chat_input[chat_input_len]   = '\0';
+            }
+            return;
+        } else {
+            if (c == 't' || c == 'T') { chat_typing = true; return; }
+            if (c == 'w' || c == 'W') { if (chat_scroll > 0) chat_scroll--; return; }
+            if (c == 's' || c == 'S') { chat_scroll++; return; }
+            // Tab and ESC fall through to common handling below
+        }
     }
 
     if (c == '\t') {
@@ -926,7 +1205,10 @@ void app_main(void) {
     // Mutexes
     rx_mutex   = xSemaphoreCreateMutex();
     node_mutex = xSemaphoreCreateMutex();
-    memset(node_list, 0, sizeof(node_list));
+    chat_mutex = xSemaphoreCreateMutex();
+    memset(node_list,  0, sizeof(node_list));
+    memset(chat_msgs,  0, sizeof(chat_msgs));
+    chat_init();
 
     int  diag_y    = 40;
     int  diag_line = 20;

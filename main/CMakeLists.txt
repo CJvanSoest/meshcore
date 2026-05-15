@@ -9,6 +9,7 @@ idf_component_register(
 		"main.c"
 		"meshcore/packet.c"
 		"meshcore/payload/advert.c"
+		"meshcore/payload/grp_txt.c"
 	PRIV_REQUIRES
 		esp_lcd
 		nvs_flash
@@ -16,6 +17,7 @@ idf_component_register(
 		tanmatsu-lora
 		tanmatsu-wifi
 		wifi-manager
+		mbedtls
 		${extra_requires}
 	INCLUDE_DIRS
 		"."
