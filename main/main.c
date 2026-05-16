@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <math.h>
 #include "bsp/device.h"
 #include "bsp/display.h"
 #include "bsp/input.h"
@@ -87,11 +88,20 @@ typedef struct {
     meshcore_device_role_t role;
     uint32_t               last_seen_ms;
     uint16_t               packet_count;
+    bool                   position_valid;
+    int32_t                lat;   // degrees × 1e7
+    int32_t                lon;
 } node_entry_t;
 
 static node_entry_t      node_list[MAX_NODES];
 static int               node_count  = 0;
 static int               node_scroll = 0;
+static int               node_cursor = 0;   // index in sorted list
+
+// DM target (set when user selects a node in Nodes tab)
+static bool              dm_target_set  = false;
+static uint8_t           dm_target_pub[MESHCORE_PUB_KEY_SIZE] = {0};
+static char              dm_target_name[MESHCORE_MAX_NAME_SIZE + 1] = {0};
 static SemaphoreHandle_t node_mutex  = NULL;
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -492,6 +502,16 @@ static const char* role_label(meshcore_device_role_t role) {
     }
 }
 
+// Equirectangular distance in km between two GPS positions (lat/lon in degrees × 1e7)
+static float __attribute__((unused)) calc_dist_km(int32_t lat1_e7, int32_t lon1_e7, int32_t lat2_e7, int32_t lon2_e7) {
+    double lat1 = lat1_e7 * 1e-7 * M_PI / 180.0;
+    double lat2 = lat2_e7 * 1e-7 * M_PI / 180.0;
+    double dlat = lat2 - lat1;
+    double dlon = (lon2_e7 - lon1_e7) * 1e-7 * M_PI / 180.0;
+    double x    = dlon * cos((lat1 + lat2) * 0.5);
+    return (float)(sqrt(x * x + dlat * dlat) * 6371.0);
+}
+
 static void update_node(const meshcore_advert_t* advert, uint32_t now_ms) {
     if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
 
@@ -529,6 +549,11 @@ static void update_node(const meshcore_advert_t* advert, uint32_t now_ms) {
         memcpy(n->pub_key, advert->pub_key, MESHCORE_PUB_KEY_SIZE);
         if (!is_new) n->packet_count++;
         else         n->packet_count = 1;
+        if (advert->position_valid) {
+            n->position_valid = true;
+            n->lat = advert->position_lat;
+            n->lon = advert->position_lon;
+        }
 
         if (advert->name_valid && advert->name[0] != '\0') {
             strncpy(n->name, advert->name, MESHCORE_MAX_NAME_SIZE);
@@ -604,6 +629,58 @@ static bool decrypt_grp_txt(meshcore_grp_txt_t* grp, const uint8_t* key) {
     grp->decrypted.data[grp->decrypted.data_length - 1] = '\0';  // ensure null term
     grp->decrypted.text = (char*)&grp->decrypted.data[5];
     return true;
+}
+
+// Send an encrypted DM (TXT_MSG) to a specific node by pub_key
+static bool send_dm_message(const char* text, const uint8_t* target_pub) {
+    if (!c6_available || !identity_ready) return false;
+
+    uint8_t shared[32];
+    ed25519_key_exchange(shared, target_pub, node_prv_key);
+
+    uint32_t ts = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
+    uint8_t  plain[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
+    size_t   text_len  = strlen(text);
+    size_t   plain_len = 5 + text_len;
+    size_t   padded    = ((plain_len + 15) / 16) * 16;
+    if (padded > MESHCORE_MAX_PAYLOAD_SIZE - 4) return false;
+
+    memcpy(plain, &ts, 4);
+    plain[4] = 0;  // flags
+    memcpy(&plain[5], text, text_len);
+
+    uint8_t cipher[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
+    mbedtls_aes_context aes;
+    mbedtls_aes_init(&aes);
+    mbedtls_aes_setkey_enc(&aes, shared, 128);
+    for (size_t i = 0; i < padded / 16; i++)
+        mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, &plain[i * 16], &cipher[i * 16]);
+    mbedtls_aes_free(&aes);
+
+    uint8_t mac[32];
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                    shared, 32, cipher, padded, mac);
+
+    meshcore_message_t msg = {0};
+    msg.type           = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
+    msg.route          = MESHCORE_ROUTE_TYPE_FLOOD;
+    msg.version        = 0;
+    msg.path_length    = 0;
+    msg.payload[0]     = target_pub[0];     // dest hash
+    msg.payload[1]     = node_pub_key[0];   // src hash
+    msg.payload[2]     = mac[0];
+    msg.payload[3]     = mac[1];
+    memcpy(&msg.payload[4], cipher, padded);
+    msg.payload_length = (uint8_t)(4 + padded);
+
+    uint8_t pkt_data[MESHCORE_MAX_TRANS_UNIT];
+    uint8_t pkt_len = 0;
+    if (meshcore_serialize(&msg, pkt_data, &pkt_len) < 0) return false;
+
+    lora_protocol_lora_packet_t pkt = {0};
+    pkt.length = pkt_len;
+    memcpy(pkt.data, pkt_data, pkt_len);
+    return lora_send_packet(&pkt) == ESP_OK;
 }
 
 static bool send_chat_message(const char* text) {
@@ -1351,42 +1428,59 @@ static void render_nodes(void) {
                 indices[j + 1] = key;
             }
 
+            // Clamp cursor
+            if (node_cursor >= idx_count) node_cursor = idx_count > 0 ? idx_count - 1 : 0;
+            if (node_cursor < 0)          node_cursor = 0;
+            // Keep cursor visible
+            if (node_cursor < node_scroll)              node_scroll = node_cursor;
+            if (node_cursor >= node_scroll + rows_vis)  node_scroll = node_cursor - rows_vis + 1;
+
             for (int row = 0; row < rows_vis; row++) {
                 int list_idx = row + node_scroll;
                 if (list_idx >= idx_count) break;
                 node_entry_t* n = &node_list[indices[list_idx]];
 
                 int y = NODES_Y0 + row * NODES_ROW_H;
+                bool is_cursor = (list_idx == node_cursor);
 
-                // Alternating row background
-                if (row % 2 == 0) pax_simple_rect(&fb, 0xFF111111, 0, y, w, NODES_ROW_H);
+                // Row background: cursor = accent-dark, alternating for others
+                if (is_cursor)         pax_simple_rect(&fb, 0xFF003366, 0, y, w, NODES_ROW_H);
+                else if (row % 2 == 0) pax_simple_rect(&fb, 0xFF111111, 0, y, w, NODES_ROW_H);
+
+                // Last seen (right-aligned first so we know its width)
+                uint32_t age_s = (now_ms - n->last_seen_ms) / 1000;
+                char age_buf[20];
+                if (age_s < 60)        snprintf(age_buf, sizeof(age_buf), "%lus", (unsigned long)age_s);
+                else if (age_s < 3600) snprintf(age_buf, sizeof(age_buf), "%lum", (unsigned long)(age_s / 60));
+                else                   snprintf(age_buf, sizeof(age_buf), "%luh", (unsigned long)(age_s / 3600));
+                pax_vec2f age_sz = pax_text_size(pax_font_sky_mono, 12, age_buf);
+                int age_x = w - (int)age_sz.x - 6;
+                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, age_x, y + 6, age_buf);
+
+                // Distance column (left of last_seen)
+                char dist_buf[12] = "--";
+                // own_pos_valid would go here; for now always "--"
+                int dist_x = age_x - 52;
+                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, dist_x, y + 6, dist_buf);
 
                 // Role badge
                 const char* rl = role_label(n->role);
-                pax_col_t role_col = (n->role == MESHCORE_DEVICE_ROLE_REPEATER)    ? COL_ACCENT :
-                                     (n->role == MESHCORE_DEVICE_ROLE_ROOM_SERVER)  ? 0xFFAA44FF :
-                                     (n->role == MESHCORE_DEVICE_ROLE_SENSOR)       ? COL_YELLOW :
-                                                                                      COL_GREEN;
-                pax_draw_text(&fb, role_col, pax_font_sky_mono, 13, 8, y + 3, rl);
+                pax_col_t role_col = (n->role == MESHCORE_DEVICE_ROLE_REPEATER)   ? COL_ACCENT :
+                                     (n->role == MESHCORE_DEVICE_ROLE_ROOM_SERVER) ? 0xFFAA44FF :
+                                     (n->role == MESHCORE_DEVICE_ROLE_SENSOR)      ? COL_YELLOW :
+                                                                                     COL_GREEN;
+                pax_draw_text(&fb, role_col, pax_font_sky_mono, 12, 4, y + 6, rl);
 
-                // Node name
-                pax_draw_text(&fb, COL_WHITE, pax_font_sky_mono, 16, 50, y + 2, n->name);
-
-                // Last seen
-                uint32_t age_s = (now_ms - n->last_seen_ms) / 1000;
-                char age_buf[20];
-                if (age_s < 60)        snprintf(age_buf, sizeof(age_buf), "%lus ago", (unsigned long)age_s);
-                else if (age_s < 3600) snprintf(age_buf, sizeof(age_buf), "%lum ago", (unsigned long)(age_s / 60));
-                else                   snprintf(age_buf, sizeof(age_buf), "%luh ago", (unsigned long)(age_s / 3600));
-                pax_vec2f sz = pax_text_size(pax_font_sky_mono, 13, age_buf);
-                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, w - (int)sz.x - 8, y + 5, age_buf);
-
-                // Packet count
-                char cnt_buf[12];
-                snprintf(cnt_buf, sizeof(cnt_buf), "#%d", n->packet_count);
-                pax_vec2f csz = pax_text_size(pax_font_sky_mono, 13, cnt_buf);
-                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13,
-                              w - (int)sz.x - (int)csz.x - 16, y + 5, cnt_buf);
+                // Node name (truncated to fit between role and dist columns)
+                char name_trunc[17];
+                int  max_name_w = dist_x - 44;  // pixels available for name
+                // Truncate name to fit: ~8px per char at size 13
+                int max_chars = max_name_w / 8;
+                if (max_chars > 16) max_chars = 16;
+                if (max_chars < 1)  max_chars = 1;
+                snprintf(name_trunc, sizeof(name_trunc), "%.*s", max_chars, n->name);
+                pax_col_t name_col = is_cursor ? COL_WHITE : 0xFFCCCCCC;
+                pax_draw_text(&fb, name_col, pax_font_sky_mono, 13, 40, y + 5, name_trunc);
 
                 // Row separator
                 pax_simple_rect(&fb, COL_DARK, 0, y + NODES_ROW_H - 1, w, 1);
@@ -1496,13 +1590,30 @@ static void render_chat(void) {
     // Input bar
     int iy = h - CHAT_INPUT_H - 22;
     pax_simple_rect(&fb, 0xFF1A1A1A, 0, iy, w, CHAT_INPUT_H);
-    pax_simple_rect(&fb, chat_typing ? COL_ACCENT : COL_DARK, 0, iy, w, 1);
+    pax_col_t bar_border = dm_target_set ? COL_YELLOW : (chat_typing ? COL_ACCENT : COL_DARK);
+    pax_simple_rect(&fb, bar_border, 0, iy, w, 1);
     if (chat_typing) {
-        char disp[MAX_INPUT_LEN + 4];
-        snprintf(disp, sizeof(disp), "> %s_", chat_input);
+        char prefix[MESHCORE_MAX_NAME_SIZE + 8];
+        if (dm_target_set)
+            snprintf(prefix, sizeof(prefix), "DM %s> ", dm_target_name);
+        else
+            snprintf(prefix, sizeof(prefix), "> ");
+        char disp[MAX_INPUT_LEN + sizeof(prefix) + 2];
+        snprintf(disp, sizeof(disp), "%s%s_", prefix, chat_input);
         pax_draw_text(&fb, COL_WHITE, pax_font_sky_mono, 15, 8, iy + 7, disp);
+        // Character counter (right side)
+        char ctr[12];
+        snprintf(ctr, sizeof(ctr), "%d/%d", chat_input_len, MAX_INPUT_LEN);
+        pax_vec2f ctr_sz = pax_text_size(pax_font_sky_mono, 12, ctr);
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, w - (int)ctr_sz.x - 6, iy + 9, ctr);
     } else {
-        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, iy + 8, "T: type a message");
+        if (dm_target_set) {
+            char hint[MESHCORE_MAX_NAME_SIZE + 32];
+            snprintf(hint, sizeof(hint), "T: DM %s  |  ESC: channel", dm_target_name);
+            pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 13, 8, iy + 9, hint);
+        } else {
+            pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, iy + 8, "T: type  |  Nodes: pick DM");
+        }
     }
 
     // Footer
@@ -1621,7 +1732,10 @@ static void handle_key(char c) {
                 chat_input[0]  = '\0';
             } else if (c == '\r' || c == '\n') {  // Enter: send
                 if (chat_input_len > 0) {
-                    send_chat_message(chat_input);      // best-effort TX
+                    if (dm_target_set)
+                        send_dm_message(chat_input, dm_target_pub);
+                    else
+                        send_chat_message(chat_input);
                     chat_add_message(chat_input, true); // always show locally
                     chat_input_len = 0;
                     chat_input[0]  = '\0';
@@ -1658,6 +1772,8 @@ static void handle_key(char c) {
             dirty     = false;
             load_owner_name();
             load_lora_config();
+        } else if (current_view == VIEW_CHAT && dm_target_set) {
+            dm_target_set = false;  // clear DM target, back to channel
         } else {
             bsp_led_set_mode(true);
             bsp_device_restart_to_launcher();
@@ -1667,14 +1783,14 @@ static void handle_key(char c) {
             if (!edit_mode) selected = (selected - 1 + FIELD_COUNT) % FIELD_COUNT;
             else if (selected != FIELD_OWNER) field_adjust(selected, +1);
         } else if (current_view == VIEW_NODES) {
-            if (node_scroll > 0) node_scroll--;
+            if (node_cursor > 0) node_cursor--;
         }
     } else if (c == 's' || c == 'S') {
         if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) selected = (selected + 1) % FIELD_COUNT;
             else if (selected != FIELD_OWNER) field_adjust(selected, -1);
         } else if (current_view == VIEW_NODES) {
-            node_scroll++;
+            if (node_cursor < node_count - 1) node_cursor++;
         }
     } else if ((c == 'a' || c == 'A') && current_view == VIEW_NODES) {
         send_advert();
@@ -1685,7 +1801,30 @@ static void handle_key(char c) {
     } else if (c == '>' || c == '.') {
         if (current_view == VIEW_SETTINGS && edit_mode && selected != FIELD_OWNER) field_adjust(selected, +1);
     } else if (c == '\r' || c == '\n') {
-        if (current_view == VIEW_SETTINGS) {
+        if (current_view == VIEW_NODES) {
+            // Select node under cursor → open DM in Chat tab
+            if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                int indices[MAX_NODES];
+                int idx_count = 0;
+                for (int i = 0; i < MAX_NODES; i++)
+                    if (node_list[i].active) indices[idx_count++] = i;
+                for (int i = 1; i < idx_count; i++) {
+                    int key = indices[i], j = i - 1;
+                    while (j >= 0 && node_list[indices[j]].last_seen_ms < node_list[key].last_seen_ms)
+                        { indices[j + 1] = indices[j]; j--; }
+                    indices[j + 1] = key;
+                }
+                if (node_cursor < idx_count) {
+                    node_entry_t* n = &node_list[indices[node_cursor]];
+                    dm_target_set = true;
+                    memcpy(dm_target_pub, n->pub_key, MESHCORE_PUB_KEY_SIZE);
+                    strncpy(dm_target_name, n->name, sizeof(dm_target_name) - 1);
+                    dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+                }
+                xSemaphoreGive(node_mutex);
+            }
+            if (dm_target_set) current_view = VIEW_CHAT;
+        } else if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) {
                 edit_mode = true;
             } else {
