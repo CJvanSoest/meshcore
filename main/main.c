@@ -25,6 +25,7 @@
 #include <stdint.h>
 #include <math.h>
 #include <time.h>
+#include <sys/time.h>
 #include "bsp/device.h"
 #include "bsp/display.h"
 #include "bsp/input.h"
@@ -189,6 +190,7 @@ static const int      BW_COUNT     = (int)(sizeof(BW_OPTIONS) / sizeof(BW_OPTION
 
 // NVS keys — same namespace/keys as launcher so settings are shared
 #define NVS_LORA_FREQ  "lora.freq"
+#define NVS_LAST_TIME  "last_time_s"  // int64: last known Unix timestamp from SNTP
 #define NVS_LORA_SF    "lora.sf"
 #define NVS_LORA_BW    "lora.bandwidth"
 #define NVS_LORA_CR    "lora.codingrate"
@@ -222,6 +224,8 @@ static bool                          dirty                 = false;
 static bool                          lora_ready            = false;
 static bool                          c6_available          = false;
 static bool                          radio_bootloader_mode = false;
+static bool                          sntp_synced           = false;
+static bool                          time_from_nvs         = false;
 static char                          owner_name[33]        = {0};
 static lora_protocol_config_params_t lora_cfg              = {0};
 
@@ -343,6 +347,18 @@ static void save_lora_config(void) {
 #define NVS_IDENTITY_SEED "node.seed"
 
 static void chat_add_message(const char* text, bool is_mine);  /* forward decl */
+
+// ── SNTP ──────────────────────────────────────────────────────────────────────
+static void sntp_sync_cb(struct timeval *tv) {
+    sntp_synced = true;
+    // Persist to NVS so the next boot without WiFi can restore a sane time
+    nvs_handle_t h;
+    if (nvs_open("system", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_i64(h, NVS_LAST_TIME, (int64_t)tv->tv_sec);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
 
 static void identity_init(void) {
     uint8_t seed[32] = {0};
@@ -1287,7 +1303,7 @@ static void render_settings(void) {
     rows[FIELD_PREAMBLE].label = "Preamble length";
     snprintf(rows[FIELD_PREAMBLE].value, sizeof(rows[FIELD_PREAMBLE].value), "%d", (int)lora_cfg.preamble_length);
 
-    int row_h = (h - 32 - 28) / FIELD_COUNT;
+    int row_h = (h - 32 - 40) / FIELD_COUNT;
     int y0    = 34;
 
     for (int i = 0; i < FIELD_COUNT; i++) {
@@ -1327,20 +1343,41 @@ static void render_settings(void) {
         pax_draw_text(&fb, val_col, pax_font_sky_mono, 16, w - (int)vsz.x - 14, y + (row_h - 16) / 2, val_disp);
     }
 
-    int fy = h - 26;
-    pax_simple_rect(&fb, COL_DARK, 0, fy, w, 26);
+    int fy = h - 40;
+    pax_simple_rect(&fb, COL_DARK, 0, fy, w, 40);
     if (edit_mode && selected != FIELD_OWNER) {
-        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 6,
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 4,
                       "Up/Down or W/S: adjust  Enter: save  ESC: cancel");
     } else if (!c6_available) {
-        pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 14, 8, fy + 6,
+        pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 14, 8, fy + 4,
                       "NVS only - C6 unavailable  U: flash radio");
     } else {
-        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 6,
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 4,
                       "W/S: navigate  Enter: edit  R: reload  Tab: next");
     }
     if (dirty) {
-        pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 14, w - 110, fy + 6, "* unsaved");
+        pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 14, w - 110, fy + 4, "* unsaved");
+    }
+
+    // SNTP / time status line
+    {
+        time_t    now = time(NULL);
+        struct tm t;
+        localtime_r(&now, &t);
+        char ts[48];
+        if (sntp_synced) {
+            snprintf(ts, sizeof(ts), "SNTP: %02d:%02d:%02d  %02d-%02d-%04d",
+                     t.tm_hour, t.tm_min, t.tm_sec,
+                     t.tm_mday, t.tm_mon + 1, t.tm_year + 1900);
+            pax_draw_text(&fb, COL_GREEN, pax_font_sky_mono, 13, 8, fy + 24, ts);
+        } else if (time_from_nvs) {
+            snprintf(ts, sizeof(ts), "time: ~%02d:%02d %02d-%02d (NVS, approx)",
+                     t.tm_hour, t.tm_min, t.tm_mday, t.tm_mon + 1);
+            pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 13, 8, fy + 24, ts);
+        } else {
+            pax_draw_text(&fb, COL_RED, pax_font_sky_mono, 13, 8, fy + 24,
+                          "time: no sync — msg timestamps incorrect");
+        }
     }
 
     blit();
@@ -2107,16 +2144,32 @@ void app_main(void) {
 
     DIAG(COL_GRAY, "wifi_connection_init_stack...");
     res = wifi_connection_init_stack();
-    DIAG(res == ESP_OK ? COL_GREEN : COL_RED, "  wifi init: %s (%d)",
+    DIAG(res == ESP_OK ? COL_GREEN : COL_YELLOW, "  wifi init: %s (%d)",
          res == ESP_OK ? "OK" : "FAIL", res);
     if (res == ESP_OK) {
         res = wifi_connect_try_all();
         DIAG(res == ESP_OK ? COL_GREEN : COL_YELLOW, "  wifi connect: %s",
              res == ESP_OK ? "OK" : "no saved networks");
         if (res == ESP_OK) {
+            esp_sntp_set_time_sync_notification_cb(sntp_sync_cb);
             esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
             esp_sntp_setservername(0, "pool.ntp.org");
             esp_sntp_init();
+        }
+    }
+
+    // Restore last known time from NVS when no WiFi/SNTP available
+    if (!sntp_synced) {
+        nvs_handle_t h;
+        if (nvs_open("system", NVS_READONLY, &h) == ESP_OK) {
+            int64_t saved = 0;
+            if (nvs_get_i64(h, NVS_LAST_TIME, &saved) == ESP_OK && saved > 1000000000LL) {
+                struct timeval tv = { .tv_sec = (time_t)saved, .tv_usec = 0 };
+                settimeofday(&tv, NULL);
+                time_from_nvs = true;
+                DIAG(COL_YELLOW, "  time: NVS restore (approx)");
+            }
+            nvs_close(h);
         }
     }
 
