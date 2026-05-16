@@ -188,6 +188,10 @@ static bool     identity_ready    = false;
 static uint32_t last_advert_ms    = 0;
 static bool     qr_overlay_active = false;
 
+// ── Notification LED state ────────────────────────────────────────────────────
+static bool led_dm_pending      = false;
+static bool led_channel_pending = false;
+
 // ── App state ─────────────────────────────────────────────────────────────────
 static int                           selected              = 0;
 static bool                          edit_mode             = false;
@@ -624,6 +628,22 @@ static void ch_add_message(const char* text, bool is_mine) {
     xSemaphoreGive(ch_mutex);
 }
 
+static void update_notification_led(void) {
+    if (led_dm_pending) {
+        bsp_led_set_mode(false);
+        bsp_led_set_pixel(0, 0x002800);  // dim green = DM
+        bsp_led_send();
+    } else if (led_channel_pending) {
+        bsp_led_set_mode(false);
+        bsp_led_set_pixel(0, 0x000028);  // dim blue = channel
+        bsp_led_send();
+    } else {
+        bsp_led_clear();
+        bsp_led_send();
+        bsp_led_set_mode(true);  // back to automatic (launcher) control
+    }
+}
+
 static bool decrypt_grp_txt(meshcore_grp_txt_t* grp, const uint8_t* key) {
     // Verify HMAC-SHA256 (2 bytes truncated)
     uint8_t mac[32];
@@ -842,6 +862,10 @@ static void lora_rx_task(void *arg) {
                         if (decrypt_grp_txt(&grp, PUBLIC_CHANNEL_KEY)) {
                             ESP_LOGI(TAG, "Channel RX: %s", grp.decrypted.text);
                             ch_add_message(grp.decrypted.text, false);
+                            if (current_view != VIEW_CHANNEL) {
+                                led_channel_pending = true;
+                                update_notification_led();
+                            }
                         }
                     }
                 } else if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_TXT_MSG) {
@@ -974,6 +998,10 @@ static void lora_rx_task(void *arg) {
 
                         ESP_LOGI(TAG, "DM RX: %s", display);
                         chat_add_message(display, false);
+                        if (current_view != VIEW_CHAT) {
+                            led_dm_pending = true;
+                            update_notification_led();
+                        }
 
                         // Send PATH_RETURN with embedded ACK (createPathReturn approach)
                         // For FLOOD DMs, MeshCore sends PAYLOAD_TYPE_PATH (0x08), not a bare ACK.
@@ -1391,7 +1419,7 @@ static void render_qr_overlay(void) {
 
     // Name below QR
     char name_label[80];
-    snprintf(name_label, sizeof(name_label), "%s  [druk een knop om te sluiten]", owner_name);
+    snprintf(name_label, sizeof(name_label), "%s  [press any key to close]", owner_name);
     pax_vec2f nsz = pax_text_size(pax_font_sky_mono, 14, name_label);
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14,
                   (w - (int)nsz.x) / 2, qr_y + qr_px + margin + 4, name_label);
@@ -1424,13 +1452,13 @@ static void render_nodes(void) {
     int dist_hdr_x = age_hdr_x - dist_col_w;
     int pkts_hdr_x = dist_hdr_x - pkts_col_w;
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11,  4,          hdr_y + 5, "Role");
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, 50,          hdr_y + 5, "Name");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, 68,          hdr_y + 5, "Name");
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, pkts_hdr_x, hdr_y + 5, "#Pkt");
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, dist_hdr_x, hdr_y + 5, "Dist");
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, age_hdr_x,  hdr_y + 5, "Seen");
 
     int list_y0   = NODES_Y0 + NODES_HEADER_H;
-    int list_h    = h - 40 - list_y0;
+    int list_h    = h - 28 - list_y0;
     int rows_vis  = list_h / NODES_ROW_H;
     uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
@@ -1514,14 +1542,14 @@ static void render_nodes(void) {
 
                 // Node name (truncated to fit between role and dist columns)
                 char name_trunc[17];
-                int  max_name_w = pkts_x - 54;  // pixels available for name
+                int  max_name_w = pkts_x - 72;  // pixels available for name
                 // Truncate name to fit: ~8px per char at size 13
                 int max_chars = max_name_w / 8;
                 if (max_chars > 16) max_chars = 16;
                 if (max_chars < 1)  max_chars = 1;
                 snprintf(name_trunc, sizeof(name_trunc), "%.*s", max_chars, n->name);
                 pax_col_t name_col = is_cursor ? COL_WHITE : 0xFFCCCCCC;
-                pax_draw_text(&fb, name_col, pax_font_sky_mono, 13, 50, y + 5, name_trunc);
+                pax_draw_text(&fb, name_col, pax_font_sky_mono, 13, 68, y + 5, name_trunc);
 
                 // Row separator
                 pax_simple_rect(&fb, COL_DARK, 0, y + NODES_ROW_H - 1, w, 1);
@@ -1531,14 +1559,14 @@ static void render_nodes(void) {
             if (node_count > rows_vis) {
                 char sc[24];
                 snprintf(sc, sizeof(sc), "%d/%d", node_scroll + 1, node_count);
-                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, w - 50, h - 40 - 16, sc);
+                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, w - 50, h - 28 - 16, sc);
             }
         }
         xSemaphoreGive(node_mutex);
     }
 
-    // Three-line footer
-    int footer_h = 40;
+    // Two-line footer
+    int footer_h = 28;
     int fy_base  = h - footer_h;
     pax_simple_rect(&fb, COL_DARK, 0, fy_base, w, footer_h);
 
@@ -1547,23 +1575,8 @@ static void render_nodes(void) {
     snprintf(footer_ctrl, sizeof(footer_ctrl), "Nodes:%d  W/S:scroll  A:advert  Q:QR code  Tab:next", node_count);
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, 8, fy_base + 1, footer_ctrl);
 
-    // Line 2: full public key
+    // Line 2: advert age
     if (identity_ready) {
-        char pk_buf[80];
-        snprintf(pk_buf, sizeof(pk_buf),
-                 "PK:%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X"
-                 "%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X",
-                 node_pub_key[0],  node_pub_key[1],  node_pub_key[2],  node_pub_key[3],
-                 node_pub_key[4],  node_pub_key[5],  node_pub_key[6],  node_pub_key[7],
-                 node_pub_key[8],  node_pub_key[9],  node_pub_key[10], node_pub_key[11],
-                 node_pub_key[12], node_pub_key[13], node_pub_key[14], node_pub_key[15],
-                 node_pub_key[16], node_pub_key[17], node_pub_key[18], node_pub_key[19],
-                 node_pub_key[20], node_pub_key[21], node_pub_key[22], node_pub_key[23],
-                 node_pub_key[24], node_pub_key[25], node_pub_key[26], node_pub_key[27],
-                 node_pub_key[28], node_pub_key[29], node_pub_key[30], node_pub_key[31]);
-        pax_draw_text(&fb, COL_GREEN, pax_font_sky_mono, 12, 8, fy_base + 14, pk_buf);
-
-        // Line 3: advert age
         uint32_t now_ms2 = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         char adv_buf[48];
         if (last_advert_ms == 0) {
@@ -1572,7 +1585,7 @@ static void render_nodes(void) {
             uint32_t age_s = (now_ms2 - last_advert_ms) / 1000;
             snprintf(adv_buf, sizeof(adv_buf), "advert: %lus ago", (unsigned long)age_s);
         }
-        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, 8, fy_base + 27, adv_buf);
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, 8, fy_base + 14, adv_buf);
     }
     blit();
 }
@@ -1844,7 +1857,7 @@ static void handle_nav(uint32_t key) {
                 }
                 xSemaphoreGive(node_mutex);
             }
-            if (dm_target_set) current_view = VIEW_CHAT;
+            if (dm_target_set) { current_view = VIEW_CHAT; led_dm_pending = false; update_notification_led(); }
         } else if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) {
                 edit_mode = true;
@@ -1925,6 +1938,8 @@ static void handle_key(char c) {
         // Tab: cycle through views (not in edit mode)
         if (!edit_mode) {
             current_view = (app_view_t)((int)(current_view + 1) % VIEW_COUNT);
+            if (current_view == VIEW_CHAT)    { led_dm_pending     = false; update_notification_led(); }
+            if (current_view == VIEW_CHANNEL) { led_channel_pending = false; update_notification_led(); }
         }
         return;
     }
@@ -1986,7 +2001,7 @@ static void handle_key(char c) {
                 }
                 xSemaphoreGive(node_mutex);
             }
-            if (dm_target_set) current_view = VIEW_CHAT;
+            if (dm_target_set) { current_view = VIEW_CHAT; led_dm_pending = false; update_notification_led(); }
         } else if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) {
                 edit_mode = true;
