@@ -1400,7 +1400,7 @@ static void render_nodes(void) {
     int age_hdr_x  = w - age_col_w - 4;
     int dist_hdr_x = age_hdr_x - dist_col_w;
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11,  4,           hdr_y + 5, "Rol");
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, 40,           hdr_y + 5, "Naam");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, 50,           hdr_y + 5, "Naam");
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, dist_hdr_x,  hdr_y + 5, "Afst");
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, age_hdr_x,   hdr_y + 5, "Gezien");
 
@@ -1483,14 +1483,14 @@ static void render_nodes(void) {
 
                 // Node name (truncated to fit between role and dist columns)
                 char name_trunc[17];
-                int  max_name_w = dist_x - 44;  // pixels available for name
+                int  max_name_w = dist_x - 54;  // pixels available for name
                 // Truncate name to fit: ~8px per char at size 13
                 int max_chars = max_name_w / 8;
                 if (max_chars > 16) max_chars = 16;
                 if (max_chars < 1)  max_chars = 1;
                 snprintf(name_trunc, sizeof(name_trunc), "%.*s", max_chars, n->name);
                 pax_col_t name_col = is_cursor ? COL_WHITE : 0xFFCCCCCC;
-                pax_draw_text(&fb, name_col, pax_font_sky_mono, 13, 40, y + 5, name_trunc);
+                pax_draw_text(&fb, name_col, pax_font_sky_mono, 13, 50, y + 5, name_trunc);
 
                 // Row separator
                 pax_simple_rect(&fb, COL_DARK, 0, y + NODES_ROW_H - 1, w, 1);
