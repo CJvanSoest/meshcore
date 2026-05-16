@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640">
+  <!-- Background -->
+  <rect width="400" height="640" fill="#000000" rx="4"/>
+  <rect x="0.5" y="0.5" width="399" height="639" fill="none" stroke="#444444" stroke-width="1" rx="4"/>
+
+  <!-- ── Tab bar ── -->
+  <rect x="0" y="0" width="400" height="22" fill="#222222" rx="4"/>
+  <rect x="0" y="11" width="400" height="11" fill="#222222"/>
+  <text x="39" y="15" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="middle">Settings</text>
+  <!-- Active: Nodes -->
+  <rect x="79" y="0" width="79" height="22" fill="#0088FF" rx="4"/>
+  <rect x="79" y="11" width="79" height="11" fill="#0088FF"/>
+  <text x="118" y="15" fill="#000000" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="middle">Nodes</text>
+  <text x="197" y="15" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="middle">DM</text>
+  <text x="276" y="15" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="middle">Channel</text>
+  <text x="394" y="15" fill="#00BB44" font-family="'Courier New',Courier,monospace" font-size="10" text-anchor="end">RX:12 | B:72%</text>
+
+  <!-- ── Column header (y=22, h=14) ── -->
+  <rect x="0" y="22" width="400" height="14" fill="#1A1A1A"/>
+  <rect x="0" y="35" width="400" height="1" fill="#333333"/>
+  <text x="3"   y="33" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="10">Role</text>
+  <text x="60"  y="33" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="10">Name</text>
+  <text x="285" y="33" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="10">#Pkt</text>
+  <text x="328" y="33" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="10">Dist</text>
+  <text x="368" y="33" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="10">Seen</text>
+
+  <!-- ── Node rows (row_h=26, list_y0=36) ── -->
+
+  <!-- Row 0: Alice · CLIENT · cursor (y=36) -->
+  <rect x="0" y="36" width="400" height="26" fill="#003366"/>
+  <text x="3"   y="52" fill="#00BB44"  font-family="'Courier New',Courier,monospace" font-size="11">CLIENT</text>
+  <text x="60"  y="52" fill="#ffffff"  font-family="'Courier New',Courier,monospace" font-size="12">Alice</text>
+  <text x="285" y="52" fill="#888888"  font-family="'Courier New',Courier,monospace" font-size="11">#42</text>
+  <text x="328" y="52" fill="#888888"  font-family="'Courier New',Courier,monospace" font-size="11">--</text>
+  <text x="368" y="52" fill="#888888"  font-family="'Courier New',Courier,monospace" font-size="11">12s</text>
+  <rect x="0" y="62" width="400" height="1" fill="#222222"/>
+
+  <!-- Row 1: MeshRelay-1 · REPEAT (y=62) -->
+  <text x="3"   y="78" fill="#0088FF"  font-family="'Courier New',Courier,monospace" font-size="11">REPEAT</text>
+  <text x="60"  y="78" fill="#cccccc"  font-family="'Courier New',Courier,monospace" font-size="12">MeshRelay-1</text>
+  <text x="285" y="78" fill="#888888"  font-family="'Courier New',Courier,monospace" font-size="11">#156</text>
+  <text x="328" y="78" fill="#888888"  font-family="'Courier New',Courier,monospace" font-size="11">--</text>
+  <text x="368" y="78" fill="#888888"  font-family="'Courier New',Courier,monospace" font-size="11">2m</text>
+  <rect x="0" y="88" width="400" height="1" fill="#222222"/>
+
+  <!-- Row 2: Bob · CLIENT (y=88, alt bg) -->
+  <rect x="0" y="88" width="400" height="26" fill="#111111"/>
+  <text x="3"   y="104" fill="#00BB44" font-family="'Courier New',Courier,monospace" font-size="11">CLIENT</text>
+  <text x="60"  y="104" fill="#cccccc" font-family="'Courier New',Courier,monospace" font-size="12">Bob</text>
+  <text x="285" y="104" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">#7</text>
+  <text x="328" y="104" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">--</text>
+  <text x="368" y="104" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">5m</text>
+  <rect x="0" y="114" width="400" height="1" fill="#222222"/>
+
+  <!-- Row 3: HQ-Lounge · ROOM (y=114) -->
+  <text x="3"   y="130" fill="#AA44FF" font-family="'Courier New',Courier,monospace" font-size="11">ROOM</text>
+  <text x="60"  y="130" fill="#cccccc" font-family="'Courier New',Courier,monospace" font-size="12">HQ-Lounge</text>
+  <text x="285" y="130" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">#89</text>
+  <text x="328" y="130" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">--</text>
+  <text x="368" y="130" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">12m</text>
+  <rect x="0" y="140" width="400" height="1" fill="#222222"/>
+
+  <!-- Row 4: Charlie · CLIENT (y=140, alt bg) -->
+  <rect x="0" y="140" width="400" height="26" fill="#111111"/>
+  <text x="3"   y="156" fill="#00BB44" font-family="'Courier New',Courier,monospace" font-size="11">CLIENT</text>
+  <text x="60"  y="156" fill="#cccccc" font-family="'Courier New',Courier,monospace" font-size="12">Charlie</text>
+  <text x="285" y="156" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">#3</text>
+  <text x="328" y="156" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">--</text>
+  <text x="368" y="156" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">47m</text>
+  <rect x="0" y="166" width="400" height="1" fill="#222222"/>
+
+  <!-- Row 5: TempNode · SENSOR (y=166) -->
+  <text x="3"   y="182" fill="#FFCC00" font-family="'Courier New',Courier,monospace" font-size="11">SENSOR</text>
+  <text x="60"  y="182" fill="#cccccc" font-family="'Courier New',Courier,monospace" font-size="12">TempNode-A</text>
+  <text x="285" y="182" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">#21</text>
+  <text x="328" y="182" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">--</text>
+  <text x="368" y="182" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">1h</text>
+  <rect x="0" y="192" width="400" height="1" fill="#222222"/>
+
+  <!-- Row 6: Gateway-1 · REPEAT (y=192, alt bg) -->
+  <rect x="0" y="192" width="400" height="26" fill="#111111"/>
+  <text x="3"   y="208" fill="#0088FF" font-family="'Courier New',Courier,monospace" font-size="11">REPEAT</text>
+  <text x="60"  y="208" fill="#cccccc" font-family="'Courier New',Courier,monospace" font-size="12">Gateway-1</text>
+  <text x="285" y="208" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">#304</text>
+  <text x="328" y="208" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">--</text>
+  <text x="368" y="208" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="11">2h</text>
+  <rect x="0" y="218" width="400" height="1" fill="#222222"/>
+
+  <!-- QR code hint (press Q) -->
+  <text x="6" y="580" fill="#333333" font-family="'Courier New',Courier,monospace" font-size="10">← press Q to show QR contact card</text>
+
+  <!-- ── Footer (2 lines, y=594, h=46) ── -->
+  <rect x="0" y="594" width="400" height="46" fill="#222222"/>
+  <text x="6" y="608" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="10">Nodes:7  W/S:scroll  Enter:DM  A:advert  Q:QR  Tab:next</text>
+  <text x="6" y="624" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="10">advert: 45s ago</text>
+</svg>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640">
+  <!-- Background -->
+  <rect width="400" height="640" fill="#000000" rx="4"/>
+  <rect x="0.5" y="0.5" width="399" height="639" fill="none" stroke="#444444" stroke-width="1" rx="4"/>
+
+  <!-- ── Tab bar ── -->
+  <rect x="0" y="0" width="400" height="22" fill="#222222" rx="4"/>
+  <rect x="0" y="11" width="400" height="11" fill="#222222"/>
+  <!-- Active: Settings -->
+  <rect x="0" y="0" width="79" height="22" fill="#0088FF" rx="4"/>
+  <rect x="0" y="11" width="79" height="11" fill="#0088FF"/>
+  <text x="39" y="15" fill="#000000" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="middle">Settings</text>
+  <!-- Inactive tabs -->
+  <text x="118" y="15" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="middle">Nodes</text>
+  <text x="197" y="15" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="middle">DM</text>
+  <text x="276" y="15" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="middle">Channel</text>
+  <!-- Status: RX:5 | B:85% -->
+  <text x="394" y="15" fill="#00BB44" font-family="'Courier New',Courier,monospace" font-size="10" text-anchor="end">RX:5 | B:85%</text>
+
+  <!-- ── Settings rows (row_h=75, y0=22) ── -->
+
+  <!-- Row 0: Owner name (y=22..97) -->
+  <text x="8" y="63" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="12">Owner name</text>
+  <text x="392" y="63" fill="#00BB44" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="end">TanmatsuUser</text>
+  <rect x="4" y="97" width="392" height="1" fill="#222222"/>
+
+  <!-- Row 1: Frequency (y=97..172) — SELECTED -->
+  <rect x="0" y="97" width="400" height="75" fill="#001122"/>
+  <rect x="0" y="97" width="3" height="75" fill="#0088FF"/>
+  <text x="8" y="138" fill="#ffffff" font-family="'Courier New',Courier,monospace" font-size="12">Frequency</text>
+  <text x="392" y="138" fill="#ffffff" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="end">869.618 MHz</text>
+  <rect x="4" y="172" width="392" height="1" fill="#222222"/>
+
+  <!-- Row 2: Spreading factor (y=172..247) -->
+  <text x="8" y="213" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="12">Spreading factor</text>
+  <text x="392" y="213" fill="#00BB44" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="end">SF8</text>
+  <rect x="4" y="247" width="392" height="1" fill="#222222"/>
+
+  <!-- Row 3: Bandwidth (y=247..322) -->
+  <text x="8" y="288" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="12">Bandwidth</text>
+  <text x="392" y="288" fill="#00BB44" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="end">62 kHz</text>
+  <rect x="4" y="322" width="392" height="1" fill="#222222"/>
+
+  <!-- Row 4: Coding rate (y=322..397) -->
+  <text x="8" y="363" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="12">Coding rate</text>
+  <text x="392" y="363" fill="#00BB44" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="end">4/8</text>
+  <rect x="4" y="397" width="392" height="1" fill="#222222"/>
+
+  <!-- Row 5: TX power (y=397..472) -->
+  <text x="8" y="438" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="12">TX power</text>
+  <text x="392" y="438" fill="#00BB44" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="end">22 dBm</text>
+  <rect x="4" y="472" width="392" height="1" fill="#222222"/>
+
+  <!-- Row 6: Sync word (y=472..547) -->
+  <text x="8" y="513" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="12">Sync word</text>
+  <text x="392" y="513" fill="#00BB44" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="end">0x2B</text>
+  <rect x="4" y="547" width="392" height="1" fill="#222222"/>
+
+  <!-- Row 7: Preamble length (y=547..622) -->
+  <text x="8" y="588" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="12">Preamble length</text>
+  <text x="392" y="588" fill="#00BB44" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="end">16</text>
+  <rect x="4" y="622" width="392" height="1" fill="#222222"/>
+
+  <!-- ── Footer ── -->
+  <rect x="0" y="622" width="400" height="18" fill="#222222"/>
+  <text x="6" y="634" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="10">W/S: navigate  Enter: edit  R: reload  Tab: next</text>
+</svg>

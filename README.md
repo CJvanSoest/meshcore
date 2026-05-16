@@ -67,7 +67,24 @@ schematics are available on the Tanmatsu documentation site.
 
 ## Screenshots
 
-*(Coming soon)*
+<table>
+  <tr>
+    <td align="center"><b>Settings</b></td>
+    <td align="center"><b>Nodes</b></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screen-settings.svg" width="360"></td>
+    <td><img src="docs/screen-nodes.svg" width="360"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>DM</b></td>
+    <td align="center"><b>Channel</b></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screen-dm.svg" width="360"></td>
+    <td><img src="docs/screen-channel.svg" width="360"></td>
+  </tr>
+</table>
 
 ---
 
