@@ -882,7 +882,7 @@ static void lora_rx_task(void *arg) {
                             // for their next advert broadcast.
                             char unknown_msg[48];
                             snprintf(unknown_msg, sizeof(unknown_msg),
-                                     "[?%02X] DM ontvangen (sender onbekend)", src_hash);
+                                     "[?%02X] DM received (sender unknown)", src_hash);
                             chat_add_message(unknown_msg, false);
                             break;
                         }
@@ -1423,11 +1423,11 @@ static void render_nodes(void) {
     int age_hdr_x  = w - age_col_w - 4;
     int dist_hdr_x = age_hdr_x - dist_col_w;
     int pkts_hdr_x = dist_hdr_x - pkts_col_w;
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11,  4,          hdr_y + 5, "Rol");
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, 50,          hdr_y + 5, "Naam");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11,  4,          hdr_y + 5, "Role");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, 50,          hdr_y + 5, "Name");
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, pkts_hdr_x, hdr_y + 5, "#Pkt");
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, dist_hdr_x, hdr_y + 5, "Afst");
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, age_hdr_x,  hdr_y + 5, "Gezien");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, dist_hdr_x, hdr_y + 5, "Dist");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, age_hdr_x,  hdr_y + 5, "Seen");
 
     int list_y0   = NODES_Y0 + NODES_HEADER_H;
     int list_h    = h - 40 - list_y0;
@@ -1727,7 +1727,7 @@ static void render_channel(void) {
         pax_vec2f ctr_sz = pax_text_size(pax_font_sky_mono, 12, ctr);
         pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, w - (int)ctr_sz.x - 6, iy + 9, ctr);
     } else {
-        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, iy + 8, "T: stuur channel bericht");
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, iy + 8, "T: send channel message");
     }
 
     int footer_y = h - 22;
