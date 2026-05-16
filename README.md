@@ -108,6 +108,38 @@ conversion, 32- and 16-byte key) for compatibility across MeshCore versions.
 
 ---
 
+## Firmware compatibility
+
+| Component | Version | Notes |
+|---|---|---|
+| **Tanmatsu launcher** | v0.1.2 | Required for correct LoRa info display (Hz fix, PR #91) |
+| **C6 radio firmware** (tanmatsu-radio) | v2.12.3 | Flashed manually — see below |
+
+The launcher will show a **"mismatch firmware"** warning because it expects radio firmware v2.7.3
+internally. This is cosmetic — the MeshCore app communicates with the radio library directly and
+works correctly with v2.12.3. **Do not click "Update Radio"** in the launcher; it would downgrade
+the C6 to v2.7.3.
+
+### Flashing the C6 radio firmware
+
+1. Open the MeshCore app on the Tanmatsu
+2. Press **U** → C6 enters bootloader mode (WiFi LED turns blue)
+3. Flash via esptool (from the `tanmatsu-radio` repo root after building):
+
+```sh
+esptool.py --chip esp32c6 --port /dev/cu.usbmodem21401 --before no_reset \
+  write_flash --flash_mode dio --flash_freq 80m --flash_size 8MB \
+  0x0     build/tanmatsu/bootloader/bootloader.bin \
+  0x8000  build/tanmatsu/partition_table/partition-table.bin \
+  0xd000  build/tanmatsu/ota_data_initial.bin \
+  0x10000 build/tanmatsu/tanmatsu-radio.bin
+```
+
+After flashing, the app detects a blank C6 NVS config (`frequency = 0`) and automatically
+pushes the stored LoRa settings to the C6.
+
+---
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
