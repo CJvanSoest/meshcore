@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <math.h>
+#include <time.h>
 #include "bsp/device.h"
 #include "bsp/display.h"
 #include "bsp/input.h"
@@ -28,6 +29,7 @@
 #include "mbedtls/md.h"
 #include "mbedtls/sha256.h"
 #include "esp_random.h"
+#include "esp_sntp.h"
 #include "ed25519.h"
 #include "qrcodegen.h"
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
@@ -638,7 +640,7 @@ static bool send_dm_message(const char* text, const uint8_t* target_pub) {
     uint8_t shared[32];
     ed25519_key_exchange(shared, target_pub, node_prv_key);
 
-    uint32_t ts = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
+    uint32_t ts = (uint32_t)time(NULL);
     uint8_t  plain[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
     size_t   text_len  = strlen(text);
     size_t   plain_len = 5 + text_len;
@@ -687,7 +689,7 @@ static bool send_chat_message(const char* text) {
     if (!c6_available) return false;
 
     // Build plaintext: timestamp(4) + text_type(1) + text
-    uint32_t ts = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
+    uint32_t ts = (uint32_t)time(NULL);
     uint8_t  plain[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
     size_t   text_len = strlen(text);
     // Include owner name prefix: "name: text"
@@ -1376,8 +1378,9 @@ static void render_qr_overlay(void) {
 }
 
 // ── Render: nodes screen ──────────────────────────────────────────────────────
-#define NODES_ROW_H  36
-#define NODES_Y0     36
+#define NODES_ROW_H    36
+#define NODES_Y0       36
+#define NODES_HEADER_H 20
 
 static void render_nodes(void) {
     int w = (int)pax_buf_get_width(&fb);
@@ -1386,15 +1389,31 @@ static void render_nodes(void) {
     pax_background(&fb, COL_BLACK);
     render_tab_bar();
 
-    int list_h    = h - 40 - NODES_Y0;
+    // Column header
+    int hdr_y = NODES_Y0;
+    pax_simple_rect(&fb, 0xFF1A1A1A, 0, hdr_y, w, NODES_HEADER_H);
+    pax_simple_rect(&fb, COL_DARK,   0, hdr_y + NODES_HEADER_H - 1, w, 1);
+    // Right-side widths (mirrored from row render)
+    // age_x = w - age_sz.x - 6  (variable) → use fixed col widths for header
+    int age_col_w  = 52;   // "999h" at size 12 ≈ 40px, give 52
+    int dist_col_w = 52;   // "999km" at size 12
+    int age_hdr_x  = w - age_col_w - 4;
+    int dist_hdr_x = age_hdr_x - dist_col_w;
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11,  4,           hdr_y + 5, "Rol");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, 40,           hdr_y + 5, "Naam");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, dist_hdr_x,  hdr_y + 5, "Afst");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, age_hdr_x,   hdr_y + 5, "Gezien");
+
+    int list_y0   = NODES_Y0 + NODES_HEADER_H;
+    int list_h    = h - 40 - list_y0;
     int rows_vis  = list_h / NODES_ROW_H;
     uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
     if (!lora_rx_ok) {
-        pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 16, 10, NODES_Y0 + 10, "LoRa radio not available");
+        pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 16, 10, list_y0 + 10, "LoRa radio not available");
     } else if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         if (node_count == 0) {
-            pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 15, 10, NODES_Y0 + 10, "Listening... no nodes heard yet.");
+            pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 15, 10, list_y0 + 10, "Listening... no nodes heard yet.");
         } else {
             // Clamp scroll
             int max_scroll = node_count - rows_vis;
@@ -1431,27 +1450,27 @@ static void render_nodes(void) {
                 if (list_idx >= idx_count) break;
                 node_entry_t* n = &node_list[indices[list_idx]];
 
-                int y = NODES_Y0 + row * NODES_ROW_H;
+                int y = list_y0 + row * NODES_ROW_H;
                 bool is_cursor = (list_idx == node_cursor);
 
                 // Row background: cursor = accent-dark, alternating for others
                 if (is_cursor)         pax_simple_rect(&fb, 0xFF003366, 0, y, w, NODES_ROW_H);
                 else if (row % 2 == 0) pax_simple_rect(&fb, 0xFF111111, 0, y, w, NODES_ROW_H);
 
-                // Last seen (right-aligned first so we know its width)
+                // Fixed column positions (must match header)
+                int age_x  = w - age_col_w  - 4;
+                int dist_x = w - age_col_w - dist_col_w - 4;
+
+                // Last seen
                 uint32_t age_s = (now_ms - n->last_seen_ms) / 1000;
                 char age_buf[20];
                 if (age_s < 60)        snprintf(age_buf, sizeof(age_buf), "%lus", (unsigned long)age_s);
                 else if (age_s < 3600) snprintf(age_buf, sizeof(age_buf), "%lum", (unsigned long)(age_s / 60));
                 else                   snprintf(age_buf, sizeof(age_buf), "%luh", (unsigned long)(age_s / 3600));
-                pax_vec2f age_sz = pax_text_size(pax_font_sky_mono, 12, age_buf);
-                int age_x = w - (int)age_sz.x - 6;
                 pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, age_x, y + 6, age_buf);
 
-                // Distance column (left of last_seen)
+                // Distance column
                 char dist_buf[12] = "--";
-                // own_pos_valid would go here; for now always "--"
-                int dist_x = age_x - 52;
                 pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, dist_x, y + 6, dist_buf);
 
                 // Role badge
@@ -1952,6 +1971,11 @@ void app_main(void) {
         res = wifi_connect_try_all();
         DIAG(res == ESP_OK ? COL_GREEN : COL_YELLOW, "  wifi connect: %s",
              res == ESP_OK ? "OK" : "no saved networks");
+        if (res == ESP_OK) {
+            esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+            esp_sntp_setservername(0, "pool.ntp.org");
+            esp_sntp_init();
+        }
     }
 
     load_owner_name();
