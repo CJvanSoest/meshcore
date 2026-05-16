@@ -52,7 +52,7 @@ IDF_PATH=$(cat .IDF_PATH) IDF_TOOLS_PATH=$(cat .IDF_TOOLS_PATH) \
 
 MIT — see [LICENSE](LICENSE).
 
-Developed by **CJ van Schijndel** with **Claude AI** (Anthropic) as AI
+Developed by **CJ van Soest** with **Claude AI** (Anthropic) as AI
 co-author. Claude assisted with protocol reverse engineering, crypto
 implementation, and UI development throughout this project.
 

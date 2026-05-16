@@ -5,7 +5,7 @@
  * Supports DM (direct messages), public channel chat, node discovery,
  * LoRa radio configuration, and QR-code based contact sharing.
  *
- * SPDX-FileCopyrightText: 2025 CJ van Schijndel
+ * SPDX-FileCopyrightText: 2025 CJ van Soest
  * SPDX-License-Identifier: MIT
  *
  * Developed with Claude AI (Anthropic) as AI co-author.
