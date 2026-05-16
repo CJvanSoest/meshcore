@@ -9,6 +9,8 @@
 #include "bsp/input.h"
 #include "bsp/led.h"
 #include "bsp/power.h"
+#include "bsp/tanmatsu.h"
+#include "tanmatsu_coprocessor.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
@@ -629,18 +631,17 @@ static void ch_add_message(const char* text, bool is_mine) {
 }
 
 static void update_notification_led(void) {
+    tanmatsu_coprocessor_handle_t copr = NULL;
+    if (bsp_tanmatsu_coprocessor_get_handle(&copr) != ESP_OK) return;
     if (led_dm_pending) {
-        bsp_led_set_mode(false);
-        bsp_led_set_pixel(0, 0x002800);  // dim green = DM
-        bsp_led_send();
+        // Green = unread DM
+        tanmatsu_coprocessor_set_message(copr, false, true, false, false, false, false, false, false);
     } else if (led_channel_pending) {
-        bsp_led_set_mode(false);
-        bsp_led_set_pixel(0, 0x000028);  // dim blue = channel
-        bsp_led_send();
+        // Blue = unread channel message
+        tanmatsu_coprocessor_set_message(copr, false, false, true, false, false, false, false, false);
     } else {
-        bsp_led_clear();
-        bsp_led_send();
-        bsp_led_set_mode(true);  // back to automatic (launcher) control
+        // Off
+        tanmatsu_coprocessor_set_message(copr, false, false, false, false, false, false, false, false);
     }
 }
 
