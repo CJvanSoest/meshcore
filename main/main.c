@@ -60,8 +60,9 @@ static QueueHandle_t              input_event_queue    = NULL;
 typedef enum {
     VIEW_SETTINGS = 0,
     VIEW_NODES    = 1,
-    VIEW_CHAT     = 2,
-    VIEW_COUNT    = 3,
+    VIEW_CHAT     = 2,   // DM conversations
+    VIEW_CHANNEL  = 3,   // public channel (GRP_TXT)
+    VIEW_COUNT    = 4,
 } app_view_t;
 
 static app_view_t current_view = VIEW_SETTINGS;
@@ -128,11 +129,19 @@ typedef struct {
     uint32_t timestamp_ms;
 } chat_msg_t;
 
+// DM message buffer
 static chat_msg_t        chat_msgs[MAX_CHAT_MSGS];
 static int               chat_head   = 0;
 static int               chat_count  = 0;
 static int               chat_scroll = 0;
 static SemaphoreHandle_t chat_mutex  = NULL;
+
+// Channel (GRP_TXT) message buffer
+static chat_msg_t        ch_msgs[MAX_CHAT_MSGS];
+static int               ch_head     = 0;
+static int               ch_count    = 0;
+static int               ch_scroll   = 0;
+static SemaphoreHandle_t ch_mutex    = NULL;
 
 static char chat_input[MAX_INPUT_LEN + 1] = {0};
 static int  chat_input_len                = 0;
@@ -597,9 +606,22 @@ static void chat_add_message(const char* text, bool is_mine) {
     m->text[MAX_MSG_TEXT - 1] = '\0';
     chat_head = (chat_head + 1) % MAX_CHAT_MSGS;
     if (chat_count < MAX_CHAT_MSGS) chat_count++;
-    // Auto-scroll to bottom
     chat_scroll = chat_count;
     xSemaphoreGive(chat_mutex);
+}
+
+static void ch_add_message(const char* text, bool is_mine) {
+    if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+    chat_msg_t* m    = &ch_msgs[ch_head];
+    m->active        = true;
+    m->is_mine       = is_mine;
+    m->timestamp_ms  = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    strncpy(m->text, text, MAX_MSG_TEXT - 1);
+    m->text[MAX_MSG_TEXT - 1] = '\0';
+    ch_head = (ch_head + 1) % MAX_CHAT_MSGS;
+    if (ch_count < MAX_CHAT_MSGS) ch_count++;
+    ch_scroll = ch_count;
+    xSemaphoreGive(ch_mutex);
 }
 
 static bool decrypt_grp_txt(meshcore_grp_txt_t* grp, const uint8_t* key) {
@@ -818,8 +840,8 @@ static void lora_rx_task(void *arg) {
                     meshcore_grp_txt_t grp = {0};
                     if (meshcore_grp_txt_deserialize(mc_msg.payload, mc_msg.payload_length, &grp) >= 0) {
                         if (decrypt_grp_txt(&grp, PUBLIC_CHANNEL_KEY)) {
-                            ESP_LOGI(TAG, "Chat RX: %s", grp.decrypted.text);
-                            chat_add_message(grp.decrypted.text, false);
+                            ESP_LOGI(TAG, "Channel RX: %s", grp.decrypted.text);
+                            ch_add_message(grp.decrypted.text, false);
                         }
                     }
                 } else if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_TXT_MSG) {
@@ -1089,7 +1111,7 @@ static void render(void);
 
 static void render_tab_bar(void) {
     int w = (int)pax_buf_get_width(&fb);
-    static const char *tab_labels[VIEW_COUNT] = {"Settings", "Nodes", "Chat"};
+    static const char *tab_labels[VIEW_COUNT] = {"Settings", "Nodes", "DM", "Channel"};
     int tab_w = (w - 170) / VIEW_COUNT;  // reserve 170px right for status indicators
 
     pax_simple_rect(&fb, COL_DARK, 0, 0, w, 32);
@@ -1395,14 +1417,17 @@ static void render_nodes(void) {
     pax_simple_rect(&fb, COL_DARK,   0, hdr_y + NODES_HEADER_H - 1, w, 1);
     // Right-side widths (mirrored from row render)
     // age_x = w - age_sz.x - 6  (variable) → use fixed col widths for header
-    int age_col_w  = 52;   // "999h" at size 12 ≈ 40px, give 52
-    int dist_col_w = 52;   // "999km" at size 12
+    int age_col_w  = 52;   // "999h"
+    int dist_col_w = 52;   // "999km"
+    int pkts_col_w = 38;   // "#999"
     int age_hdr_x  = w - age_col_w - 4;
     int dist_hdr_x = age_hdr_x - dist_col_w;
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11,  4,           hdr_y + 5, "Rol");
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, 50,           hdr_y + 5, "Naam");
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, dist_hdr_x,  hdr_y + 5, "Afst");
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, age_hdr_x,   hdr_y + 5, "Gezien");
+    int pkts_hdr_x = dist_hdr_x - pkts_col_w;
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11,  4,          hdr_y + 5, "Rol");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, 50,          hdr_y + 5, "Naam");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, pkts_hdr_x, hdr_y + 5, "#Pkt");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, dist_hdr_x, hdr_y + 5, "Afst");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, age_hdr_x,  hdr_y + 5, "Gezien");
 
     int list_y0   = NODES_Y0 + NODES_HEADER_H;
     int list_h    = h - 40 - list_y0;
@@ -1459,7 +1484,8 @@ static void render_nodes(void) {
 
                 // Fixed column positions (must match header)
                 int age_x  = w - age_col_w  - 4;
-                int dist_x = w - age_col_w - dist_col_w - 4;
+                int dist_x = age_x - dist_col_w;
+                int pkts_x = dist_x - pkts_col_w;
 
                 // Last seen
                 uint32_t age_s = (now_ms - n->last_seen_ms) / 1000;
@@ -1473,6 +1499,11 @@ static void render_nodes(void) {
                 char dist_buf[12] = "--";
                 pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, dist_x, y + 6, dist_buf);
 
+                // Packet count
+                char pkts_buf[8];
+                snprintf(pkts_buf, sizeof(pkts_buf), "#%d", n->packet_count);
+                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, pkts_x, y + 6, pkts_buf);
+
                 // Role badge
                 const char* rl = role_label(n->role);
                 pax_col_t role_col = (n->role == MESHCORE_DEVICE_ROLE_REPEATER)   ? COL_ACCENT :
@@ -1483,7 +1514,7 @@ static void render_nodes(void) {
 
                 // Node name (truncated to fit between role and dist columns)
                 char name_trunc[17];
-                int  max_name_w = dist_x - 54;  // pixels available for name
+                int  max_name_w = pkts_x - 54;  // pixels available for name
                 // Truncate name to fit: ~8px per char at size 13
                 int max_chars = max_name_w / 8;
                 if (max_chars > 16) max_chars = 16;
@@ -1639,6 +1670,77 @@ static void render_chat(void) {
     blit();
 }
 
+// ── Render: channel screen ────────────────────────────────────────────────────
+static void render_channel(void) {
+    int w  = (int)pax_buf_get_width(&fb);
+    int h  = (int)pax_buf_get_height(&fb);
+    int fy = h - CHAT_INPUT_H - 26;
+
+    pax_background(&fb, COL_BLACK);
+    render_tab_bar();
+
+    int list_h   = fy - CHAT_Y0;
+    int rows_vis = list_h / CHAT_ROW_H;
+
+    if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        if (ch_count == 0) {
+            pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 10, CHAT_Y0 + 10,
+                          "No channel messages yet. T to send.");
+        } else {
+            int max_scroll = ch_count;
+            if (ch_scroll > max_scroll) ch_scroll = max_scroll;
+            if (ch_scroll < rows_vis)   ch_scroll = rows_vis;
+
+            for (int row = 0; row < rows_vis; row++) {
+                int msg_idx = ch_scroll - rows_vis + row;
+                if (msg_idx < 0) continue;
+                int ring_idx = (ch_head - ch_count + msg_idx + MAX_CHAT_MSGS * 2) % MAX_CHAT_MSGS;
+                chat_msg_t* m = &ch_msgs[ring_idx];
+                if (!m->active) continue;
+
+                int y = CHAT_Y0 + row * CHAT_ROW_H;
+                if (m->is_mine) {
+                    pax_vec2f sz = pax_text_size(pax_font_sky_mono, 14, m->text);
+                    int tx = w - (int)sz.x - 10;
+                    if (tx < 10) tx = 10;
+                    pax_draw_text(&fb, COL_ACCENT, pax_font_sky_mono, 14, tx, y + 4, m->text);
+                    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, tx, y + 20, "You");
+                } else {
+                    pax_draw_text(&fb, COL_WHITE, pax_font_sky_mono, 14, 10, y + 4, m->text);
+                }
+                pax_simple_rect(&fb, COL_DARK, 4, y + CHAT_ROW_H - 1, w - 8, 1);
+            }
+        }
+        xSemaphoreGive(ch_mutex);
+    }
+
+    // Input bar
+    int iy = h - CHAT_INPUT_H - 22;
+    pax_simple_rect(&fb, 0xFF1A1A1A, 0, iy, w, CHAT_INPUT_H);
+    pax_simple_rect(&fb, chat_typing ? COL_GREEN : COL_DARK, 0, iy, w, 1);
+    if (chat_typing) {
+        char disp[MAX_INPUT_LEN + 4];
+        snprintf(disp, sizeof(disp), "> %s_", chat_input);
+        pax_draw_text(&fb, COL_WHITE, pax_font_sky_mono, 15, 8, iy + 7, disp);
+        char ctr[12];
+        snprintf(ctr, sizeof(ctr), "%d/%d", chat_input_len, MAX_INPUT_LEN);
+        pax_vec2f ctr_sz = pax_text_size(pax_font_sky_mono, 12, ctr);
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, w - (int)ctr_sz.x - 6, iy + 9, ctr);
+    } else {
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, iy + 8, "T: stuur channel bericht");
+    }
+
+    int footer_y = h - 22;
+    pax_simple_rect(&fb, COL_DARK, 0, footer_y, w, 22);
+    if (chat_typing)
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 8, footer_y + 4,
+                      "Enter: send  ESC: cancel  Backspace: delete");
+    else
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 8, footer_y + 4,
+                      "T: type  W/S: scroll  Tab: next  ESC: exit");
+    blit();
+}
+
 // ── Render dispatcher ─────────────────────────────────────────────────────────
 static void render(void) {
     if (radio_bootloader_mode) {
@@ -1650,9 +1752,10 @@ static void render(void) {
             render_nodes();
             if (qr_overlay_active) render_qr_overlay();
             break;
-        case VIEW_CHAT:     render_chat();     break;
+        case VIEW_CHAT:    render_chat();    break;
+        case VIEW_CHANNEL: render_channel(); break;
         case VIEW_SETTINGS:
-        default:            render_settings(); break;
+        default:           render_settings(); break;
     }
 }
 
@@ -1703,13 +1806,18 @@ static void handle_nav(uint32_t key) {
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT) {
         if (current_view == VIEW_SETTINGS && edit_mode && selected != FIELD_OWNER) field_adjust(selected, +1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
-        if (current_view == VIEW_CHAT && chat_typing) {
+        if ((current_view == VIEW_CHAT || current_view == VIEW_CHANNEL) && chat_typing) {
             if (chat_input_len > 0) {
-                if (dm_target_set)
-                    send_dm_message(chat_input, dm_target_pub);
-                else
+                if (current_view == VIEW_CHANNEL) {
                     send_chat_message(chat_input);
-                chat_add_message(chat_input, true);
+                    ch_add_message(chat_input, true);
+                } else if (dm_target_set) {
+                    send_dm_message(chat_input, dm_target_pub);
+                    chat_add_message(chat_input, true);
+                } else {
+                    send_chat_message(chat_input);
+                    chat_add_message(chat_input, true);
+                }
                 chat_input_len = 0;
                 chat_input[0]  = '\0';
             }
@@ -1765,8 +1873,8 @@ static void handle_key(char c) {
         return;
     }
 
-    // Chat view input — intercept everything when typing
-    if (current_view == VIEW_CHAT) {
+    // Chat / Channel view input — intercept everything when typing
+    if (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL) {
         if (chat_typing) {
             if (c == 27) {  // ESC: cancel
                 chat_typing    = false;
@@ -1774,11 +1882,16 @@ static void handle_key(char c) {
                 chat_input[0]  = '\0';
             } else if (c == '\r' || c == '\n') {  // Enter: send
                 if (chat_input_len > 0) {
-                    if (dm_target_set)
-                        send_dm_message(chat_input, dm_target_pub);
-                    else
+                    if (current_view == VIEW_CHANNEL) {
                         send_chat_message(chat_input);
-                    chat_add_message(chat_input, true); // always show locally
+                        ch_add_message(chat_input, true);
+                    } else if (dm_target_set) {
+                        send_dm_message(chat_input, dm_target_pub);
+                        chat_add_message(chat_input, true);
+                    } else {
+                        send_chat_message(chat_input);
+                        chat_add_message(chat_input, true);
+                    }
                     chat_input_len = 0;
                     chat_input[0]  = '\0';
                 }
@@ -1794,8 +1907,16 @@ static void handle_key(char c) {
             return;
         } else {
             if (c == 't' || c == 'T') { chat_typing = true; return; }
-            if (c == 'w' || c == 'W') { if (chat_scroll > 0) chat_scroll--; return; }
-            if (c == 's' || c == 'S') { chat_scroll++; return; }
+            if (c == 'w' || c == 'W') {
+                if (current_view == VIEW_CHANNEL) { if (ch_scroll > 0) ch_scroll--; }
+                else                              { if (chat_scroll > 0) chat_scroll--; }
+                return;
+            }
+            if (c == 's' || c == 'S') {
+                if (current_view == VIEW_CHANNEL) ch_scroll++;
+                else                              chat_scroll++;
+                return;
+            }
             // Tab and ESC fall through to common handling below
         }
     }
@@ -1942,7 +2063,9 @@ void app_main(void) {
     rx_mutex   = xSemaphoreCreateMutex();
     node_mutex = xSemaphoreCreateMutex();
     chat_mutex = xSemaphoreCreateMutex();
+    ch_mutex   = xSemaphoreCreateMutex();
     memset(node_list,  0, sizeof(node_list));
+    memset(ch_msgs,    0, sizeof(ch_msgs));
     memset(chat_msgs,  0, sizeof(chat_msgs));
     chat_init();
     identity_init();
