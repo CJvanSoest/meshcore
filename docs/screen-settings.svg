@@ -62,7 +62,10 @@
   <text x="392" y="588" fill="#00BB44" font-family="'Courier New',Courier,monospace" font-size="12" text-anchor="end">16</text>
   <rect x="4" y="622" width="392" height="1" fill="#222222"/>
 
-  <!-- ── Footer ── -->
-  <rect x="0" y="622" width="400" height="18" fill="#222222"/>
-  <text x="6" y="634" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="10">W/S: navigate  Enter: edit  R: reload  Tab: next</text>
+  <!-- ── Footer (2 lines) ── -->
+  <rect x="0" y="608" width="400" height="32" fill="#222222"/>
+  <!-- Line 1: controls -->
+  <text x="6" y="620" fill="#888888" font-family="'Courier New',Courier,monospace" font-size="10">W/S: navigate  Enter: edit  R: reload  Tab: next</text>
+  <!-- Line 2: SNTP status (green = synced) -->
+  <text x="6" y="634" fill="#00BB44" font-family="'Courier New',Courier,monospace" font-size="10">SNTP: 14:23:07  16-05-2026</text>
 </svg>

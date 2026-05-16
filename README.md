@@ -123,6 +123,24 @@ ACK CRC = `SHA256(timestamp[4] | flags[1] | text[n] | sender_pub[32])[0:4]`
 DM decryption tries multiple HMAC variants (with/without Edwards→Montgomery
 conversion, 32- and 16-byte key) for compatibility across MeshCore versions.
 
+### Time synchronisation (SNTP)
+MeshCore embeds a Unix timestamp in every outgoing message. The receiving
+iOS/Android app uses this to display message times, so an accurate clock matters.
+
+On startup the app connects to WiFi and syncs time via SNTP (`pool.ntp.org`).
+The last successfully synchronised timestamp is persisted to NVS
+(namespace `system`, key `last_time_s`). On subsequent boots **without WiFi**
+the stored time is restored via `settimeofday()`, so timestamps remain
+approximate but usable rather than reverting to 1 January 1970.
+
+The current sync status is shown live in the **Settings tab footer**:
+
+| Colour | Indicator | Meaning |
+|---|---|---|
+| Green | `SNTP: HH:MM:SS DD-MM-YYYY` | WiFi connected, clock synced |
+| Yellow | `time: ~HH:MM DD-MM (NVS, approx)` | No WiFi; last known time restored from NVS |
+| Red | `time: no sync — msg timestamps incorrect` | First boot without WiFi, no NVS baseline yet |
+
 ---
 
 ## Firmware compatibility
