@@ -1,3 +1,24 @@
+/*
+ * MeshCore for Tanmatsu
+ *
+ * A MeshCore LoRa mesh communication app for the Tanmatsu badge (ESP32-P4).
+ * Supports DM (direct messages), public channel chat, node discovery,
+ * LoRa radio configuration, and QR-code based contact sharing.
+ *
+ * SPDX-FileCopyrightText: 2025 CJ van Schijndel
+ * SPDX-License-Identifier: MIT
+ *
+ * Developed with Claude AI (Anthropic) as AI co-author.
+ *
+ * Third-party components:
+ *   qrcodegen.{c,h}  — © Project Nayuki, MIT License
+ *                       https://www.nayuki.io/page/qr-code-generator-library
+ *   ed25519.{c,h}    — Based on public domain NaCl/SUPERCOP ref10
+ *                       (D.J. Bernstein et al.); ESP32 adaptation MIT License
+ *   meshcore/        — © 2025 Scott Powell / rippleradios.com,
+ *                       © 2025 Nicolai Electronics, MIT License
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
@@ -873,7 +894,7 @@ static void lora_rx_task(void *arg) {
                     // Payload: dest_hash[1] | src_hash[1] | HMAC[2] | ciphertext[...]
                     // Use do{}while(0) so 'break' exits this block, not the rx while(1)
                     do {
-                        char dbg[64];
+                        char dbg[48];
                         if (!identity_ready || mc_msg.payload_length < 6) {
                             chat_add_message("DM: not ready/short", false); break;
                         }
@@ -881,9 +902,8 @@ static void lora_rx_task(void *arg) {
                         uint8_t src_hash  = mc_msg.payload[1];
 
                         if (dest_hash != node_pub_key[0]) {
-                            snprintf(dbg, sizeof(dbg), "DM: not for us (dst=%02X us=%02X)",
-                                     dest_hash, node_pub_key[0]);
-                            chat_add_message(dbg, false); break;
+                            ESP_LOGD(TAG, "DM not for us (dst=%02X us=%02X)", dest_hash, node_pub_key[0]);
+                            break;
                         }
 
                         // Find sender in node list
@@ -951,25 +971,8 @@ static void lora_rx_task(void *arg) {
                         else if (hmac_raw16[0]==exp0 && hmac_raw16[1]==exp1)   { mac_ok=true; good_secret=secret_raw; }
 
                         if (!mac_ok) {
-                            snprintf(dbg, sizeof(dbg),
-                                "exp=%02X%02X cv=%02X%02X rw=%02X%02X c16=%02X%02X r16=%02X%02X",
-                                exp0, exp1,
-                                hmac_conv[0], hmac_conv[1],
-                                hmac_raw[0],  hmac_raw[1],
-                                hmac_conv16[0], hmac_conv16[1],
-                                hmac_raw16[0],  hmac_raw16[1]);
-                            chat_add_message(dbg, false);
-                            // Dump sender pub key and shared secret for diagnosis
-                            snprintf(dbg, sizeof(dbg), "pb=%02X%02X%02X%02X sk=%02X%02X%02X%02X",
-                                sender_pub[0], sender_pub[1], sender_pub[2], sender_pub[3],
-                                secret[0], secret[1], secret[2], secret[3]);
-                            chat_add_message(dbg, false);
-                            // Dump raw payload bytes (offset 0..7) to verify parse
-                            snprintf(dbg, sizeof(dbg), "pl=%02X%02X %02X%02X %02X%02X%02X%02X",
-                                mc_msg.payload[0], mc_msg.payload[1],
-                                mc_msg.payload[2], mc_msg.payload[3],
-                                mc_msg.payload[4], mc_msg.payload[5],
-                                mc_msg.payload[6], mc_msg.payload[7]);
+                            ESP_LOGW(TAG, "DM HMAC mismatch from %02X — wrong key or unsupported variant", src_hash);
+                            snprintf(dbg, sizeof(dbg), "[?%02X] DM decrypt failed", src_hash);
                             chat_add_message(dbg, false);
                             break;
                         }
