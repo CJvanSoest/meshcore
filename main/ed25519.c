@@ -17,8 +17,19 @@
 
 #include "ed25519.h"
 #include "mbedtls/sha512.h"
+#include "mbedtls/ecp.h"
+#include "mbedtls/bignum.h"
+#include "esp_random.h"
 #include <string.h>
 #include <stdint.h>
+
+/* RNG adapter required by mbedtls_ecp_mul (Montgomery ladder) */
+static int ecp_rng(void *ctx, unsigned char *buf, size_t len)
+{
+    (void)ctx;
+    esp_fill_random(buf, len);
+    return 0;
+}
 
 /* =========================================================================
  * Utility: little-endian byte loaders
@@ -204,8 +215,10 @@ static void fe_mul(fe h, const fe f, const fe g)
     int32_t g5=g[5],g6=g[6],g7=g[7],g8=g[8],g9=g[9];
 
     int32_t f1_2=2*f1, f3_2=2*f3, f5_2=2*f5, f7_2=2*f7, f9_2=2*f9;
-    int32_t g1_19=19*g1, g2_19=19*g2, g3_19=19*g3, g4_19=19*g4;
-    int32_t g5_19=19*g5, g6_19=19*g6, g7_19=19*g7, g8_19=19*g8, g9_19=19*g9;
+    /* Use int64_t to avoid overflow when inputs are unreduced (e.g. from fe_add).
+     * 19 * 2^27 = 2.55e9 > INT32_MAX; must widen before multiplying. */
+    int64_t g1_19=(int64_t)19*g1, g2_19=(int64_t)19*g2, g3_19=(int64_t)19*g3, g4_19=(int64_t)19*g4;
+    int64_t g5_19=(int64_t)19*g5, g6_19=(int64_t)19*g6, g7_19=(int64_t)19*g7, g8_19=(int64_t)19*g8, g9_19=(int64_t)19*g9;
 
     int64_t h0,h1,h2,h3,h4,h5,h6,h7,h8,h9;
     int64_t c0,c1,c2,c3,c4,c5,c6,c7,c8,c9;
@@ -215,16 +228,16 @@ static void fe_mul(fe h, const fe f, const fe g)
        + (int64_t)f6*g4_19 + (int64_t)f7_2*g3_19 + (int64_t)f8*g2_19
        + (int64_t)f9_2*g1_19;
     h1 = (int64_t)f0*g1   + (int64_t)f1*g0      + (int64_t)f2*g9_19
-       + (int64_t)f3_2*g8_19 + (int64_t)f4*g7_19 + (int64_t)f5_2*g6_19
-       + (int64_t)f6*g5_19 + (int64_t)f7_2*g4_19 + (int64_t)f8*g3_19
+       + (int64_t)f3*g8_19  + (int64_t)f4*g7_19 + (int64_t)f5*g6_19
+       + (int64_t)f6*g5_19  + (int64_t)f7*g4_19 + (int64_t)f8*g3_19
        + (int64_t)f9*g2_19;
     h2 = (int64_t)f0*g2   + (int64_t)f1_2*g1    + (int64_t)f2*g0
        + (int64_t)f3_2*g9_19 + (int64_t)f4*g8_19 + (int64_t)f5_2*g7_19
        + (int64_t)f6*g6_19 + (int64_t)f7_2*g5_19 + (int64_t)f8*g4_19
        + (int64_t)f9_2*g3_19;
     h3 = (int64_t)f0*g3   + (int64_t)f1*g2      + (int64_t)f2*g1
-       + (int64_t)f3*g0   + (int64_t)f4*g9_19   + (int64_t)f5_2*g8_19
-       + (int64_t)f6*g7_19 + (int64_t)f7_2*g6_19 + (int64_t)f8*g5_19
+       + (int64_t)f3*g0   + (int64_t)f4*g9_19   + (int64_t)f5*g8_19
+       + (int64_t)f6*g7_19 + (int64_t)f7*g6_19  + (int64_t)f8*g5_19
        + (int64_t)f9*g4_19;
     h4 = (int64_t)f0*g4   + (int64_t)f1_2*g3    + (int64_t)f2*g2
        + (int64_t)f3_2*g1  + (int64_t)f4*g0      + (int64_t)f5_2*g9_19
@@ -232,7 +245,7 @@ static void fe_mul(fe h, const fe f, const fe g)
        + (int64_t)f9_2*g5_19;
     h5 = (int64_t)f0*g5   + (int64_t)f1*g4      + (int64_t)f2*g3
        + (int64_t)f3*g2   + (int64_t)f4*g1      + (int64_t)f5*g0
-       + (int64_t)f6*g9_19 + (int64_t)f7_2*g8_19 + (int64_t)f8*g7_19
+       + (int64_t)f6*g9_19 + (int64_t)f7*g8_19  + (int64_t)f8*g7_19
        + (int64_t)f9*g6_19;
     h6 = (int64_t)f0*g6   + (int64_t)f1_2*g5    + (int64_t)f2*g4
        + (int64_t)f3_2*g3  + (int64_t)f4*g2      + (int64_t)f5_2*g1
@@ -277,8 +290,9 @@ static void fe_sq(fe h, const fe f)
 
     int32_t f0_2=2*f0, f1_2=2*f1, f2_2=2*f2, f3_2=2*f3, f4_2=2*f4;
     int32_t f5_2=2*f5, f6_2=2*f6, f7_2=2*f7;
-    int32_t f5_38=38*f5, f6_19=19*f6, f7_38=38*f7;
-    int32_t f8_19=19*f8, f9_38=38*f9;
+    /* Use int64_t: 38 * 2^26 = 2.56e9 > INT32_MAX; widen before multiplying. */
+    int64_t f5_38=(int64_t)38*f5, f6_19=(int64_t)19*f6, f7_38=(int64_t)38*f7;
+    int64_t f8_19=(int64_t)19*f8, f9_38=(int64_t)38*f9;
 
     int64_t h0,h1,h2,h3,h4,h5,h6,h7,h8,h9;
     int64_t c0,c1,c2,c3,c4,c5,c6,c7,c8,c9;
@@ -373,7 +387,9 @@ static void fe_invert(fe out, const fe z)
     fe_sq(t, t);
     fe_sq(t, t);
     fe_sq(t, t);
-    fe_mul(out, t, z2_5_0);   /* = z^(p-2) */
+    fe_sq(t, t);
+    fe_sq(t, t);
+    fe_mul(out, t, z11);   /* = z^(2^255-21) = z^(p-2) */
 }
 
 /* =========================================================================
@@ -1109,6 +1125,9 @@ static void sha512_3(const uint8_t *a, size_t alen,
     mbedtls_sha512_free(&ctx);
 }
 
+/* forward declaration — defined later in SECTION 9 */
+static void x25519_scalarmult(uint8_t *out, const uint8_t *k, const uint8_t *u);
+
 /* =========================================================================
  * SECTION 8 — Public API
  * =========================================================================*/
@@ -1118,7 +1137,6 @@ void ed25519_create_keypair(uint8_t *public_key,
                             const uint8_t *seed)
 {
     uint8_t hash[64];
-    ge_p3   A;
 
     /* h = SHA-512(seed) */
     mbedtls_sha512(seed, 32, hash, 0);
@@ -1131,9 +1149,128 @@ void ed25519_create_keypair(uint8_t *public_key,
     /* private_key = expanded key = hash */
     memcpy(private_key, hash, 64);
 
-    /* public_key A = scalar(hash[0..31]) * B */
-    ge_scalarmult_base(&A, hash);
-    ge_p3_tobytes(public_key, &A);
+    /* Compute public key via mbedTLS:
+     *   u = X25519(scalar, 9)   — Curve25519 public key, known-good via mbedTLS ECP
+     *   y = (u − 1) / (u + 1) mod p  — Edwards y-coordinate (inverse of u=(1+y)/(1-y))
+     * The x-sign bit is derived from RFC 8032 §5.1.3 square-root recovery. */
+    {
+        static const uint8_t base9[32] = {
+            9,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+            0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0
+        };
+        /* p = 2^255 - 19, little-endian */
+        static const uint8_t p25519[32] = {
+            0xed,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+            0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+            0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+            0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x7f
+        };
+        /* d = -121665/121666 mod p (Ed25519 twist constant), little-endian */
+        static const uint8_t d_bytes[32] = {
+            0xa3,0x78,0x59,0x13,0xca,0x4d,0xeb,0x75,
+            0xab,0xd8,0x41,0x41,0x4d,0x0a,0x70,0x00,
+            0x98,0xe8,0x79,0x77,0x79,0x40,0xc7,0x8c,
+            0x73,0xfe,0x6f,0x2b,0xee,0x6c,0x03,0x52
+        };
+        /* sqrt(-1) mod p = 2^((p-1)/4) mod p, little-endian */
+        static const uint8_t sqrtm1[32] = {
+            0xb0,0xa0,0x0e,0x4a,0x27,0x1b,0xee,0xc4,
+            0x78,0xe4,0x2f,0xad,0x06,0x18,0x43,0x2f,
+            0xa7,0xd7,0xfb,0x3d,0x99,0x00,0x4d,0x2b,
+            0x0b,0xdf,0xc1,0x4f,0x80,0x24,0x83,0x2b
+        };
+
+        uint8_t u_bytes[32];
+        x25519_scalarmult(u_bytes, hash, base9);
+
+        mbedtls_mpi P, U, num, den, inv_den, Y, D, Y2, num_x, den_x, Dinv, X2;
+        mbedtls_mpi X, Xchk, SM1, tmp;
+        mbedtls_mpi_init(&P);   mbedtls_mpi_init(&U);
+        mbedtls_mpi_init(&num); mbedtls_mpi_init(&den);
+        mbedtls_mpi_init(&inv_den); mbedtls_mpi_init(&Y);
+        mbedtls_mpi_init(&D);   mbedtls_mpi_init(&Y2);
+        mbedtls_mpi_init(&num_x); mbedtls_mpi_init(&den_x);
+        mbedtls_mpi_init(&Dinv); mbedtls_mpi_init(&X2);
+        mbedtls_mpi_init(&X);   mbedtls_mpi_init(&Xchk);
+        mbedtls_mpi_init(&SM1); mbedtls_mpi_init(&tmp);
+
+        mbedtls_mpi_read_binary_le(&P, p25519, 32);
+        mbedtls_mpi_read_binary_le(&U, u_bytes, 32);
+        mbedtls_mpi_read_binary_le(&D, d_bytes, 32);
+        mbedtls_mpi_read_binary_le(&SM1, sqrtm1, 32);
+
+        /* y = (u - 1) / (u + 1) mod p */
+        mbedtls_mpi_sub_int(&num, &U, 1);
+        mbedtls_mpi_mod_mpi(&num, &num, &P);
+        mbedtls_mpi_add_int(&den, &U, 1);
+        mbedtls_mpi_mod_mpi(&den, &den, &P);
+        mbedtls_mpi_inv_mod(&inv_den, &den, &P);
+        mbedtls_mpi_mul_mpi(&Y, &num, &inv_den);
+        mbedtls_mpi_mod_mpi(&Y, &Y, &P);
+
+        /* Recover x sign via RFC 8032 §5.1.3:
+         *   x^2 = (y^2 - 1) / (d*y^2 + 1) mod p
+         *   x = sqrt(x^2) using Tonelli-Shanks for p ≡ 5 mod 8:
+         *     exp = (p+3)/8 = 2^252 - 2  */
+        mbedtls_mpi_mul_mpi(&Y2, &Y, &Y);
+        mbedtls_mpi_mod_mpi(&Y2, &Y2, &P);
+
+        /* num_x = y^2 - 1 */
+        mbedtls_mpi_sub_int(&num_x, &Y2, 1);
+        mbedtls_mpi_mod_mpi(&num_x, &num_x, &P);
+
+        /* den_x = d*y^2 + 1 */
+        mbedtls_mpi_mul_mpi(&den_x, &D, &Y2);
+        mbedtls_mpi_mod_mpi(&den_x, &den_x, &P);
+        mbedtls_mpi_add_int(&den_x, &den_x, 1);
+        mbedtls_mpi_mod_mpi(&den_x, &den_x, &P);
+
+        /* X2 = num_x * inv(den_x) mod p */
+        mbedtls_mpi_inv_mod(&Dinv, &den_x, &P);
+        mbedtls_mpi_mul_mpi(&X2, &num_x, &Dinv);
+        mbedtls_mpi_mod_mpi(&X2, &X2, &P);
+
+        /* X = X2^((p+3)/8) mod p  — candidate sqrt */
+        {
+            /* (p+3)/8 = (2^255 - 16) / 8 = 2^252 - 2
+             * Build exponent as MPI */
+            mbedtls_mpi exp;
+            mbedtls_mpi_init(&exp);
+            /* exp = 1 << 252 */
+            mbedtls_mpi_lset(&exp, 1);
+            mbedtls_mpi_shift_l(&exp, 252);
+            /* exp -= 2 */
+            mbedtls_mpi_sub_int(&exp, &exp, 2);
+            mbedtls_mpi_exp_mod(&X, &X2, &exp, &P, NULL);
+            mbedtls_mpi_free(&exp);
+        }
+
+        /* Check: if X^2 == X2 mod p, X is the sqrt.
+         * If X^2 == -X2 mod p, multiply X by sqrt(-1).
+         * (For valid curve points, one of these always holds.) */
+        mbedtls_mpi_mul_mpi(&Xchk, &X, &X);
+        mbedtls_mpi_mod_mpi(&Xchk, &Xchk, &P);
+        if (mbedtls_mpi_cmp_mpi(&Xchk, &X2) != 0) {
+            /* Try X * sqrt(-1) */
+            mbedtls_mpi_mul_mpi(&X, &X, &SM1);
+            mbedtls_mpi_mod_mpi(&X, &X, &P);
+        }
+
+        /* Encode: write y, then set high bit of byte 31 = lsb(x) */
+        mbedtls_mpi_write_binary_le(&Y, public_key, 32);
+        public_key[31] &= 0x7F;
+        if (mbedtls_mpi_get_bit(&X, 0))
+            public_key[31] |= 0x80;
+
+        mbedtls_mpi_free(&P);   mbedtls_mpi_free(&U);
+        mbedtls_mpi_free(&num); mbedtls_mpi_free(&den);
+        mbedtls_mpi_free(&inv_den); mbedtls_mpi_free(&Y);
+        mbedtls_mpi_free(&D);   mbedtls_mpi_free(&Y2);
+        mbedtls_mpi_free(&num_x); mbedtls_mpi_free(&den_x);
+        mbedtls_mpi_free(&Dinv); mbedtls_mpi_free(&X2);
+        mbedtls_mpi_free(&X);   mbedtls_mpi_free(&Xchk);
+        mbedtls_mpi_free(&SM1); mbedtls_mpi_free(&tmp);
+    }
 }
 
 void ed25519_sign(uint8_t *signature,
@@ -1161,4 +1298,145 @@ void ed25519_sign(uint8_t *signature,
 
     /* S = (r + k * a) mod l  (stored in signature[32..63]) */
     sc_muladd(signature + 32, hram, private_key, r);
+}
+
+// ── X25519 key exchange ────────────────────────────────────────────────────────
+
+/* Load 32 bytes (little-endian) as a GF(2^255-19) field element.
+ * Consistent with fe_tobytes: alternating 26/25-bit limbs at the same bit offsets.
+ * Bit 255 (sign bit in Ed25519 encoding) is cleared by the 25-bit mask on h9. */
+static void fe_frombytes_x25519(fe h, const uint8_t *s)
+{
+    int64_t h0 = (int64_t)( load_4(s     )         & 0x3FFFFFF);   /* bits   0..25 */
+    int64_t h1 = (int64_t)((load_4(s+ 3) >>  2)    & 0x1FFFFFF);   /* bits  26..50 */
+    int64_t h2 = (int64_t)((load_4(s+ 6) >>  3)    & 0x3FFFFFF);   /* bits  51..76 */
+    int64_t h3 = (int64_t)((load_4(s+ 9) >>  5)    & 0x1FFFFFF);   /* bits  77..101*/
+    int64_t h4 = (int64_t)((load_4(s+12) >>  6)    & 0x3FFFFFF);   /* bits 102..127*/
+    int64_t h5 = (int64_t)( load_4(s+16)            & 0x1FFFFFF);   /* bits 128..152*/
+    int64_t h6 = (int64_t)((load_4(s+19) >>  1)    & 0x3FFFFFF);   /* bits 153..178*/
+    int64_t h7 = (int64_t)((load_4(s+22) >>  3)    & 0x1FFFFFF);   /* bits 179..203*/
+    int64_t h8 = (int64_t)((load_4(s+25) >>  4)    & 0x3FFFFFF);   /* bits 204..229*/
+    int64_t h9 = (int64_t)((load_4(s+28) >>  6)    & 0x1FFFFFF);   /* bits 230..254*/
+    h[0]=(int32_t)h0; h[1]=(int32_t)h1; h[2]=(int32_t)h2; h[3]=(int32_t)h3;
+    h[4]=(int32_t)h4; h[5]=(int32_t)h5; h[6]=(int32_t)h6; h[7]=(int32_t)h7;
+    h[8]=(int32_t)h8; h[9]=(int32_t)h9;
+}
+
+
+/* X25519 scalar multiplication via mbedTLS Curve25519 ECP.
+ * k:   32-byte clamped scalar (little-endian)
+ * u:   32-byte u-coordinate input (little-endian)
+ * out: 32-byte u-coordinate output (little-endian)
+ *
+ * mbedtls_ecp_point_read/write_binary for Montgomery curves uses
+ * mpi_read/write_binary_le, so no byte-reversal is needed. */
+static void x25519_scalarmult(uint8_t *out, const uint8_t *k, const uint8_t *u)
+{
+    mbedtls_ecp_group grp;
+    mbedtls_ecp_point Q, R;
+    mbedtls_mpi d;
+    size_t olen;
+
+    mbedtls_ecp_group_init(&grp);
+    mbedtls_ecp_point_init(&Q);
+    mbedtls_ecp_point_init(&R);
+    mbedtls_mpi_init(&d);
+
+    mbedtls_ecp_group_load(&grp, MBEDTLS_ECP_DP_CURVE25519);
+
+    /* Scalar: little-endian bytes → MPI (mbedTLS bignum is big-endian internally,
+     * but mpi_read_binary_le reads LE so we use it directly) */
+    mbedtls_mpi_read_binary_le(&d, k, 32);
+
+    /* u-coordinate: read as little-endian point using the public API */
+    mbedtls_ecp_point_read_binary(&grp, &Q, u, 32);
+
+    mbedtls_ecp_mul(&grp, &R, &d, &Q, ecp_rng, NULL);
+
+    /* Write result as little-endian 32 bytes */
+    mbedtls_ecp_point_write_binary(&grp, &R, MBEDTLS_ECP_PF_UNCOMPRESSED, &olen, out, 32);
+
+    mbedtls_ecp_group_free(&grp);
+    mbedtls_ecp_point_free(&Q);
+    mbedtls_ecp_point_free(&R);
+    mbedtls_mpi_free(&d);
+}
+
+/* Ed25519 public key → Curve25519 Montgomery u-coordinate.
+ * Uses mbedTLS bignum so we don't depend on our custom fe_* arithmetic.
+ * u = (1 + y) / (1 - y) mod (2^255 - 19)
+ * The Ed25519 pub key encodes y in the lower 255 bits; bit 255 is the x-sign. */
+static void ed25519_pub_to_curve25519(uint8_t *u_bytes, const uint8_t *ed25519_pub)
+{
+    /* p = 2^255 - 19, little-endian */
+    static const uint8_t p25519[32] = {
+        0xed,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+        0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+        0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+        0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x7f
+    };
+    mbedtls_mpi Y, num, den, inv_den, u, P;
+    mbedtls_mpi_init(&Y); mbedtls_mpi_init(&num); mbedtls_mpi_init(&den);
+    mbedtls_mpi_init(&inv_den); mbedtls_mpi_init(&u); mbedtls_mpi_init(&P);
+
+    mbedtls_mpi_read_binary_le(&P, p25519, 32);
+    mbedtls_mpi_read_binary_le(&Y, ed25519_pub, 32);
+    mbedtls_mpi_set_bit(&Y, 255, 0);           /* clear x-sign bit */
+
+    /* num = (1 + Y) mod P */
+    mbedtls_mpi_add_int(&num, &Y, 1);
+    mbedtls_mpi_mod_mpi(&num, &num, &P);
+
+    /* den = (1 - Y) mod P  (add P first to avoid negative) */
+    mbedtls_mpi_sub_mpi(&den, &P, &Y);
+    mbedtls_mpi_add_int(&den, &den, 1);
+    mbedtls_mpi_mod_mpi(&den, &den, &P);
+
+    /* u = num * inv(den) mod P */
+    mbedtls_mpi_inv_mod(&inv_den, &den, &P);
+    mbedtls_mpi_mul_mpi(&u, &num, &inv_den);
+    mbedtls_mpi_mod_mpi(&u, &u, &P);
+
+    mbedtls_mpi_write_binary_le(&u, u_bytes, 32);
+
+    mbedtls_mpi_free(&Y); mbedtls_mpi_free(&num); mbedtls_mpi_free(&den);
+    mbedtls_mpi_free(&inv_den); mbedtls_mpi_free(&u); mbedtls_mpi_free(&P);
+}
+
+/* X25519 Diffie-Hellman using Ed25519 keys.
+ * Converts the Ed25519 public key (Edwards y) to Montgomery u via mbedTLS bignum,
+ * then runs X25519 via mbedTLS ECP.
+ * private_key: 64-byte expanded Ed25519 key (first 32 bytes = clamped scalar) */
+void ed25519_key_exchange(uint8_t *shared_secret,
+                          const uint8_t *public_key,
+                          const uint8_t *private_key)
+{
+    uint8_t scalar[32], u_bytes[32];
+
+    for (int i = 0; i < 32; i++) scalar[i] = private_key[i];
+    scalar[0]  &= 248;
+    scalar[31] &= 63;
+    scalar[31] |= 64;
+
+    ed25519_pub_to_curve25519(u_bytes, public_key);
+    x25519_scalarmult(shared_secret, scalar, u_bytes);
+}
+
+/* Raw X25519: treats public_key bytes directly as Curve25519 u-coordinate.
+ * Used for the RFC 7748 test vector and direct Curve25519 key exchange. */
+void ed25519_key_exchange_raw(uint8_t *shared_secret,
+                               const uint8_t *public_key,
+                               const uint8_t *private_key)
+{
+    uint8_t scalar[32];
+    for (int i = 0; i < 32; i++) scalar[i] = private_key[i];
+    scalar[0]  &= 248;
+    scalar[31] &= 63;
+    scalar[31] |= 64;
+    x25519_scalarmult(shared_secret, scalar, public_key);
+}
+
+void ed25519_pub_to_x25519(uint8_t *curve25519_pub, const uint8_t *ed25519_pub)
+{
+    ed25519_pub_to_curve25519(curve25519_pub, ed25519_pub);
 }

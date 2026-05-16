@@ -8,6 +8,7 @@ idf_component_register(
 	SRCS
 		"main.c"
 		"ed25519.c"
+		"qrcodegen.c"
 		"meshcore/packet.c"
 		"meshcore/payload/advert.c"
 		"meshcore/payload/grp_txt.c"

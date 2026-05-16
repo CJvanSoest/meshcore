@@ -28,6 +28,7 @@
 #include "mbedtls/sha256.h"
 #include "esp_random.h"
 #include "ed25519.h"
+#include "qrcodegen.h"
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 #include "esp_hosted.h"
 #endif
@@ -160,9 +161,11 @@ static const int      BW_COUNT     = (int)(sizeof(BW_OPTIONS) / sizeof(BW_OPTION
 #define LORA_DEF_RAMP     40
 
 // ── Node identity ─────────────────────────────────────────────────────────────
-static uint8_t node_pub_key[32] = {0};
-static uint8_t node_prv_key[64] = {0};  // expanded: prv[0..31]=scalar, prv[32..63]=nonce
-static bool    identity_ready   = false;
+static uint8_t  node_pub_key[32]  = {0};
+static uint8_t  node_prv_key[64]  = {0};
+static bool     identity_ready    = false;
+static uint32_t last_advert_ms    = 0;
+static bool     qr_overlay_active = false;
 
 // ── App state ─────────────────────────────────────────────────────────────────
 static int                           selected              = 0;
@@ -291,6 +294,8 @@ static void save_lora_config(void) {
 // ── Node identity ─────────────────────────────────────────────────────────────
 #define NVS_IDENTITY_SEED "node.seed"
 
+static void chat_add_message(const char* text, bool is_mine);  /* forward decl */
+
 static void identity_init(void) {
     uint8_t seed[32] = {0};
 
@@ -318,8 +323,95 @@ static void identity_init(void) {
 
     ed25519_create_keypair(node_pub_key, node_prv_key, seed);
     identity_ready = true;
-    ESP_LOGI(TAG, "Pub key: %02X%02X%02X%02X...",
-             node_pub_key[0], node_pub_key[1], node_pub_key[2], node_pub_key[3]);
+
+    // RFC 7748 X25519 test vector — verifies our Montgomery ladder
+    {
+        /* RFC 7748 §5 X25519 function test vector */
+        static const uint8_t tv_prv[64] = {
+            0xa5,0x46,0xe3,0x6b,0xf0,0x52,0x7c,0x9d,0x3b,0x16,0x15,0x4b,0x82,0x46,0x5e,0xdd,
+            0x62,0x14,0x4c,0x0a,0xc1,0xfc,0x5a,0x18,0x50,0x6a,0x22,0x44,0xba,0x44,0x9a,0xc4,
+            0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        };
+        static const uint8_t tv_pub[32] = {
+            0xe6,0xdb,0x68,0x67,0x58,0x30,0x30,0xdb,0x35,0x94,0xc1,0xa4,0x24,0xb1,0x5f,0x7c,
+            0x72,0x66,0x24,0xec,0x26,0xb3,0x35,0x3b,0x10,0xa9,0x03,0xa6,0xd0,0xab,0x1c,0x4c
+        };
+        static const uint8_t tv_expected[32] = {
+            0xc3,0xda,0x55,0x37,0x9d,0xe9,0xc6,0x90,0x8e,0x94,0xea,0x4d,0xf2,0x8d,0x08,0x4f,
+            0x32,0xec,0xcf,0x03,0x49,0x1c,0x71,0xf7,0x54,0xb4,0x07,0x55,0x77,0xa2,0x85,0x52
+        };
+        uint8_t tv_result[32];
+        ed25519_key_exchange_raw(tv_result, tv_pub, tv_prv);
+        if (memcmp(tv_result, tv_expected, 32) == 0) {
+            ESP_LOGI(TAG, "X25519 RFC7748 test vector: PASS");
+        } else {
+            ESP_LOGE(TAG, "X25519 RFC7748 test vector: FAIL got %02X%02X%02X%02X exp %02X%02X%02X%02X",
+                     tv_result[0], tv_result[1], tv_result[2], tv_result[3],
+                     tv_expected[0], tv_expected[1], tv_expected[2], tv_expected[3]);
+            char tv_msg[48];
+            snprintf(tv_msg, sizeof(tv_msg), "X25519 tv FAIL: got %02X%02X exp %02X%02X",
+                     tv_result[0], tv_result[1], tv_expected[0], tv_expected[1]);
+            chat_add_message(tv_msg, false);
+        }
+    }
+
+    // Self-consistency check A: conv(Ed25519 base point G) must equal u=9.
+    // Tests ed25519_pub_to_x25519 independently of ge_scalarmult_base.
+    {
+        // Ed25519 base point G compressed (little-endian y, sign=0):
+        // y_G = 0x6666...6658 (big-endian) → little-endian: byte[0]=0x58, bytes[1..31]=0x66
+        static const uint8_t ed25519_G[32] = {
+            0x58,0x66,0x66,0x66,0x66,0x66,0x66,0x66,
+            0x66,0x66,0x66,0x66,0x66,0x66,0x66,0x66,
+            0x66,0x66,0x66,0x66,0x66,0x66,0x66,0x66,
+            0x66,0x66,0x66,0x66,0x66,0x66,0x66,0x66
+        };
+        static const uint8_t u9[32] = {9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+        uint8_t conv_G[32];
+        ed25519_pub_to_x25519(conv_G, ed25519_G);
+        if (memcmp(conv_G, u9, 32) == 0) {
+            ESP_LOGI(TAG, "conv(G)=9: PASS");
+        } else {
+            char msg[48];
+            snprintf(msg, sizeof(msg), "conv(G)=9 FAIL got=%02X%02X%02X%02X",
+                     conv_G[0], conv_G[1], conv_G[2], conv_G[3]);
+            chat_add_message(msg, false);
+        }
+    }
+
+    // Self-consistency check B: conv(node_pub_key) must equal X25519(our_scalar, 9).
+    // If conv(G) passes but this fails → ge_scalarmult_base is wrong.
+    {
+        static const uint8_t base9[32] = {
+            9,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+            0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0
+        };
+        uint8_t via_scalar[32], via_conv[32];
+        ed25519_key_exchange_raw(via_scalar, base9, node_prv_key);
+        ed25519_pub_to_x25519(via_conv, node_pub_key);
+        if (memcmp(via_scalar, via_conv, 32) == 0) {
+            ESP_LOGI(TAG, "DH self-check: PASS");
+        } else {
+            char sc_msg[64];
+            snprintf(sc_msg, sizeof(sc_msg), "DH self-chk FAIL sc=%02X%02X cv=%02X%02X",
+                     via_scalar[0], via_scalar[1], via_conv[0], via_conv[1]);
+            chat_add_message(sc_msg, false);
+        }
+    }
+    ESP_LOGI(TAG, "Pub key: "
+             "%02X%02X%02X%02X%02X%02X%02X%02X"
+             "%02X%02X%02X%02X%02X%02X%02X%02X"
+             "%02X%02X%02X%02X%02X%02X%02X%02X"
+             "%02X%02X%02X%02X%02X%02X%02X%02X",
+             node_pub_key[0],  node_pub_key[1],  node_pub_key[2],  node_pub_key[3],
+             node_pub_key[4],  node_pub_key[5],  node_pub_key[6],  node_pub_key[7],
+             node_pub_key[8],  node_pub_key[9],  node_pub_key[10], node_pub_key[11],
+             node_pub_key[12], node_pub_key[13], node_pub_key[14], node_pub_key[15],
+             node_pub_key[16], node_pub_key[17], node_pub_key[18], node_pub_key[19],
+             node_pub_key[20], node_pub_key[21], node_pub_key[22], node_pub_key[23],
+             node_pub_key[24], node_pub_key[25], node_pub_key[26], node_pub_key[27],
+             node_pub_key[28], node_pub_key[29], node_pub_key[30], node_pub_key[31]);
 }
 
 static void send_advert(void) {
@@ -380,7 +472,10 @@ static void send_advert(void) {
     lora_set_mode(LORA_PROTOCOL_MODE_RX);
 
     if (res == ESP_OK) {
-        ESP_LOGI(TAG, "ADVERT sent (%s)", advert.name_valid ? advert.name : "(no name)");
+        last_advert_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        ESP_LOGI(TAG, "ADVERT sent (%s) pub=%02X%02X%02X%02X",
+                 advert.name_valid ? advert.name : "(no name)",
+                 node_pub_key[0], node_pub_key[1], node_pub_key[2], node_pub_key[3]);
     } else {
         ESP_LOGE(TAG, "ADVERT send failed: %d", res);
     }
@@ -648,6 +743,213 @@ static void lora_rx_task(void *arg) {
                             chat_add_message(grp.decrypted.text, false);
                         }
                     }
+                } else if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_TXT_MSG) {
+                    // Payload: dest_hash[1] | src_hash[1] | HMAC[2] | ciphertext[...]
+                    // Use do{}while(0) so 'break' exits this block, not the rx while(1)
+                    do {
+                        char dbg[64];
+                        if (!identity_ready || mc_msg.payload_length < 6) {
+                            chat_add_message("DM: not ready/short", false); break;
+                        }
+                        uint8_t dest_hash = mc_msg.payload[0];
+                        uint8_t src_hash  = mc_msg.payload[1];
+
+                        if (dest_hash != node_pub_key[0]) {
+                            snprintf(dbg, sizeof(dbg), "DM: not for us (dst=%02X us=%02X)",
+                                     dest_hash, node_pub_key[0]);
+                            chat_add_message(dbg, false); break;
+                        }
+
+                        // Find sender in node list
+                        uint8_t sender_pub[32] = {0};
+                        char    sender_name[MESHCORE_MAX_ADVERT_DATA_SIZE + 1] = {0};
+                        bool    sender_found = false;
+                        if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                            for (int ni = 0; ni < MAX_NODES; ni++) {
+                                if (node_list[ni].active && node_list[ni].pub_key[0] == src_hash) {
+                                    memcpy(sender_pub, node_list[ni].pub_key, 32);
+                                    strncpy(sender_name, node_list[ni].name, sizeof(sender_name) - 1);
+                                    sender_found = true;
+                                    break;
+                                }
+                            }
+                            xSemaphoreGive(node_mutex);
+                        }
+                        if (!sender_found) {
+                            // Show which nodes we DO know, to help diagnose
+                            char known[64] = "DM: unknown src=";
+                            char tmp2[8];
+                            snprintf(tmp2, sizeof(tmp2), "%02X", src_hash);
+                            strncat(known, tmp2, sizeof(known) - strlen(known) - 1);
+                            strncat(known, " known=[", sizeof(known) - strlen(known) - 1);
+                            if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                                for (int ni = 0; ni < MAX_NODES; ni++) {
+                                    if (node_list[ni].active) {
+                                        snprintf(tmp2, sizeof(tmp2), "%02X ", node_list[ni].pub_key[0]);
+                                        strncat(known, tmp2, sizeof(known) - strlen(known) - 1);
+                                    }
+                                }
+                                xSemaphoreGive(node_mutex);
+                            }
+                            strncat(known, "]", sizeof(known) - strlen(known) - 1);
+                            chat_add_message(known, false); break;
+                        }
+
+                        // ECDH shared secret — try both with and without Edwards→Montgomery conversion
+                        uint8_t secret[32];
+                        ed25519_key_exchange(secret, sender_pub, node_prv_key);
+
+                        uint8_t secret_raw[32];
+                        ed25519_key_exchange_raw(secret_raw, sender_pub, node_prv_key);
+
+                        // mac_ct = HMAC[2] | ciphertext
+                        const uint8_t *mac_ct     = &mc_msg.payload[2];
+                        int            mac_ct_len  = mc_msg.payload_length - 2;
+                        if (mac_ct_len < MESHCORE_CIPHER_MAC_SIZE + 16) {
+                            chat_add_message("DM: payload too short", false); break;
+                        }
+
+                        const uint8_t *ciphertext = mac_ct + MESHCORE_CIPHER_MAC_SIZE;
+                        int            ct_len     = mac_ct_len - MESHCORE_CIPHER_MAC_SIZE;
+
+                        // Compute HMAC for both approaches (key=32 bytes)
+                        uint8_t hmac_conv[32], hmac_raw[32];
+                        mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                                        secret, 32, ciphertext, ct_len, hmac_conv);
+                        mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                                        secret_raw, 32, ciphertext, ct_len, hmac_raw);
+                        // Also try with 16-byte HMAC key
+                        uint8_t hmac_conv16[32], hmac_raw16[32];
+                        mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                                        secret, 16, ciphertext, ct_len, hmac_conv16);
+                        mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                                        secret_raw, 16, ciphertext, ct_len, hmac_raw16);
+
+                        uint8_t exp0 = mac_ct[0], exp1 = mac_ct[1];
+                        bool mac_ok = false;
+                        uint8_t *good_secret = NULL;
+                        if (hmac_conv[0]==exp0 && hmac_conv[1]==exp1)   { mac_ok=true; good_secret=secret; }
+                        else if (hmac_raw[0]==exp0 && hmac_raw[1]==exp1) { mac_ok=true; good_secret=secret_raw; }
+                        else if (hmac_conv16[0]==exp0 && hmac_conv16[1]==exp1) { mac_ok=true; good_secret=secret; }
+                        else if (hmac_raw16[0]==exp0 && hmac_raw16[1]==exp1)   { mac_ok=true; good_secret=secret_raw; }
+
+                        if (!mac_ok) {
+                            snprintf(dbg, sizeof(dbg),
+                                "exp=%02X%02X cv=%02X%02X rw=%02X%02X c16=%02X%02X r16=%02X%02X",
+                                exp0, exp1,
+                                hmac_conv[0], hmac_conv[1],
+                                hmac_raw[0],  hmac_raw[1],
+                                hmac_conv16[0], hmac_conv16[1],
+                                hmac_raw16[0],  hmac_raw16[1]);
+                            chat_add_message(dbg, false);
+                            // Dump sender pub key and shared secret for diagnosis
+                            snprintf(dbg, sizeof(dbg), "pb=%02X%02X%02X%02X sk=%02X%02X%02X%02X",
+                                sender_pub[0], sender_pub[1], sender_pub[2], sender_pub[3],
+                                secret[0], secret[1], secret[2], secret[3]);
+                            chat_add_message(dbg, false);
+                            // Dump raw payload bytes (offset 0..7) to verify parse
+                            snprintf(dbg, sizeof(dbg), "pl=%02X%02X %02X%02X %02X%02X%02X%02X",
+                                mc_msg.payload[0], mc_msg.payload[1],
+                                mc_msg.payload[2], mc_msg.payload[3],
+                                mc_msg.payload[4], mc_msg.payload[5],
+                                mc_msg.payload[6], mc_msg.payload[7]);
+                            chat_add_message(dbg, false);
+                            break;
+                        }
+
+                        // AES-128-ECB decrypt (key = good_secret[0..15])
+                        uint8_t plaintext[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
+                        mbedtls_aes_context aes_ctx;
+                        mbedtls_aes_init(&aes_ctx);
+                        mbedtls_aes_setkey_dec(&aes_ctx, good_secret, 128);
+                        for (int bi = 0; bi + 16 <= ct_len; bi += 16) {
+                            mbedtls_aes_crypt_ecb(&aes_ctx, MBEDTLS_AES_DECRYPT,
+                                                  ciphertext + bi, plaintext + bi);
+                        }
+                        mbedtls_aes_free(&aes_ctx);
+
+                        // plaintext: timestamp[4] | flags[1] | text[...]
+                        int text_len = ct_len - 5;
+                        if (text_len <= 0) { chat_add_message("DM: no text", false); break; }
+                        plaintext[5 + text_len - 1] = '\0';
+                        char *dm_text = (char *)&plaintext[5];
+
+                        char display[256];
+                        if (sender_name[0])
+                            snprintf(display, sizeof(display), "[%s] %s", sender_name, dm_text);
+                        else
+                            snprintf(display, sizeof(display), "[?%02X] %s", src_hash, dm_text);
+
+                        ESP_LOGI(TAG, "DM RX: %s", display);
+                        chat_add_message(display, false);
+
+                        // Send PATH_RETURN with embedded ACK (createPathReturn approach)
+                        // For FLOOD DMs, MeshCore sends PAYLOAD_TYPE_PATH (0x08), not a bare ACK.
+                        // Inner data (16 bytes, AES-ECB encrypted):
+                        //   path_len=0 | PAYLOAD_TYPE_ACK | ack_crc[4] | padding[10]
+                        // Outer payload:
+                        //   dest_hash[1] | src_hash[1] | HMAC[2] | ciphertext[16]
+                        {
+                            // 1. Compute ACK CRC
+                            uint8_t sha_out[32];
+                            {
+                                mbedtls_sha256_context sha_ctx;
+                                mbedtls_sha256_init(&sha_ctx);
+                                mbedtls_sha256_starts(&sha_ctx, 0);
+                                mbedtls_sha256_update(&sha_ctx, plaintext, 5);
+                                mbedtls_sha256_update(&sha_ctx, (uint8_t*)dm_text, strlen(dm_text));
+                                mbedtls_sha256_update(&sha_ctx, sender_pub, 32);
+                                mbedtls_sha256_finish(&sha_ctx, sha_out);
+                                mbedtls_sha256_free(&sha_ctx);
+                            }
+
+                            // 2. Build and encrypt inner data
+                            uint8_t inner[16] = {0};
+                            inner[0] = 0x00;                        // path_len = 0
+                            inner[1] = MESHCORE_PAYLOAD_TYPE_ACK;   // = 0x03
+                            inner[2] = sha_out[0];
+                            inner[3] = sha_out[1];
+                            inner[4] = sha_out[2];
+                            inner[5] = sha_out[3];
+                            // inner[6..15] = 0 (zero padding for AES block)
+
+                            uint8_t path_cipher[16];
+                            {
+                                mbedtls_aes_context aes;
+                                mbedtls_aes_init(&aes);
+                                mbedtls_aes_setkey_enc(&aes, good_secret, 128);
+                                mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, inner, path_cipher);
+                                mbedtls_aes_free(&aes);
+                            }
+
+                            // 3. MAC = HMAC-SHA256(good_secret[32], ciphertext)[0:2]
+                            uint8_t path_mac[32];
+                            mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                                            good_secret, 32, path_cipher, 16, path_mac);
+
+                            // 4. Build PATH packet
+                            meshcore_message_t path_msg = {0};
+                            path_msg.type          = MESHCORE_PAYLOAD_TYPE_PATH;
+                            path_msg.route         = MESHCORE_ROUTE_TYPE_FLOOD;
+                            path_msg.version       = 0;
+                            path_msg.path_length   = 0;
+                            path_msg.payload[0]    = src_hash;        // dest = iPhone hash
+                            path_msg.payload[1]    = node_pub_key[0]; // src  = our hash
+                            path_msg.payload[2]    = path_mac[0];
+                            path_msg.payload[3]    = path_mac[1];
+                            memcpy(&path_msg.payload[4], path_cipher, 16);
+                            path_msg.payload_length = 20;
+
+                            uint8_t path_data[MESHCORE_MAX_TRANS_UNIT];
+                            uint8_t path_sz = 0;
+                            if (meshcore_serialize(&path_msg, path_data, &path_sz) == 0) {
+                                lora_protocol_lora_packet_t lora_pkt = {0};
+                                lora_pkt.length = path_sz;
+                                memcpy(lora_pkt.data, path_data, path_sz);
+                                lora_send_packet(&lora_pkt);
+                            }
+                        }
+                    } while (0);
                 }
             }
         }
@@ -920,6 +1222,91 @@ static void render_settings(void) {
     blit();
 }
 
+// ── Render: QR overlay ────────────────────────────────────────────────────────
+static void render_qr_overlay(void) {
+    int w = (int)pax_buf_get_width(&fb);
+    int h = (int)pax_buf_get_height(&fb);
+
+    // Build URL
+    char hex_key[65];
+    for (int i = 0; i < 32; i++) snprintf(&hex_key[i * 2], 3, "%02x", node_pub_key[i]);
+    hex_key[64] = '\0';
+
+    // URL-encode owner name (replace spaces with +)
+    char encoded_name[64];
+    int ei = 0;
+    for (int i = 0; owner_name[i] && ei < 62; i++) {
+        char c = owner_name[i];
+        if (c == ' ') { encoded_name[ei++] = '+'; }
+        else          { encoded_name[ei++] = c; }
+    }
+    encoded_name[ei] = '\0';
+
+    char url[200];
+    snprintf(url, sizeof(url),
+             "meshcore://contact/add?name=%s&public_key=%s&type=1",
+             encoded_name, hex_key);
+
+    // Generate QR code — static buffers to avoid stack overflow (~3900 bytes each)
+    static uint8_t qr_data[qrcodegen_BUFFER_LEN_MAX];
+    static uint8_t tmp_buf[qrcodegen_BUFFER_LEN_MAX];
+    bool ok = qrcodegen_encodeText(url, tmp_buf, qr_data,
+                                   qrcodegen_Ecc_MEDIUM,
+                                   qrcodegen_VERSION_MIN, 10,
+                                   qrcodegen_Mask_AUTO, true);
+
+    // Black background
+    pax_background(&fb, COL_BLACK);
+
+    if (!ok) {
+        pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 16, 20, h / 2, "QR encode failed");
+        blit();
+        return;
+    }
+
+    int qr_size = qrcodegen_getSize(qr_data);
+    // Scale to ~60% of screen height, centered
+    int max_px  = (h * 6) / 10;
+    int cell_px = max_px / qr_size;
+    if (cell_px < 2) cell_px = 2;
+    int qr_px   = cell_px * qr_size;
+    int qr_x    = (w - qr_px) / 2;
+    int qr_y    = (h - qr_px) / 2;
+
+    // White background with quiet zone
+    int margin = cell_px * 2;
+    pax_simple_rect(&fb, 0xFFFFFFFF,
+                    qr_x - margin, qr_y - margin,
+                    qr_px + margin * 2, qr_px + margin * 2);
+
+    // Draw modules
+    for (int row = 0; row < qr_size; row++) {
+        for (int col = 0; col < qr_size; col++) {
+            if (qrcodegen_getModule(qr_data, col, row)) {
+                pax_simple_rect(&fb, 0xFF000000,
+                                qr_x + col * cell_px,
+                                qr_y + row * cell_px,
+                                cell_px, cell_px);
+            }
+        }
+    }
+
+    // Label above QR
+    const char *label = "Scan to add contact";
+    pax_vec2f lsz = pax_text_size(pax_font_sky_mono, 16, label);
+    pax_draw_text(&fb, COL_WHITE, pax_font_sky_mono, 16,
+                  (w - (int)lsz.x) / 2, qr_y - margin - 22, label);
+
+    // Name below QR
+    char name_label[80];
+    snprintf(name_label, sizeof(name_label), "%s  [druk een knop om te sluiten]", owner_name);
+    pax_vec2f nsz = pax_text_size(pax_font_sky_mono, 14, name_label);
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14,
+                  (w - (int)nsz.x) / 2, qr_y + qr_px + margin + 4, name_label);
+
+    blit();
+}
+
 // ── Render: nodes screen ──────────────────────────────────────────────────────
 #define NODES_ROW_H  36
 #define NODES_Y0     36
@@ -931,8 +1318,7 @@ static void render_nodes(void) {
     pax_background(&fb, COL_BLACK);
     render_tab_bar();
 
-    int fy        = h - 26;
-    int list_h    = fy - NODES_Y0;
+    int list_h    = h - 40 - NODES_Y0;
     int rows_vis  = list_h / NODES_ROW_H;
     uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
@@ -1010,16 +1396,49 @@ static void render_nodes(void) {
             if (node_count > rows_vis) {
                 char sc[24];
                 snprintf(sc, sizeof(sc), "%d/%d", node_scroll + 1, node_count);
-                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, w - 50, fy - 16, sc);
+                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, w - 50, h - 40 - 16, sc);
             }
         }
         xSemaphoreGive(node_mutex);
     }
 
-    pax_simple_rect(&fb, COL_DARK, 0, fy, w, 26);
-    char footer[56];
-    snprintf(footer, sizeof(footer), "Nodes: %d  W/S: scroll  R: refresh  Tab: next", node_count);
-    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 6, footer);
+    // Three-line footer
+    int footer_h = 40;
+    int fy_base  = h - footer_h;
+    pax_simple_rect(&fb, COL_DARK, 0, fy_base, w, footer_h);
+
+    // Line 1: controls
+    char footer_ctrl[80];
+    snprintf(footer_ctrl, sizeof(footer_ctrl), "Nodes:%d  W/S:scroll  A:advert  Q:QR code  Tab:next", node_count);
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, 8, fy_base + 1, footer_ctrl);
+
+    // Line 2: full public key
+    if (identity_ready) {
+        char pk_buf[80];
+        snprintf(pk_buf, sizeof(pk_buf),
+                 "PK:%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X"
+                 "%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X",
+                 node_pub_key[0],  node_pub_key[1],  node_pub_key[2],  node_pub_key[3],
+                 node_pub_key[4],  node_pub_key[5],  node_pub_key[6],  node_pub_key[7],
+                 node_pub_key[8],  node_pub_key[9],  node_pub_key[10], node_pub_key[11],
+                 node_pub_key[12], node_pub_key[13], node_pub_key[14], node_pub_key[15],
+                 node_pub_key[16], node_pub_key[17], node_pub_key[18], node_pub_key[19],
+                 node_pub_key[20], node_pub_key[21], node_pub_key[22], node_pub_key[23],
+                 node_pub_key[24], node_pub_key[25], node_pub_key[26], node_pub_key[27],
+                 node_pub_key[28], node_pub_key[29], node_pub_key[30], node_pub_key[31]);
+        pax_draw_text(&fb, COL_GREEN, pax_font_sky_mono, 12, 8, fy_base + 14, pk_buf);
+
+        // Line 3: advert age
+        uint32_t now_ms2 = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        char adv_buf[48];
+        if (last_advert_ms == 0) {
+            snprintf(adv_buf, sizeof(adv_buf), "advert: pending");
+        } else {
+            uint32_t age_s = (now_ms2 - last_advert_ms) / 1000;
+            snprintf(adv_buf, sizeof(adv_buf), "advert: %lus ago", (unsigned long)age_s);
+        }
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, 8, fy_base + 27, adv_buf);
+    }
     blit();
 }
 
@@ -1106,7 +1525,10 @@ static void render(void) {
         return;
     }
     switch (current_view) {
-        case VIEW_NODES:    render_nodes();    break;
+        case VIEW_NODES:
+            render_nodes();
+            if (qr_overlay_active) render_qr_overlay();
+            break;
         case VIEW_CHAT:     render_chat();     break;
         case VIEW_SETTINGS:
         default:            render_settings(); break;
@@ -1120,6 +1542,12 @@ static void handle_nav(uint32_t key) {
             bsp_led_set_mode(true);
             bsp_device_restart_to_launcher();
         }
+        return;
+    }
+
+    // QR overlay: any nav key closes it
+    if (qr_overlay_active) {
+        qr_overlay_active = false;
         return;
     }
 
@@ -1175,6 +1603,12 @@ static void handle_key(char c) {
             bsp_led_set_mode(true);
             bsp_device_restart_to_launcher();
         }
+        return;
+    }
+
+    // QR overlay: ESC closes it, all other keys ignored
+    if (qr_overlay_active) {
+        if (c == 27) qr_overlay_active = false;
         return;
     }
 
@@ -1242,6 +1676,10 @@ static void handle_key(char c) {
         } else if (current_view == VIEW_NODES) {
             node_scroll++;
         }
+    } else if ((c == 'a' || c == 'A') && current_view == VIEW_NODES) {
+        send_advert();
+    } else if ((c == 'q' || c == 'Q') && current_view == VIEW_NODES && identity_ready) {
+        qr_overlay_active = true;
     } else if (c == '<' || c == ',') {
         if (current_view == VIEW_SETTINGS && edit_mode && selected != FIELD_OWNER) field_adjust(selected, -1);
     } else if (c == '>' || c == '.') {
@@ -1388,7 +1826,7 @@ void app_main(void) {
             if (mode_res == ESP_OK) {
                 lora_rx_ok = true;
                 DIAG(COL_GREEN, "  RX mode OK - starting tasks");
-                xTaskCreate(lora_rx_task, "lora_rx",    4096, NULL, 5, NULL);
+                xTaskCreate(lora_rx_task, "lora_rx",    10240, NULL, 5, NULL);
                 xTaskCreate(advert_task,  "lora_advert", 6144, NULL, 4, NULL);
             } else {
                 DIAG(COL_YELLOW, "  RX mode failed (%d)", mode_res);

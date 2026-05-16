@@ -40,3 +40,21 @@ void ed25519_sign(uint8_t *signature,
                   const uint8_t *message, size_t message_len,
                   const uint8_t *public_key,
                   const uint8_t *private_key);
+
+/* X25519 key exchange using Ed25519 keypair.
+ * Derives a 32-byte shared secret from our private key and the peer's public key.
+ * private_key: 64-byte expanded Ed25519 private key (first 32 bytes = scalar)
+ * public_key:  32-byte Ed25519 public key of the peer */
+void ed25519_key_exchange(uint8_t *shared_secret,
+                          const uint8_t *public_key,
+                          const uint8_t *private_key);
+
+/* Variant that skips Edwards→Montgomery conversion (raw bytes as u-coordinate) */
+void ed25519_key_exchange_raw(uint8_t *shared_secret,
+                               const uint8_t *public_key,
+                               const uint8_t *private_key);
+
+/* Convert an Ed25519 public key (Edwards y-coordinate, compressed 32 bytes)
+ * to its Curve25519 Montgomery u-coordinate (32 bytes, little-endian).
+ * u = (1 + y) / (1 - y) mod (2^255 - 19) */
+void ed25519_pub_to_x25519(uint8_t *curve25519_pub, const uint8_t *ed25519_pub);
