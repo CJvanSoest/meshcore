@@ -853,23 +853,14 @@ static void lora_rx_task(void *arg) {
                             xSemaphoreGive(node_mutex);
                         }
                         if (!sender_found) {
-                            // Show which nodes we DO know, to help diagnose
-                            char known[64] = "DM: unknown src=";
-                            char tmp2[8];
-                            snprintf(tmp2, sizeof(tmp2), "%02X", src_hash);
-                            strncat(known, tmp2, sizeof(known) - strlen(known) - 1);
-                            strncat(known, " known=[", sizeof(known) - strlen(known) - 1);
-                            if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                                for (int ni = 0; ni < MAX_NODES; ni++) {
-                                    if (node_list[ni].active) {
-                                        snprintf(tmp2, sizeof(tmp2), "%02X ", node_list[ni].pub_key[0]);
-                                        strncat(known, tmp2, sizeof(known) - strlen(known) - 1);
-                                    }
-                                }
-                                xSemaphoreGive(node_mutex);
-                            }
-                            strncat(known, "]", sizeof(known) - strlen(known) - 1);
-                            chat_add_message(known, false); break;
+                            // Sender pubkey unknown (e.g. missed advert after reboot).
+                            // Can't decrypt without pubkey — show notification, then wait
+                            // for their next advert broadcast.
+                            char unknown_msg[48];
+                            snprintf(unknown_msg, sizeof(unknown_msg),
+                                     "[?%02X] DM ontvangen (sender onbekend)", src_hash);
+                            chat_add_message(unknown_msg, false);
+                            break;
                         }
 
                         // ECDH shared secret — try both with and without Edwards→Montgomery conversion
@@ -1668,6 +1659,8 @@ static void handle_nav(uint32_t key) {
             dirty     = false;
             load_owner_name();
             load_lora_config();
+        } else if (current_view == VIEW_CHAT && dm_target_set) {
+            dm_target_set = false;
         } else {
             bsp_led_set_mode(true);
             bsp_device_restart_to_launcher();
@@ -1676,11 +1669,15 @@ static void handle_nav(uint32_t key) {
         if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) selected = (selected - 1 + FIELD_COUNT) % FIELD_COUNT;
             else if (selected != FIELD_OWNER) field_adjust(selected, +1);
+        } else if (current_view == VIEW_NODES) {
+            if (node_cursor > 0) node_cursor--;
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
         if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) selected = (selected + 1) % FIELD_COUNT;
             else if (selected != FIELD_OWNER) field_adjust(selected, -1);
+        } else if (current_view == VIEW_NODES) {
+            if (node_cursor < node_count - 1) node_cursor++;
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_LEFT) {
         if (current_view == VIEW_SETTINGS && edit_mode && selected != FIELD_OWNER) field_adjust(selected, -1);
@@ -1689,12 +1686,38 @@ static void handle_nav(uint32_t key) {
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
         if (current_view == VIEW_CHAT && chat_typing) {
             if (chat_input_len > 0) {
-                send_chat_message(chat_input);      // best-effort TX
-                chat_add_message(chat_input, true); // always show locally
+                if (dm_target_set)
+                    send_dm_message(chat_input, dm_target_pub);
+                else
+                    send_chat_message(chat_input);
+                chat_add_message(chat_input, true);
                 chat_input_len = 0;
                 chat_input[0]  = '\0';
             }
             chat_typing = false;
+        } else if (current_view == VIEW_NODES) {
+            // Select node under cursor → set DM target, open Chat tab
+            if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                int indices[MAX_NODES];
+                int idx_count = 0;
+                for (int i = 0; i < MAX_NODES; i++)
+                    if (node_list[i].active) indices[idx_count++] = i;
+                for (int i = 1; i < idx_count; i++) {
+                    int key2 = indices[i], j = i - 1;
+                    while (j >= 0 && node_list[indices[j]].last_seen_ms < node_list[key2].last_seen_ms)
+                        { indices[j + 1] = indices[j]; j--; }
+                    indices[j + 1] = key2;
+                }
+                if (node_cursor < idx_count) {
+                    node_entry_t* n = &node_list[indices[node_cursor]];
+                    dm_target_set = true;
+                    memcpy(dm_target_pub, n->pub_key, MESHCORE_PUB_KEY_SIZE);
+                    strncpy(dm_target_name, n->name, sizeof(dm_target_name) - 1);
+                    dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+                }
+                xSemaphoreGive(node_mutex);
+            }
+            if (dm_target_set) current_view = VIEW_CHAT;
         } else if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) {
                 edit_mode = true;
