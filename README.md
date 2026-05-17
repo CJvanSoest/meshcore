@@ -91,7 +91,7 @@ schematics are available on the Tanmatsu documentation site.
 ## Development write-up
 
 Read about the development journey and lessons learned on Medium:
-[Building a MeshCore Client on the Tanmatsu Badge](https://medium.com/@tenharcj24/building-a-meshcore-client-on-the-tanmatsu-badge-cfc46f02227f)
+[Building a MeshCore Client on the Tanmatsu Badge](https://medium.com/@cjvansoest/building-a-meshcore-client-on-the-tanmatsu-badge-cfc46f02227f)
 
 ---
 
