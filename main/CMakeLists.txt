@@ -20,6 +20,9 @@ idf_component_register(
 		tanmatsu-wifi
 		wifi-manager
 		mbedtls
+		fatfs
+		sdmmc
+		esp_driver_sdmmc
 		${extra_requires}
 	INCLUDE_DIRS
 		"."

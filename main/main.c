@@ -59,6 +59,19 @@
 #include "qrcodegen.h"
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 #include "esp_hosted.h"
+#include "esp_vfs_fat.h"
+#include "driver/sdmmc_host.h"
+#include "sdmmc_cmd.h"
+#include <sys/stat.h>
+
+// Tanmatsu SD-card pins (mirrors managed_components/.../tanmatsu_hardware.h,
+// which is private to the BSP target — duplicated here so we don't reach in).
+#define MC_SDCARD_CLK 43
+#define MC_SDCARD_CMD 44
+#define MC_SDCARD_D0  39
+#define MC_SDCARD_D1  40
+#define MC_SDCARD_D2  41
+#define MC_SDCARD_D3  42
 #endif
 
 static char const TAG[] = "main";
@@ -455,6 +468,182 @@ static int contact_toggle(const uint8_t *pub, const char *name, uint8_t role) {
     return 1;
 }
 
+// ── SD-card DM history (encrypted, append-only) ───────────────────────────────
+#define SD_MOUNT_POINT      "/sd"
+#define HISTORY_DIR         "/sd/meshcore"
+#define HISTORY_LOG_PATH    "/sd/meshcore/chat.bin"
+#define HISTORY_REC_MAGIC   "MCR1"
+
+static bool              history_ready = false;
+static const char       *history_status = "off";   // "off"|"ok"|"no-sd"|"err"
+static uint8_t           history_key[32] = {0};    // HMAC-SHA256 output; first 16 used for AES-128
+static SemaphoreHandle_t history_mutex = NULL;
+static sdmmc_card_t     *sd_card_handle = NULL;
+
+typedef struct __attribute__((packed)) {
+    uint8_t  magic[4];      // "MCR1"
+    uint16_t plain_len;     // 1..MAX_MSG_TEXT
+    uint8_t  flags;         // bit0 = is_mine
+    uint8_t  reserved;
+    uint32_t ts_unix;       // seconds since epoch (LE)
+    uint8_t  iv[16];
+} history_rec_hdr_t;          // 28 bytes
+
+static esp_err_t history_mount_sd(void) {
+    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+    host.slot = SDMMC_HOST_SLOT_0;  // Tanmatsu: slot 0 = µSD; slot 1 = hosted Wi-Fi link
+    host.max_freq_khz = SDMMC_FREQ_DEFAULT;
+
+    sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
+    slot.clk = MC_SDCARD_CLK;
+    slot.cmd = MC_SDCARD_CMD;
+    slot.d0  = MC_SDCARD_D0;
+    slot.d1  = MC_SDCARD_D1;
+    slot.d2  = MC_SDCARD_D2;
+    slot.d3  = MC_SDCARD_D3;
+    slot.width = 4;
+    slot.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
+
+    esp_vfs_fat_sdmmc_mount_config_t mnt = {
+        .format_if_mount_failed = false,
+        .max_files = 4,
+        .allocation_unit_size = 16 * 1024,
+    };
+    return esp_vfs_fat_sdmmc_mount(SD_MOUNT_POINT, &host, &slot, &mnt, &sd_card_handle);
+}
+
+// Derive AES-128 key from node private key. Stable per device.
+static void history_derive_key(void) {
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                    node_prv_key, 32,
+                    (const uint8_t *)"mc-history-v1", 13,
+                    history_key);  // 32 B HMAC; AES uses first 16 only
+}
+
+static void history_init(void) {
+    history_mutex = xSemaphoreCreateMutex();
+
+    esp_err_t e = history_mount_sd();
+    if (e != ESP_OK) {
+        ESP_LOGW(TAG, "SD mount failed: %s — chat history disabled", esp_err_to_name(e));
+        history_status = (e == ESP_ERR_NOT_FOUND || e == ESP_ERR_TIMEOUT) ? "no-sd" : "err";
+        return;
+    }
+    ESP_LOGI(TAG, "SD mounted at %s", SD_MOUNT_POINT);
+
+    mkdir(HISTORY_DIR, 0775);  // ignores EEXIST
+
+    history_derive_key();
+    history_ready = true;
+    history_status = "ok";
+}
+
+// Append a single chat line to disk, AES-CBC encrypted.
+// Safe to call before history_ready (becomes a no-op).
+static void history_append(const char *text, bool is_mine) {
+    if (!history_ready || text == NULL) return;
+    int N = (int)strnlen(text, MAX_MSG_TEXT);
+    if (N <= 0) return;
+
+    if (xSemaphoreTake(history_mutex, pdMS_TO_TICKS(200)) != pdTRUE) return;
+
+    history_rec_hdr_t hdr;
+    memcpy(hdr.magic, HISTORY_REC_MAGIC, 4);
+    hdr.plain_len = (uint16_t)N;
+    hdr.flags     = is_mine ? 0x01 : 0x00;
+    hdr.reserved  = 0;
+    hdr.ts_unix   = (uint32_t)time(NULL);
+    esp_fill_random(hdr.iv, 16);
+
+    // PKCS7 pad to next 16-byte boundary (always at least 1 pad byte)
+    int padded = ((N + 16) / 16) * 16;
+    uint8_t pt[MAX_MSG_TEXT + 32];
+    memcpy(pt, text, N);
+    uint8_t pad = (uint8_t)(padded - N);
+    for (int i = N; i < padded; i++) pt[i] = pad;
+
+    uint8_t ct[MAX_MSG_TEXT + 32];
+    mbedtls_aes_context aes;
+    mbedtls_aes_init(&aes);
+    mbedtls_aes_setkey_enc(&aes, history_key, 128);
+    uint8_t iv_copy[16];
+    memcpy(iv_copy, hdr.iv, 16);
+    mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, padded, iv_copy, pt, ct);
+    mbedtls_aes_free(&aes);
+
+    FILE *f = fopen(HISTORY_LOG_PATH, "ab");
+    if (f) {
+        fwrite(&hdr, sizeof(hdr), 1, f);
+        fwrite(ct,    padded,     1, f);
+        fclose(f);
+    } else {
+        ESP_LOGW(TAG, "history_append: fopen failed");
+    }
+    xSemaphoreGive(history_mutex);
+}
+
+// Load records on boot into the chat ring. Ring keeps the latest MAX_CHAT_MSGS.
+static void history_load(void) {
+    if (!history_ready) return;
+    if (xSemaphoreTake(history_mutex, pdMS_TO_TICKS(500)) != pdTRUE) return;
+
+    FILE *f = fopen(HISTORY_LOG_PATH, "rb");
+    if (!f) { xSemaphoreGive(history_mutex); return; }
+
+    int loaded = 0;
+    while (1) {
+        history_rec_hdr_t hdr;
+        if (fread(&hdr, sizeof(hdr), 1, f) != 1) break;
+        if (memcmp(hdr.magic, HISTORY_REC_MAGIC, 4) != 0) {
+            ESP_LOGW(TAG, "history: bad magic at rec %d — stop", loaded);
+            break;
+        }
+        if (hdr.plain_len == 0 || hdr.plain_len > MAX_MSG_TEXT) {
+            ESP_LOGW(TAG, "history: bad len %u at rec %d — stop", hdr.plain_len, loaded);
+            break;
+        }
+        int padded = ((hdr.plain_len + 16) / 16) * 16;
+        uint8_t ct[MAX_MSG_TEXT + 32];
+        if (fread(ct, padded, 1, f) != 1) break;
+
+        uint8_t pt[MAX_MSG_TEXT + 32];
+        mbedtls_aes_context aes;
+        mbedtls_aes_init(&aes);
+        mbedtls_aes_setkey_dec(&aes, history_key, 128);
+        mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_DECRYPT, padded, hdr.iv, ct, pt);
+        mbedtls_aes_free(&aes);
+
+        uint8_t pad = pt[padded - 1];
+        if (pad == 0 || pad > 16 || (padded - pad) != hdr.plain_len) {
+            ESP_LOGW(TAG, "history: decrypt mismatch at rec %d — stop", loaded);
+            break;
+        }
+        int N = hdr.plain_len;
+
+        char text[MAX_MSG_TEXT];
+        int copy = N < MAX_MSG_TEXT - 1 ? N : MAX_MSG_TEXT - 1;
+        memcpy(text, pt, copy);
+        text[copy] = '\0';
+
+        if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            chat_msg_t *m = &chat_msgs[chat_head];
+            m->active       = true;
+            m->is_mine      = (hdr.flags & 0x01) != 0;
+            m->timestamp_ms = 0;
+            utf8_sanitize(m->text, MAX_MSG_TEXT, text);
+            chat_head = (chat_head + 1) % MAX_CHAT_MSGS;
+            if (chat_count < MAX_CHAT_MSGS) chat_count++;
+            chat_scroll = chat_count;
+            xSemaphoreGive(chat_mutex);
+        }
+        loaded++;
+    }
+    fclose(f);
+
+    ESP_LOGI(TAG, "history_load: %d record(s) restored", loaded);
+    xSemaphoreGive(history_mutex);
+}
+
 static void load_lora_from_nvs(void) {
     lora_cfg.frequency                  = LORA_DEF_FREQ;
     lora_cfg.spreading_factor           = LORA_DEF_SF;
@@ -847,6 +1036,8 @@ static void chat_add_message(const char* text, bool is_mine) {
     if (chat_count < MAX_CHAT_MSGS) chat_count++;
     chat_scroll = chat_count;
     xSemaphoreGive(chat_mutex);
+
+    history_append(m->text, is_mine);
 }
 
 static void ch_add_message(const char* text, bool is_mine) {
@@ -2544,6 +2735,11 @@ void app_main(void) {
 
     load_owner_name();
     load_contacts();
+
+    DIAG(COL_GRAY, "SD mount...");
+    history_init();
+    DIAG(history_ready ? COL_GREEN : COL_YELLOW, "  SD: %s", history_status);
+    if (history_ready) history_load();
 
     DIAG(COL_GRAY, "lora_init(16)...");
     res = lora_init(16);
