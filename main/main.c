@@ -20,6 +20,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -181,6 +182,9 @@ typedef enum {
     FIELD_POWER,
     FIELD_SYNC,
     FIELD_PREAMBLE,
+    FIELD_ADVERT_INT,
+    FIELD_PRESET,
+    FIELD_ROLE,
     FIELD_COUNT,
 } field_t;
 
@@ -195,6 +199,8 @@ static const int      BW_COUNT     = (int)(sizeof(BW_OPTIONS) / sizeof(BW_OPTION
 #define NVS_LORA_BW    "lora.bandwidth"
 #define NVS_LORA_CR    "lora.codingrate"
 #define NVS_LORA_POWER "lora.power"
+#define NVS_LORA_ADVERT_INT "lora.advint_s"  // u16: advert interval in seconds
+#define NVS_LORA_ROLE       "lora.role"      // u8: meshcore_device_role_t
 
 // Launcher defaults (used when NVS is empty)
 #define LORA_DEF_FREQ     869618000u
@@ -205,6 +211,24 @@ static const int      BW_COUNT     = (int)(sizeof(BW_OPTIONS) / sizeof(BW_OPTION
 #define LORA_DEF_SYNC     0x12
 #define LORA_DEF_PREAMBLE 16
 #define LORA_DEF_RAMP     40
+#define LORA_DEF_ADVERT_INT 300  // 5 min — reduces TX duty cycle vs old 30s
+#define LORA_DEF_ROLE     1      // MESHCORE_DEVICE_ROLE_CHAT_NODE
+
+// LoRa profile presets (SF/BW/CR triplets)
+typedef struct {
+    const char *name;
+    uint8_t     sf;
+    uint16_t    bw;
+    uint8_t     cr;
+} lora_preset_t;
+
+static const lora_preset_t LORA_PRESETS[] = {
+    {"LR Slow",  11,  31, 8},
+    {"LR Std",   10,  62, 6},
+    {"MeshCore",  8,  62, 6},
+    {"SR Fast",   7, 250, 5},
+};
+static const int LORA_PRESET_COUNT = (int)(sizeof(LORA_PRESETS) / sizeof(LORA_PRESETS[0]));
 
 // ── Node identity ─────────────────────────────────────────────────────────────
 static uint8_t  node_pub_key[32]  = {0};
@@ -228,6 +252,38 @@ static bool                          sntp_synced           = false;
 static bool                          time_from_nvs         = false;
 static char                          owner_name[33]        = {0};
 static lora_protocol_config_params_t lora_cfg              = {0};
+static uint16_t                      advert_interval_s     = LORA_DEF_ADVERT_INT;
+static meshcore_device_role_t        lora_role             = MESHCORE_DEVICE_ROLE_CHAT_NODE;
+static int                           settings_scroll       = 0;
+// node_filter == UNKNOWN means "show all roles"
+static meshcore_device_role_t        node_filter           = MESHCORE_DEVICE_ROLE_UNKNOWN;
+
+// Replace UTF-8 multi-byte sequences (e.g. emoji) with '?' so the ASCII-only
+// font renders something visible instead of garbled bytes. Continuation bytes
+// are silently skipped — the lead byte emits one placeholder per sequence.
+static void utf8_sanitize(char *dst, size_t dst_sz, const char *src) {
+    size_t di = 0;
+    for (size_t si = 0; src[si] && di + 1 < dst_sz; si++) {
+        unsigned char c = (unsigned char)src[si];
+        if (c < 0x80) {
+            dst[di++] = (char)c;
+        } else if ((c & 0xC0) == 0xC0) {
+            dst[di++] = '?';
+        }
+    }
+    dst[di] = '\0';
+}
+
+static int lora_preset_match(void) {
+    for (int i = 0; i < LORA_PRESET_COUNT; i++) {
+        if (LORA_PRESETS[i].sf == lora_cfg.spreading_factor &&
+            LORA_PRESETS[i].bw == (uint16_t)lora_cfg.bandwidth &&
+            LORA_PRESETS[i].cr == lora_cfg.coding_rate) {
+            return i;
+        }
+    }
+    return -1;
+}
 
 // ── Display helpers ───────────────────────────────────────────────────────────
 static void blit(void) {
@@ -289,6 +345,12 @@ static void load_lora_from_nvs(void) {
     if (nvs_get_u16(handle, NVS_LORA_BW,    &bw)    == ESP_OK && bw    != 0) lora_cfg.bandwidth        = bw;
     if (nvs_get_u8 (handle, NVS_LORA_CR,    &cr)    == ESP_OK && cr    != 0) lora_cfg.coding_rate      = cr;
     if (nvs_get_u8 (handle, NVS_LORA_POWER, &power) == ESP_OK)               lora_cfg.power            = power;
+    uint16_t advint = 0;
+    if (nvs_get_u16(handle, NVS_LORA_ADVERT_INT, &advint) == ESP_OK && advint != 0) advert_interval_s = advint;
+    uint8_t role = 0;
+    if (nvs_get_u8(handle, NVS_LORA_ROLE, &role) == ESP_OK && role <= MESHCORE_DEVICE_ROLE_SENSOR) {
+        lora_role = (meshcore_device_role_t)role;
+    }
     nvs_close(handle);
 }
 
@@ -300,6 +362,8 @@ static void save_lora_to_nvs(void) {
     nvs_set_u16(handle, NVS_LORA_BW,   (uint16_t)lora_cfg.bandwidth);
     nvs_set_u8 (handle, NVS_LORA_CR,   lora_cfg.coding_rate);
     nvs_set_u8 (handle, NVS_LORA_POWER, lora_cfg.power);
+    nvs_set_u16(handle, NVS_LORA_ADVERT_INT, advert_interval_s);
+    nvs_set_u8 (handle, NVS_LORA_ROLE, (uint8_t)lora_role);
     nvs_commit(handle);
     nvs_close(handle);
     ESP_LOGI(TAG, "LoRa config saved to NVS");
@@ -484,7 +548,7 @@ static void send_advert(void) {
     meshcore_advert_t advert = {0};
     memcpy(advert.pub_key, node_pub_key, MESHCORE_PUB_KEY_SIZE);
     advert.timestamp = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
-    advert.role      = MESHCORE_DEVICE_ROLE_CHAT_NODE;
+    advert.role      = lora_role;
 
     if (owner_name[0] && owner_name[0] != '(') {
         strncpy(advert.name, owner_name, MESHCORE_MAX_NAME_SIZE);
@@ -645,8 +709,7 @@ static void chat_add_message(const char* text, bool is_mine) {
     m->active        = true;
     m->is_mine       = is_mine;
     m->timestamp_ms  = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-    strncpy(m->text, text, MAX_MSG_TEXT - 1);
-    m->text[MAX_MSG_TEXT - 1] = '\0';
+    utf8_sanitize(m->text, MAX_MSG_TEXT, text);
     chat_head = (chat_head + 1) % MAX_CHAT_MSGS;
     if (chat_count < MAX_CHAT_MSGS) chat_count++;
     chat_scroll = chat_count;
@@ -659,8 +722,7 @@ static void ch_add_message(const char* text, bool is_mine) {
     m->active        = true;
     m->is_mine       = is_mine;
     m->timestamp_ms  = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-    strncpy(m->text, text, MAX_MSG_TEXT - 1);
-    m->text[MAX_MSG_TEXT - 1] = '\0';
+    utf8_sanitize(m->text, MAX_MSG_TEXT, text);
     ch_head = (ch_head + 1) % MAX_CHAT_MSGS;
     if (ch_count < MAX_CHAT_MSGS) ch_count++;
     ch_scroll = ch_count;
@@ -850,15 +912,38 @@ static bool send_chat_message(const char* text) {
 }
 
 // ── ADVERT broadcast task ─────────────────────────────────────────────────────
-#define ADVERT_INTERVAL_MS 30000  // send every 30 seconds
-
 static void advert_task(void *arg) {
     // Initial delay so the radio is fully up before first advert
     vTaskDelay(pdMS_TO_TICKS(5000));
     while (1) {
         send_advert();
-        vTaskDelay(pdMS_TO_TICKS(ADVERT_INTERVAL_MS));
+        uint32_t ms = (uint32_t)advert_interval_s * 1000u;
+        if (ms < 5000u) ms = 5000u;
+        vTaskDelay(pdMS_TO_TICKS(ms));
     }
+}
+
+// ── RX dedup (drop flood retransmits) ─────────────────────────────────────────
+// meshcore-c has no dedup; flood-routed packets arrive multiple times via
+// different repeaters. Headers/transport_codes vary between retransmits but the
+// inner payload (MAC + ciphertext for DM/GRP_TXT, advert body for ADVERT) is
+// identical. Fingerprint on first 16 bytes of mc_msg.payload.
+#define RX_DEDUP_SIZE 32
+static uint8_t rx_dedup_fp[RX_DEDUP_SIZE][16];
+static int     rx_dedup_head  = 0;
+static int     rx_dedup_count = 0;
+
+static bool rx_is_duplicate(const uint8_t *payload, uint16_t payload_len) {
+    uint8_t fp[16] = {0};
+    int fp_len = payload_len < 16 ? payload_len : 16;
+    memcpy(fp, payload, fp_len);
+    for (int i = 0; i < rx_dedup_count; i++) {
+        if (memcmp(rx_dedup_fp[i], fp, 16) == 0) return true;
+    }
+    memcpy(rx_dedup_fp[rx_dedup_head], fp, 16);
+    rx_dedup_head = (rx_dedup_head + 1) % RX_DEDUP_SIZE;
+    if (rx_dedup_count < RX_DEDUP_SIZE) rx_dedup_count++;
+    return false;
 }
 
 // ── LoRa RX task ─────────────────────────────────────────────────────────────
@@ -889,6 +974,10 @@ static void lora_rx_task(void *arg) {
             // Parse MeshCore packet
             meshcore_message_t mc_msg;
             if (meshcore_deserialize(pkt.data, pkt.length, &mc_msg) >= 0) {
+                if (rx_is_duplicate(mc_msg.payload, mc_msg.payload_length)) {
+                    ESP_LOGI(TAG, "Dedup: drop flood retransmit (type=%d)", mc_msg.type);
+                    continue;
+                }
                 if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_ADVERT) {
                     meshcore_advert_t advert;
                     if (meshcore_advert_deserialize(mc_msg.payload, mc_msg.payload_length, &advert) >= 0) {
@@ -1148,6 +1237,42 @@ static void field_adjust(int field, int delta) {
             lora_cfg.preamble_length = (uint16_t)pre;
             break;
         }
+        case FIELD_ADVERT_INT: {
+            static const uint16_t presets[] = {30, 60, 300, 900};
+            const int n = (int)(sizeof(presets) / sizeof(presets[0]));
+            int idx = 2;  // default to 5 min
+            for (int i = 0; i < n; i++) if (presets[i] == advert_interval_s) { idx = i; break; }
+            idx = ((idx + delta) % n + n) % n;
+            advert_interval_s = presets[idx];
+            break;
+        }
+        case FIELD_PRESET: {
+            int idx = lora_preset_match();
+            if (idx < 0) {
+                // Currently custom — apply first preset on +delta, last on -delta
+                idx = (delta > 0) ? 0 : (LORA_PRESET_COUNT - 1);
+            } else {
+                idx = ((idx + delta) % LORA_PRESET_COUNT + LORA_PRESET_COUNT) % LORA_PRESET_COUNT;
+            }
+            lora_cfg.spreading_factor = LORA_PRESETS[idx].sf;
+            lora_cfg.bandwidth        = LORA_PRESETS[idx].bw;
+            lora_cfg.coding_rate      = LORA_PRESETS[idx].cr;
+            break;
+        }
+        case FIELD_ROLE: {
+            static const meshcore_device_role_t ROLES[] = {
+                MESHCORE_DEVICE_ROLE_CHAT_NODE,
+                MESHCORE_DEVICE_ROLE_REPEATER,
+                MESHCORE_DEVICE_ROLE_ROOM_SERVER,
+                MESHCORE_DEVICE_ROLE_SENSOR,
+            };
+            const int n = (int)(sizeof(ROLES) / sizeof(ROLES[0]));
+            int idx = 0;
+            for (int i = 0; i < n; i++) if (ROLES[i] == lora_role) { idx = i; break; }
+            idx = ((idx + delta) % n + n) % n;
+            lora_role = ROLES[idx];
+            break;
+        }
         default:
             break;
     }
@@ -1303,11 +1428,44 @@ static void render_settings(void) {
     rows[FIELD_PREAMBLE].label = "Preamble length";
     snprintf(rows[FIELD_PREAMBLE].value, sizeof(rows[FIELD_PREAMBLE].value), "%d", (int)lora_cfg.preamble_length);
 
-    int row_h = (h - 32 - 40) / FIELD_COUNT;
-    int y0    = 34;
+    rows[FIELD_ADVERT_INT].label = "Advert interval";
+    if (advert_interval_s < 60) {
+        snprintf(rows[FIELD_ADVERT_INT].value, sizeof(rows[FIELD_ADVERT_INT].value), "%us", (unsigned)advert_interval_s);
+    } else {
+        snprintf(rows[FIELD_ADVERT_INT].value, sizeof(rows[FIELD_ADVERT_INT].value), "%umin", (unsigned)(advert_interval_s / 60));
+    }
 
-    for (int i = 0; i < FIELD_COUNT; i++) {
-        int  y      = y0 + i * row_h;
+    rows[FIELD_PRESET].label = "LoRa preset";
+    {
+        int pidx = lora_preset_match();
+        if (pidx >= 0) {
+            snprintf(rows[FIELD_PRESET].value, sizeof(rows[FIELD_PRESET].value), "%s", LORA_PRESETS[pidx].name);
+        } else {
+            snprintf(rows[FIELD_PRESET].value, sizeof(rows[FIELD_PRESET].value), "(custom)");
+        }
+    }
+
+    rows[FIELD_ROLE].label = "Role";
+    snprintf(rows[FIELD_ROLE].value, sizeof(rows[FIELD_ROLE].value), "%s", role_label(lora_role));
+
+    const int row_h   = 38;
+    const int y0      = 34;
+    const int list_h  = h - 32 - 40;
+    int rows_vis      = list_h / row_h;
+    if (rows_vis < 1)            rows_vis = 1;
+    if (rows_vis > FIELD_COUNT)  rows_vis = FIELD_COUNT;
+
+    // Keep selected within view (auto-scroll like nodes does)
+    if (selected < settings_scroll)             settings_scroll = selected;
+    if (selected >= settings_scroll + rows_vis) settings_scroll = selected - rows_vis + 1;
+    int max_scroll = FIELD_COUNT - rows_vis;
+    if (max_scroll < 0)              max_scroll = 0;
+    if (settings_scroll > max_scroll) settings_scroll = max_scroll;
+    if (settings_scroll < 0)         settings_scroll = 0;
+
+    for (int row = 0; row < rows_vis; row++) {
+        int  i      = row + settings_scroll;
+        int  y      = y0 + row * row_h;
         bool is_sel = (i == selected);
 
         if (is_sel) {
@@ -1343,6 +1501,14 @@ static void render_settings(void) {
         pax_draw_text(&fb, val_col, pax_font_sky_mono, 16, w - (int)vsz.x - 14, y + (row_h - 16) / 2, val_disp);
     }
 
+    // Scroll indicator at bottom-right of list area (just above footer)
+    if (FIELD_COUNT > rows_vis) {
+        char sc[40];
+        snprintf(sc, sizeof(sc), "%d-%d/%d", settings_scroll + 1, settings_scroll + rows_vis, FIELD_COUNT);
+        pax_vec2f sz = pax_text_size(pax_font_sky_mono, 12, sc);
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, w - (int)sz.x - 6, h - 40 - 14, sc);
+    }
+
     int fy = h - 40;
     pax_simple_rect(&fb, COL_DARK, 0, fy, w, 40);
     if (edit_mode && selected != FIELD_OWNER) {
@@ -1351,6 +1517,21 @@ static void render_settings(void) {
     } else if (!c6_available) {
         pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 14, 8, fy + 4,
                       "NVS only - C6 unavailable  U: flash radio");
+    } else if (selected == FIELD_SYNC) {
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 8, fy + 4,
+                      "Sync word: 0x12=public LoRa. Isolates networks.");
+    } else if (selected == FIELD_PREAMBLE) {
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 8, fy + 4,
+                      "Preamble: longer=detect weak signals, more airtime");
+    } else if (selected == FIELD_ADVERT_INT) {
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 8, fy + 4,
+                      "Advert interval: longer=lower duty cycle, saves battery");
+    } else if (selected == FIELD_PRESET) {
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 8, fy + 4,
+                      "Preset overwrites SF/BW/CR. MeshCore=default net.");
+    } else if (selected == FIELD_ROLE) {
+        pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 8, fy + 4,
+                      "Role: advertised only. Does NOT enable repeater behavior.");
     } else {
         pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 4,
                       "W/S: navigate  Enter: edit  R: reload  Tab: next");
@@ -1509,18 +1690,20 @@ static void render_nodes(void) {
         if (node_count == 0) {
             pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 15, 10, list_y0 + 10, "Listening... no nodes heard yet.");
         } else {
-            // Clamp scroll
-            int max_scroll = node_count - rows_vis;
-            if (max_scroll < 0) max_scroll = 0;
-            if (node_scroll > max_scroll) node_scroll = max_scroll;
-            if (node_scroll < 0)         node_scroll = 0;
-
-            // Build sorted view (by last_seen descending)
+            // Build sorted view (by last_seen descending), apply role filter
             int indices[MAX_NODES];
             int idx_count = 0;
             for (int i = 0; i < MAX_NODES; i++) {
-                if (node_list[i].active) indices[idx_count++] = i;
+                if (!node_list[i].active) continue;
+                if (node_filter != MESHCORE_DEVICE_ROLE_UNKNOWN &&
+                    node_list[i].role != node_filter) continue;
+                indices[idx_count++] = i;
             }
+            // Clamp scroll based on filtered count
+            int max_scroll = idx_count - rows_vis;
+            if (max_scroll < 0) max_scroll = 0;
+            if (node_scroll > max_scroll) node_scroll = max_scroll;
+            if (node_scroll < 0)         node_scroll = 0;
             // Simple insertion sort by last_seen_ms descending
             for (int i = 1; i < idx_count; i++) {
                 int key = indices[i];
@@ -1596,11 +1779,15 @@ static void render_nodes(void) {
                 pax_simple_rect(&fb, COL_DARK, 0, y + NODES_ROW_H - 1, w, 1);
             }
 
-            // Scroll indicator
-            if (node_count > rows_vis) {
+            // Scroll indicator (uses filtered count)
+            if (idx_count > rows_vis) {
                 char sc[24];
-                snprintf(sc, sizeof(sc), "%d/%d", node_scroll + 1, node_count);
+                snprintf(sc, sizeof(sc), "%d/%d", node_scroll + 1, idx_count);
                 pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, w - 50, h - 28 - 16, sc);
+            }
+            if (idx_count == 0 && node_count > 0) {
+                pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 15, 10, list_y0 + 10,
+                              "No nodes match the active filter — press L to clear");
             }
         }
         xSemaphoreGive(node_mutex);
@@ -1611,9 +1798,16 @@ static void render_nodes(void) {
     int fy_base  = h - footer_h;
     pax_simple_rect(&fb, COL_DARK, 0, fy_base, w, footer_h);
 
-    // Line 1: controls
-    char footer_ctrl[80];
-    snprintf(footer_ctrl, sizeof(footer_ctrl), "Nodes:%d  W/S:scroll  A:advert  Q:QR code  Tab:next", node_count);
+    // Line 1: controls (with optional filter indicator)
+    char footer_ctrl[96];
+    if (node_filter == MESHCORE_DEVICE_ROLE_UNKNOWN) {
+        snprintf(footer_ctrl, sizeof(footer_ctrl),
+                 "Nodes:%d  W/S:scroll  A:advert  L:filter  Q:QR  Tab:next", node_count);
+    } else {
+        snprintf(footer_ctrl, sizeof(footer_ctrl),
+                 "Nodes:%d  filter:%s  L:next  A:advert  Tab:next",
+                 node_count, role_label(node_filter));
+    }
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, 8, fy_base + 1, footer_ctrl);
 
     // Line 2: advert age
@@ -2013,6 +2207,21 @@ static void handle_key(char c) {
         }
     } else if ((c == 'a' || c == 'A') && current_view == VIEW_NODES) {
         send_advert();
+    } else if ((c == 'l' || c == 'L') && current_view == VIEW_NODES) {
+        // Cycle filter: ALL → Chat → Repeater → Room Server → Sensor → ALL
+        static const meshcore_device_role_t cycle[] = {
+            MESHCORE_DEVICE_ROLE_UNKNOWN,
+            MESHCORE_DEVICE_ROLE_CHAT_NODE,
+            MESHCORE_DEVICE_ROLE_REPEATER,
+            MESHCORE_DEVICE_ROLE_ROOM_SERVER,
+            MESHCORE_DEVICE_ROLE_SENSOR,
+        };
+        const int n = (int)(sizeof(cycle) / sizeof(cycle[0]));
+        int idx = 0;
+        for (int i = 0; i < n; i++) if (cycle[i] == node_filter) { idx = i; break; }
+        node_filter = cycle[(idx + 1) % n];
+        node_scroll = 0;
+        node_cursor = 0;
     } else if ((c == 'q' || c == 'Q') && current_view == VIEW_NODES && identity_ready) {
         qr_overlay_active = true;
     } else if (c == '<' || c == ',') {
@@ -2141,6 +2350,12 @@ void app_main(void) {
     pax_draw_text(&fb, COL_WHITE, pax_font_sky_mono, 18, 10, 10, "MeshCore v4");
     blit();
     vTaskDelay(pdMS_TO_TICKS(1500));
+
+    // CET/CEST with EU DST: last Sun Mar 02:00 -> CEST(+2), last Sun Oct 03:00 -> CET(+1)
+    // Must be set before settimeofday/localtime_r so all paths show local time.
+    // Epoch in NVS stays UTC; tzset handles the local conversion.
+    setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);
+    tzset();
 
     DIAG(COL_GRAY, "wifi_connection_init_stack...");
     res = wifi_connection_init_stack();
