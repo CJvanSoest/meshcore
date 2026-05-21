@@ -124,7 +124,21 @@ typedef struct {
 static node_entry_t      node_list[MAX_NODES];
 static int               node_count  = 0;
 static int               node_scroll = 0;
-static int               node_cursor = 0;   // index in sorted list
+static int               node_cursor = 0;   // index in sorted list (contacts + live)
+
+// ── Contacts (favorites) ──────────────────────────────────────────────────────
+#define MAX_CONTACTS      16
+#define CONTACT_ALIAS_LEN 24
+
+typedef struct __attribute__((packed)) {
+    uint8_t pub_key[MESHCORE_PUB_KEY_SIZE];  // 32
+    char    alias[CONTACT_ALIAS_LEN];         // 24, NUL-padded
+    uint8_t role;                              // meshcore_device_role_t (1)
+    uint8_t flags;                             // reserved (1)
+} contact_t;
+
+static contact_t contacts[MAX_CONTACTS];
+static int       contact_count = 0;
 
 // DM target (set when user selects a node in Nodes tab)
 static bool              dm_target_set  = false;
@@ -320,6 +334,125 @@ static void save_owner_name(void) {
     nvs_commit(handle);
     nvs_close(handle);
     ESP_LOGI(TAG, "Owner name saved: %s", owner_name);
+}
+
+// ── Contacts NVS ──────────────────────────────────────────────────────────────
+#define NVS_CONTACTS_BLOB "mc.contacts"
+
+static void load_contacts(void) {
+    contact_count = 0;
+    memset(contacts, 0, sizeof(contacts));
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
+    size_t blob_sz = sizeof(contacts);
+    if (nvs_get_blob(handle, NVS_CONTACTS_BLOB, contacts, &blob_sz) == ESP_OK) {
+        int n = (int)(blob_sz / sizeof(contact_t));
+        if (n > MAX_CONTACTS) n = MAX_CONTACTS;
+        contact_count = n;
+        ESP_LOGI(TAG, "Loaded %d contact(s) from NVS", contact_count);
+    }
+    nvs_close(handle);
+}
+
+static void save_contacts(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) {
+        ESP_LOGE(TAG, "NVS open for contacts write failed");
+        return;
+    }
+    if (contact_count == 0) {
+        nvs_erase_key(handle, NVS_CONTACTS_BLOB);
+    } else {
+        nvs_set_blob(handle, NVS_CONTACTS_BLOB, contacts,
+                     (size_t)contact_count * sizeof(contact_t));
+    }
+    nvs_commit(handle);
+    nvs_close(handle);
+    ESP_LOGI(TAG, "Saved %d contact(s) to NVS", contact_count);
+}
+
+static int contact_find(const uint8_t *pub) {
+    for (int i = 0; i < contact_count; i++) {
+        if (memcmp(contacts[i].pub_key, pub, MESHCORE_PUB_KEY_SIZE) == 0) return i;
+    }
+    return -1;
+}
+
+// Combined display row for Nodes tab: contacts on top (possibly offline),
+// then live nodes that aren't already in contacts.
+typedef struct {
+    bool is_contact;     // true: contact entry (may also be live via node_idx)
+    int  contact_idx;    // index into contacts[]; -1 if live-only
+    int  node_idx;       // index into node_list[]; -1 if offline contact
+} display_row_t;
+
+// Builds the combined view. Caller must hold node_mutex.
+static int build_node_display(display_row_t *rows, int max_rows) {
+    int n = 0;
+
+    // 1) Contacts first, filtered by node_filter on the stored role
+    for (int ci = 0; ci < contact_count && n < max_rows; ci++) {
+        if (node_filter != MESHCORE_DEVICE_ROLE_UNKNOWN &&
+            (meshcore_device_role_t)contacts[ci].role != node_filter) continue;
+        int ni = -1;
+        for (int j = 0; j < MAX_NODES; j++) {
+            if (node_list[j].active &&
+                memcmp(node_list[j].pub_key, contacts[ci].pub_key, MESHCORE_PUB_KEY_SIZE) == 0) {
+                ni = j; break;
+            }
+        }
+        rows[n].is_contact  = true;
+        rows[n].contact_idx = ci;
+        rows[n].node_idx    = ni;
+        n++;
+    }
+
+    // 2) Live nodes (not in contacts), filtered by role, sorted by last_seen desc
+    int live[MAX_NODES];
+    int live_count = 0;
+    for (int i = 0; i < MAX_NODES; i++) {
+        if (!node_list[i].active) continue;
+        if (node_filter != MESHCORE_DEVICE_ROLE_UNKNOWN &&
+            node_list[i].role != node_filter) continue;
+        if (contact_find(node_list[i].pub_key) >= 0) continue;
+        live[live_count++] = i;
+    }
+    for (int i = 1; i < live_count; i++) {
+        int k = live[i], j = i - 1;
+        while (j >= 0 && node_list[live[j]].last_seen_ms < node_list[k].last_seen_ms) {
+            live[j + 1] = live[j]; j--;
+        }
+        live[j + 1] = k;
+    }
+    for (int i = 0; i < live_count && n < max_rows; i++) {
+        rows[n].is_contact  = false;
+        rows[n].contact_idx = -1;
+        rows[n].node_idx    = live[i];
+        n++;
+    }
+    return n;
+}
+
+// Add (uses node name as alias) or remove. Returns +1 added, 0 removed, -1 full.
+static int contact_toggle(const uint8_t *pub, const char *name, uint8_t role) {
+    int idx = contact_find(pub);
+    if (idx >= 0) {
+        // Remove: shift down
+        for (int i = idx; i < contact_count - 1; i++) contacts[i] = contacts[i + 1];
+        contact_count--;
+        memset(&contacts[contact_count], 0, sizeof(contact_t));
+        save_contacts();
+        return 0;
+    }
+    if (contact_count >= MAX_CONTACTS) return -1;
+    contact_t *c = &contacts[contact_count++];
+    memcpy(c->pub_key, pub, MESHCORE_PUB_KEY_SIZE);
+    strncpy(c->alias, name ? name : "", CONTACT_ALIAS_LEN - 1);
+    c->alias[CONTACT_ALIAS_LEN - 1] = '\0';
+    c->role  = role;
+    c->flags = 0;
+    save_contacts();
+    return 1;
 }
 
 static void load_lora_from_nvs(void) {
@@ -1690,33 +1823,18 @@ static void render_nodes(void) {
     if (!lora_rx_ok) {
         pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 16, 10, list_y0 + 10, "LoRa radio not available");
     } else if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        if (node_count == 0) {
+        if (node_count == 0 && contact_count == 0) {
             pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 15, 10, list_y0 + 10, "Listening... no nodes heard yet.");
         } else {
-            // Build sorted view (by last_seen descending), apply role filter
-            int indices[MAX_NODES];
-            int idx_count = 0;
-            for (int i = 0; i < MAX_NODES; i++) {
-                if (!node_list[i].active) continue;
-                if (node_filter != MESHCORE_DEVICE_ROLE_UNKNOWN &&
-                    node_list[i].role != node_filter) continue;
-                indices[idx_count++] = i;
-            }
-            // Clamp scroll based on filtered count
+            // Build combined display: contacts (possibly offline) + live nodes
+            display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
+            int idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
+
+            // Clamp scroll
             int max_scroll = idx_count - rows_vis;
             if (max_scroll < 0) max_scroll = 0;
             if (node_scroll > max_scroll) node_scroll = max_scroll;
             if (node_scroll < 0)         node_scroll = 0;
-            // Simple insertion sort by last_seen_ms descending
-            for (int i = 1; i < idx_count; i++) {
-                int key = indices[i];
-                int j   = i - 1;
-                while (j >= 0 && node_list[indices[j]].last_seen_ms < node_list[key].last_seen_ms) {
-                    indices[j + 1] = indices[j];
-                    j--;
-                }
-                indices[j + 1] = key;
-            }
 
             // Clamp cursor
             if (node_cursor >= idx_count) node_cursor = idx_count > 0 ? idx_count - 1 : 0;
@@ -1728,69 +1846,78 @@ static void render_nodes(void) {
             for (int row = 0; row < rows_vis; row++) {
                 int list_idx = row + node_scroll;
                 if (list_idx >= idx_count) break;
-                node_entry_t* n = &node_list[indices[list_idx]];
+                display_row_t *d = &rows_dl[list_idx];
+                node_entry_t  *n = (d->node_idx >= 0) ? &node_list[d->node_idx] : NULL;
 
                 int y = list_y0 + row * NODES_ROW_H;
                 bool is_cursor = (list_idx == node_cursor);
 
-                // Row background: cursor = accent-dark, alternating for others
+                // Row background
                 if (is_cursor)         pax_simple_rect(&fb, 0xFF003366, 0, y, w, NODES_ROW_H);
                 else if (row % 2 == 0) pax_simple_rect(&fb, 0xFF111111, 0, y, w, NODES_ROW_H);
 
-                // Fixed column positions (must match header)
                 int age_x  = w - age_col_w  - 4;
                 int dist_x = age_x - dist_col_w;
                 int pkts_x = dist_x - pkts_col_w;
 
-                // Last seen
-                uint32_t age_s = (now_ms - n->last_seen_ms) / 1000;
+                // Last seen / offline
                 char age_buf[20];
-                if (age_s < 60)        snprintf(age_buf, sizeof(age_buf), "%lus", (unsigned long)age_s);
-                else if (age_s < 3600) snprintf(age_buf, sizeof(age_buf), "%lum", (unsigned long)(age_s / 60));
-                else                   snprintf(age_buf, sizeof(age_buf), "%luh", (unsigned long)(age_s / 3600));
+                if (n) {
+                    uint32_t age_s = (now_ms - n->last_seen_ms) / 1000;
+                    if (age_s < 60)        snprintf(age_buf, sizeof(age_buf), "%lus", (unsigned long)age_s);
+                    else if (age_s < 3600) snprintf(age_buf, sizeof(age_buf), "%lum", (unsigned long)(age_s / 60));
+                    else                   snprintf(age_buf, sizeof(age_buf), "%luh", (unsigned long)(age_s / 3600));
+                } else {
+                    snprintf(age_buf, sizeof(age_buf), "--");
+                }
                 pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, age_x, y + 6, age_buf);
 
-                // Distance column
-                char dist_buf[12] = "--";
-                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, dist_x, y + 6, dist_buf);
+                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, dist_x, y + 6, "--");
 
-                // Packet count
                 char pkts_buf[8];
-                snprintf(pkts_buf, sizeof(pkts_buf), "#%d", n->packet_count);
+                if (n) snprintf(pkts_buf, sizeof(pkts_buf), "#%d", n->packet_count);
+                else   snprintf(pkts_buf, sizeof(pkts_buf), "--");
                 pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, pkts_x, y + 6, pkts_buf);
 
-                // Role badge
-                const char* rl = role_label(n->role);
-                pax_col_t role_col = (n->role == MESHCORE_DEVICE_ROLE_REPEATER)   ? COL_ACCENT :
-                                     (n->role == MESHCORE_DEVICE_ROLE_ROOM_SERVER) ? 0xFFAA44FF :
-                                     (n->role == MESHCORE_DEVICE_ROLE_SENSOR)      ? COL_YELLOW :
-                                                                                     COL_GREEN;
+                // Role + name source
+                meshcore_device_role_t role = n ? n->role : (meshcore_device_role_t)contacts[d->contact_idx].role;
+                const char *src_name = n ? n->name : contacts[d->contact_idx].alias;
+
+                const char* rl = role_label(role);
+                pax_col_t role_col = (role == MESHCORE_DEVICE_ROLE_REPEATER)    ? COL_ACCENT :
+                                     (role == MESHCORE_DEVICE_ROLE_ROOM_SERVER) ? 0xFFAA44FF :
+                                     (role == MESHCORE_DEVICE_ROLE_SENSOR)      ? COL_YELLOW :
+                                                                                  COL_GREEN;
                 pax_draw_text(&fb, role_col, pax_font_sky_mono, 12, 4, y + 6, rl);
 
-                // Node name (truncated to fit between role and dist columns)
+                // Star prefix for contacts
+                int name_x = 68;
+                if (d->is_contact) {
+                    pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 13, 56, y + 5, "*");
+                }
+
+                // Name (truncated)
                 char name_trunc[17];
-                int  max_name_w = pkts_x - 72;  // pixels available for name
-                // Truncate name to fit: ~8px per char at size 13
-                int max_chars = max_name_w / 8;
+                int  max_name_w = pkts_x - name_x - 4;
+                int  max_chars  = max_name_w / 8;
                 if (max_chars > 16) max_chars = 16;
                 if (max_chars < 1)  max_chars = 1;
-                snprintf(name_trunc, sizeof(name_trunc), "%.*s", max_chars, n->name);
-                pax_col_t name_col = is_cursor ? COL_WHITE : 0xFFCCCCCC;
-                pax_draw_text(&fb, name_col, pax_font_sky_mono, 13, 68, y + 5, name_trunc);
+                snprintf(name_trunc, sizeof(name_trunc), "%.*s", max_chars, src_name);
+                pax_col_t name_col = is_cursor ? COL_WHITE :
+                                     (n == NULL ? 0xFF888888 : 0xFFCCCCCC); // dim offline contacts
+                pax_draw_text(&fb, name_col, pax_font_sky_mono, 13, name_x, y + 5, name_trunc);
 
-                // Row separator
                 pax_simple_rect(&fb, COL_DARK, 0, y + NODES_ROW_H - 1, w, 1);
             }
 
-            // Scroll indicator (uses filtered count)
             if (idx_count > rows_vis) {
                 char sc[24];
                 snprintf(sc, sizeof(sc), "%d/%d", node_scroll + 1, idx_count);
                 pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, w - 50, h - 28 - 16, sc);
             }
-            if (idx_count == 0 && node_count > 0) {
+            if (idx_count == 0 && (node_count > 0 || contact_count > 0)) {
                 pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 15, 10, list_y0 + 10,
-                              "No nodes match the active filter — press L to clear");
+                              "No entries match the active filter — press L to clear");
             }
         }
         xSemaphoreGive(node_mutex);
@@ -1802,14 +1929,15 @@ static void render_nodes(void) {
     pax_simple_rect(&fb, COL_DARK, 0, fy_base, w, footer_h);
 
     // Line 1: controls (with optional filter indicator)
-    char footer_ctrl[96];
+    char footer_ctrl[112];
     if (node_filter == MESHCORE_DEVICE_ROLE_UNKNOWN) {
         snprintf(footer_ctrl, sizeof(footer_ctrl),
-                 "Nodes:%d  W/S:scroll  A:advert  L:filter  Q:QR  Tab:next", node_count);
+                 "N:%d C:%d  W/S A:adv F:fav L:filt Q:QR Tab",
+                 node_count, contact_count);
     } else {
         snprintf(footer_ctrl, sizeof(footer_ctrl),
-                 "Nodes:%d  filter:%s  L:next  A:advert  Tab:next",
-                 node_count, role_label(node_filter));
+                 "N:%d C:%d  filter:%s  L:next F:fav A:adv",
+                 node_count, contact_count, role_label(node_filter));
     }
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, 8, fy_base + 1, footer_ctrl);
 
@@ -2050,7 +2178,9 @@ static void handle_nav(uint32_t key) {
             if (!edit_mode) selected = (selected + 1) % FIELD_COUNT;
             else if (selected != FIELD_OWNER) field_adjust(selected, -1);
         } else if (current_view == VIEW_NODES) {
-            if (node_cursor < node_count - 1) node_cursor++;
+            int upper = node_count + contact_count - 1;
+            if (upper < 0) upper = 0;
+            if (node_cursor < upper) node_cursor++;
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_LEFT) {
         if (current_view == VIEW_SETTINGS && edit_mode && selected != FIELD_OWNER) field_adjust(selected, -1);
@@ -2074,24 +2204,25 @@ static void handle_nav(uint32_t key) {
             }
             chat_typing = false;
         } else if (current_view == VIEW_NODES) {
-            // Select node under cursor → set DM target, open Chat tab
+            // Select node/contact under cursor → set DM target, open Chat tab
             if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-                int indices[MAX_NODES];
-                int idx_count = 0;
-                for (int i = 0; i < MAX_NODES; i++)
-                    if (node_list[i].active) indices[idx_count++] = i;
-                for (int i = 1; i < idx_count; i++) {
-                    int key2 = indices[i], j = i - 1;
-                    while (j >= 0 && node_list[indices[j]].last_seen_ms < node_list[key2].last_seen_ms)
-                        { indices[j + 1] = indices[j]; j--; }
-                    indices[j + 1] = key2;
-                }
+                display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
+                int idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
                 if (node_cursor < idx_count) {
-                    node_entry_t* n = &node_list[indices[node_cursor]];
-                    dm_target_set = true;
-                    memcpy(dm_target_pub, n->pub_key, MESHCORE_PUB_KEY_SIZE);
-                    strncpy(dm_target_name, n->name, sizeof(dm_target_name) - 1);
-                    dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+                    display_row_t *d = &rows_dl[node_cursor];
+                    if (d->node_idx >= 0) {
+                        node_entry_t *n = &node_list[d->node_idx];
+                        dm_target_set = true;
+                        memcpy(dm_target_pub, n->pub_key, MESHCORE_PUB_KEY_SIZE);
+                        strncpy(dm_target_name, n->name, sizeof(dm_target_name) - 1);
+                        dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+                    } else if (d->is_contact) {
+                        contact_t *c = &contacts[d->contact_idx];
+                        dm_target_set = true;
+                        memcpy(dm_target_pub, c->pub_key, MESHCORE_PUB_KEY_SIZE);
+                        strncpy(dm_target_name, c->alias, sizeof(dm_target_name) - 1);
+                        dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+                    }
                 }
                 xSemaphoreGive(node_mutex);
             }
@@ -2206,10 +2337,29 @@ static void handle_key(char c) {
             if (!edit_mode) selected = (selected + 1) % FIELD_COUNT;
             else if (selected != FIELD_OWNER) field_adjust(selected, -1);
         } else if (current_view == VIEW_NODES) {
-            if (node_cursor < node_count - 1) node_cursor++;
+            int upper = node_count + contact_count - 1;
+            if (upper < 0) upper = 0;
+            if (node_cursor < upper) node_cursor++;
         }
     } else if ((c == 'a' || c == 'A') && current_view == VIEW_NODES) {
         send_advert();
+    } else if ((c == 'f' || c == 'F') && current_view == VIEW_NODES) {
+        // Toggle contact status of the row under the cursor
+        if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
+            int idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
+            if (node_cursor < idx_count) {
+                display_row_t *d = &rows_dl[node_cursor];
+                if (d->is_contact) {
+                    contact_toggle(contacts[d->contact_idx].pub_key, NULL, 0);
+                } else if (d->node_idx >= 0) {
+                    node_entry_t *n = &node_list[d->node_idx];
+                    int r = contact_toggle(n->pub_key, n->name, (uint8_t)n->role);
+                    if (r < 0) ESP_LOGW(TAG, "Contacts list is full (%d/%d)", contact_count, MAX_CONTACTS);
+                }
+            }
+            xSemaphoreGive(node_mutex);
+        }
     } else if ((c == 'l' || c == 'L') && current_view == VIEW_NODES) {
         // Cycle filter: ALL → Chat → Repeater → Room Server → Sensor → ALL
         static const meshcore_device_role_t cycle[] = {
@@ -2233,24 +2383,25 @@ static void handle_key(char c) {
         if (current_view == VIEW_SETTINGS && edit_mode && selected != FIELD_OWNER) field_adjust(selected, +1);
     } else if (c == '\r' || c == '\n') {
         if (current_view == VIEW_NODES) {
-            // Select node under cursor → open DM in Chat tab
+            // Select node/contact under cursor → open DM in Chat tab
             if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-                int indices[MAX_NODES];
-                int idx_count = 0;
-                for (int i = 0; i < MAX_NODES; i++)
-                    if (node_list[i].active) indices[idx_count++] = i;
-                for (int i = 1; i < idx_count; i++) {
-                    int key = indices[i], j = i - 1;
-                    while (j >= 0 && node_list[indices[j]].last_seen_ms < node_list[key].last_seen_ms)
-                        { indices[j + 1] = indices[j]; j--; }
-                    indices[j + 1] = key;
-                }
+                display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
+                int idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
                 if (node_cursor < idx_count) {
-                    node_entry_t* n = &node_list[indices[node_cursor]];
-                    dm_target_set = true;
-                    memcpy(dm_target_pub, n->pub_key, MESHCORE_PUB_KEY_SIZE);
-                    strncpy(dm_target_name, n->name, sizeof(dm_target_name) - 1);
-                    dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+                    display_row_t *d = &rows_dl[node_cursor];
+                    if (d->node_idx >= 0) {
+                        node_entry_t *n = &node_list[d->node_idx];
+                        dm_target_set = true;
+                        memcpy(dm_target_pub, n->pub_key, MESHCORE_PUB_KEY_SIZE);
+                        strncpy(dm_target_name, n->name, sizeof(dm_target_name) - 1);
+                        dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+                    } else if (d->is_contact) {
+                        contact_t *c2 = &contacts[d->contact_idx];
+                        dm_target_set = true;
+                        memcpy(dm_target_pub, c2->pub_key, MESHCORE_PUB_KEY_SIZE);
+                        strncpy(dm_target_name, c2->alias, sizeof(dm_target_name) - 1);
+                        dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+                    }
                 }
                 xSemaphoreGive(node_mutex);
             }
@@ -2392,6 +2543,7 @@ void app_main(void) {
     }
 
     load_owner_name();
+    load_contacts();
 
     DIAG(COL_GRAY, "lora_init(16)...");
     res = lora_init(16);
