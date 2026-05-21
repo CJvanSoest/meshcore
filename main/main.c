@@ -1517,6 +1517,9 @@ static void render_settings(void) {
     } else if (!c6_available) {
         pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 14, 8, fy + 4,
                       "NVS only - C6 unavailable  U: flash radio");
+    } else if (selected == FIELD_OWNER) {
+        pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 13, 8, fy + 4,
+                      "Owner name: edit not yet supported (read-only, set via launcher)");
     } else if (selected == FIELD_SYNC) {
         pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 8, fy + 4,
                       "Sync word: 0x12=public LoRa. Isolates networks.");
