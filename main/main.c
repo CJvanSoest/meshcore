@@ -119,6 +119,16 @@ static int               rx_count   = 0;
 static SemaphoreHandle_t rx_mutex   = NULL;
 static bool              lora_rx_ok = false;
 
+// ── LoRa RF statistics (laatste RX + noise floor) ─────────────────────────────
+static volatile int8_t   last_rx_rssi_dbm        = 0;   // 0 = no data
+static volatile int8_t   last_rx_snr_db_x4       = 0;   // SNR in 1/4 dB units
+static volatile int8_t   last_rx_signal_rssi_dbm = 0;
+static volatile uint32_t last_rx_stats_ms        = 0;
+static volatile bool     last_rx_stats_valid     = false;
+static volatile int8_t   noise_floor_dbm         = 0;   // 0 = no data
+static volatile bool     noise_floor_valid       = false;
+static volatile bool     noise_floor_supported   = true; // false na NACK van oude C6
+
 // ── Node list ─────────────────────────────────────────────────────────────────
 #define MAX_NODES 20
 
@@ -132,6 +142,9 @@ typedef struct {
     bool                   position_valid;
     int32_t                lat;   // degrees × 1e7
     int32_t                lon;
+    bool                   stats_valid;
+    int8_t                 last_rssi_dbm;
+    int8_t                 last_snr_db_x4;
 } node_entry_t;
 
 static node_entry_t      node_list[MAX_NODES];
@@ -468,11 +481,12 @@ static int contact_toggle(const uint8_t *pub, const char *name, uint8_t role) {
     return 1;
 }
 
-// ── SD-card DM history (encrypted, append-only) ───────────────────────────────
-#define SD_MOUNT_POINT      "/sd"
-#define HISTORY_DIR         "/sd/meshcore"
-#define HISTORY_LOG_PATH    "/sd/meshcore/chat.bin"
-#define HISTORY_REC_MAGIC   "MCR1"
+// ── SD-card encrypted history (DM + channel, append-only) ────────────────────
+#define SD_MOUNT_POINT       "/sd"
+#define HISTORY_DIR          "/sd/meshcore"
+#define HISTORY_LOG_PATH     "/sd/meshcore/chat.bin"
+#define CH_HISTORY_LOG_PATH  "/sd/meshcore/channel.bin"
+#define HISTORY_REC_MAGIC    "MCR1"
 
 static bool              history_ready = false;
 static const char       *history_status = "off";   // "off"|"ok"|"no-sd"|"err"
@@ -538,9 +552,9 @@ static void history_init(void) {
     history_status = "ok";
 }
 
-// Append a single chat line to disk, AES-CBC encrypted.
+// Generic append: schrijft één AES-CBC encrypted record naar `path`.
 // Safe to call before history_ready (becomes a no-op).
-static void history_append(const char *text, bool is_mine) {
+static void history_append_impl(const char *path, const char *text, bool is_mine) {
     if (!history_ready || text == NULL) return;
     int N = (int)strnlen(text, MAX_MSG_TEXT);
     if (N <= 0) return;
@@ -555,7 +569,6 @@ static void history_append(const char *text, bool is_mine) {
     hdr.ts_unix   = (uint32_t)time(NULL);
     esp_fill_random(hdr.iv, 16);
 
-    // PKCS7 pad to next 16-byte boundary (always at least 1 pad byte)
     int padded = ((N + 16) / 16) * 16;
     uint8_t pt[MAX_MSG_TEXT + 32];
     memcpy(pt, text, N);
@@ -571,23 +584,25 @@ static void history_append(const char *text, bool is_mine) {
     mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, padded, iv_copy, pt, ct);
     mbedtls_aes_free(&aes);
 
-    FILE *f = fopen(HISTORY_LOG_PATH, "ab");
+    FILE *f = fopen(path, "ab");
     if (f) {
         fwrite(&hdr, sizeof(hdr), 1, f);
         fwrite(ct,    padded,     1, f);
         fclose(f);
     } else {
-        ESP_LOGW(TAG, "history_append: fopen failed");
+        ESP_LOGW(TAG, "history_append: fopen(%s) failed", path);
     }
     xSemaphoreGive(history_mutex);
 }
 
-// Load records on boot into the chat ring. Ring keeps the latest MAX_CHAT_MSGS.
-static void history_load(void) {
+// Callback receives decrypted text + flags; called from history_load_impl onder history_mutex.
+typedef void (*history_ring_add_fn)(const char *text, bool is_mine);
+
+static void history_load_impl(const char *path, history_ring_add_fn add) {
     if (!history_ready) return;
     if (xSemaphoreTake(history_mutex, pdMS_TO_TICKS(500)) != pdTRUE) return;
 
-    FILE *f = fopen(HISTORY_LOG_PATH, "rb");
+    FILE *f = fopen(path, "rb");
     if (!f) { xSemaphoreGive(history_mutex); return; }
 
     int loaded = 0;
@@ -595,11 +610,11 @@ static void history_load(void) {
         history_rec_hdr_t hdr;
         if (fread(&hdr, sizeof(hdr), 1, f) != 1) break;
         if (memcmp(hdr.magic, HISTORY_REC_MAGIC, 4) != 0) {
-            ESP_LOGW(TAG, "history: bad magic at rec %d — stop", loaded);
+            ESP_LOGW(TAG, "history(%s): bad magic at rec %d — stop", path, loaded);
             break;
         }
         if (hdr.plain_len == 0 || hdr.plain_len > MAX_MSG_TEXT) {
-            ESP_LOGW(TAG, "history: bad len %u at rec %d — stop", hdr.plain_len, loaded);
+            ESP_LOGW(TAG, "history(%s): bad len %u at rec %d — stop", path, hdr.plain_len, loaded);
             break;
         }
         int padded = ((hdr.plain_len + 16) / 16) * 16;
@@ -615,7 +630,7 @@ static void history_load(void) {
 
         uint8_t pad = pt[padded - 1];
         if (pad == 0 || pad > 16 || (padded - pad) != hdr.plain_len) {
-            ESP_LOGW(TAG, "history: decrypt mismatch at rec %d — stop", loaded);
+            ESP_LOGW(TAG, "history(%s): decrypt mismatch at rec %d — stop", path, loaded);
             break;
         }
         int N = hdr.plain_len;
@@ -625,23 +640,52 @@ static void history_load(void) {
         memcpy(text, pt, copy);
         text[copy] = '\0';
 
-        if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            chat_msg_t *m = &chat_msgs[chat_head];
-            m->active       = true;
-            m->is_mine      = (hdr.flags & 0x01) != 0;
-            m->timestamp_ms = 0;
-            utf8_sanitize(m->text, MAX_MSG_TEXT, text);
-            chat_head = (chat_head + 1) % MAX_CHAT_MSGS;
-            if (chat_count < MAX_CHAT_MSGS) chat_count++;
-            chat_scroll = chat_count;
-            xSemaphoreGive(chat_mutex);
-        }
+        add(text, (hdr.flags & 0x01) != 0);
         loaded++;
     }
     fclose(f);
 
-    ESP_LOGI(TAG, "history_load: %d record(s) restored", loaded);
+    ESP_LOGI(TAG, "history_load(%s): %d record(s) restored", path, loaded);
     xSemaphoreGive(history_mutex);
+}
+
+static void chat_ring_add_from_disk(const char *text, bool is_mine) {
+    if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+    chat_msg_t *m   = &chat_msgs[chat_head];
+    m->active       = true;
+    m->is_mine      = is_mine;
+    m->timestamp_ms = 0;
+    utf8_sanitize(m->text, MAX_MSG_TEXT, text);
+    chat_head = (chat_head + 1) % MAX_CHAT_MSGS;
+    if (chat_count < MAX_CHAT_MSGS) chat_count++;
+    chat_scroll = chat_count;
+    xSemaphoreGive(chat_mutex);
+}
+
+static void ch_ring_add_from_disk(const char *text, bool is_mine) {
+    if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+    chat_msg_t *m   = &ch_msgs[ch_head];
+    m->active       = true;
+    m->is_mine      = is_mine;
+    m->timestamp_ms = 0;
+    utf8_sanitize(m->text, MAX_MSG_TEXT, text);
+    ch_head = (ch_head + 1) % MAX_CHAT_MSGS;
+    if (ch_count < MAX_CHAT_MSGS) ch_count++;
+    ch_scroll = ch_count;
+    xSemaphoreGive(ch_mutex);
+}
+
+static void history_append(const char *text, bool is_mine) {
+    history_append_impl(HISTORY_LOG_PATH, text, is_mine);
+}
+static void history_append_channel(const char *text, bool is_mine) {
+    history_append_impl(CH_HISTORY_LOG_PATH, text, is_mine);
+}
+static void history_load(void) {
+    history_load_impl(HISTORY_LOG_PATH, chat_ring_add_from_disk);
+}
+static void history_load_channel(void) {
+    history_load_impl(CH_HISTORY_LOG_PATH, ch_ring_add_from_disk);
 }
 
 static void load_lora_from_nvs(void) {
@@ -952,7 +996,7 @@ static float __attribute__((unused)) calc_dist_km(int32_t lat1_e7, int32_t lon1_
     return (float)(sqrt(x * x + dlat * dlat) * 6371.0);
 }
 
-static void update_node(const meshcore_advert_t* advert, uint32_t now_ms) {
+static void update_node(const meshcore_advert_t* advert, uint32_t now_ms, const lora_packet_stats_t* stats) {
     if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
 
     // Find existing node by pub_key
@@ -1005,6 +1049,14 @@ static void update_node(const meshcore_advert_t* advert, uint32_t now_ms) {
                      advert->pub_key[2], advert->pub_key[3]);
         }
 
+        if (stats != NULL && stats->valid) {
+            int rssi_dbm = -(int)stats->rssi_pkt_raw / 2;
+            if (rssi_dbm < -127) rssi_dbm = -127;
+            n->last_rssi_dbm  = (int8_t)rssi_dbm;
+            n->last_snr_db_x4 = stats->snr_pkt_raw;
+            n->stats_valid    = true;
+        }
+
         // Recalculate node_count
         node_count = 0;
         for (int i = 0; i < MAX_NODES; i++) {
@@ -1051,6 +1103,8 @@ static void ch_add_message(const char* text, bool is_mine) {
     if (ch_count < MAX_CHAT_MSGS) ch_count++;
     ch_scroll = ch_count;
     xSemaphoreGive(ch_mutex);
+
+    history_append_channel(m->text, is_mine);
 }
 
 static void update_notification_led(void) {
@@ -1270,6 +1324,26 @@ static bool rx_is_duplicate(const uint8_t *payload, uint16_t payload_len) {
     return false;
 }
 
+// ── Noise floor poll task ─────────────────────────────────────────────────────
+static void noise_floor_task(void *arg) {
+    ESP_LOGI(TAG, "Noise floor task started");
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(60000));  // 60s — 5s veroorzaakte RX-decode-fail (zie diagnose 2026-05-23)
+        if (!noise_floor_supported) continue;
+        uint8_t   raw = 0;
+        esp_err_t r   = lora_get_rssi_inst(&raw);
+        if (r == ESP_OK) {
+            int dbm = -(int)raw / 2;
+            if (dbm < -127) dbm = -127;
+            noise_floor_dbm   = (int8_t)dbm;
+            noise_floor_valid = true;
+        } else if (r == ESP_ERR_NOT_SUPPORTED) {
+            ESP_LOGW(TAG, "C6 firmware lacks RSSI_INST type — disabling noise floor poll");
+            noise_floor_supported = false;
+        }
+    }
+}
+
 // ── LoRa RX task ─────────────────────────────────────────────────────────────
 static void lora_rx_task(void *arg) {
     ESP_LOGI(TAG, "LoRa RX task started");
@@ -1279,12 +1353,27 @@ static void lora_rx_task(void *arg) {
         if (res == ESP_OK && pkt.length > 0) {
             uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
-            ESP_LOGI(TAG, "RX %d bytes: %02X %02X %02X %02X",
+            if (pkt.stats.valid) {
+                int rssi_dbm        = -(int)pkt.stats.rssi_pkt_raw / 2;
+                int signal_rssi_dbm = -(int)pkt.stats.signal_rssi_pkt_raw / 2;
+                if (rssi_dbm < -127)        rssi_dbm = -127;
+                if (signal_rssi_dbm < -127) signal_rssi_dbm = -127;
+                last_rx_rssi_dbm        = (int8_t)rssi_dbm;
+                last_rx_snr_db_x4       = pkt.stats.snr_pkt_raw;
+                last_rx_signal_rssi_dbm = (int8_t)signal_rssi_dbm;
+                last_rx_stats_ms        = now_ms;
+                last_rx_stats_valid     = true;
+            }
+
+            ESP_LOGI(TAG, "RX %d bytes: %02X %02X %02X %02X (stats: %s rssi=%d snr=%d/4)",
                      pkt.length,
                      pkt.length > 0 ? pkt.data[0] : 0,
                      pkt.length > 1 ? pkt.data[1] : 0,
                      pkt.length > 2 ? pkt.data[2] : 0,
-                     pkt.length > 3 ? pkt.data[3] : 0);
+                     pkt.length > 3 ? pkt.data[3] : 0,
+                     pkt.stats.valid ? "y" : "n",
+                     pkt.stats.valid ? -(int)pkt.stats.rssi_pkt_raw / 2 : 0,
+                     pkt.stats.valid ? (int)pkt.stats.snr_pkt_raw : 0);
 
             // Store raw packet
             if (xSemaphoreTake(rx_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
@@ -1305,7 +1394,7 @@ static void lora_rx_task(void *arg) {
                 if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_ADVERT) {
                     meshcore_advert_t advert;
                     if (meshcore_advert_deserialize(mc_msg.payload, mc_msg.payload_length, &advert) >= 0) {
-                        update_node(&advert, now_ms);
+                        update_node(&advert, now_ms, pkt.stats.valid ? &pkt.stats : NULL);
                     }
                 } else if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_GRP_TXT) {
                     meshcore_grp_txt_t grp = {0};
@@ -1861,7 +1950,7 @@ static void render_settings(void) {
                       "Role: advertised only. Does NOT enable repeater behavior.");
     } else {
         pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 8, fy + 4,
-                      "W/S: navigate  Enter: edit  R: reload  Tab: next");
+                      "W/S: navigate  Enter: edit  R: reload  Tab: next  U: flash radio");
     }
     if (dirty) {
         pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 14, w - 110, fy + 4, "* unsaved");
@@ -1885,6 +1974,26 @@ static void render_settings(void) {
         } else {
             pax_draw_text(&fb, COL_RED, pax_font_sky_mono, 13, 8, fy + 24,
                           "time: no sync — msg timestamps incorrect");
+        }
+    }
+
+    // RF stats (right-aligned op time row)
+    {
+        char rf[64];
+        int  snr_dB = (int)last_rx_snr_db_x4 / 4;  // 1/4 dB units → dB
+        if (last_rx_stats_valid && noise_floor_valid) {
+            snprintf(rf, sizeof(rf), "RX:%d SNR:%+d N:%d",
+                     (int)last_rx_rssi_dbm, snr_dB, (int)noise_floor_dbm);
+        } else if (last_rx_stats_valid) {
+            snprintf(rf, sizeof(rf), "RX:%d SNR:%+d", (int)last_rx_rssi_dbm, snr_dB);
+        } else if (noise_floor_valid) {
+            snprintf(rf, sizeof(rf), "noise:%d", (int)noise_floor_dbm);
+        } else {
+            rf[0] = '\0';
+        }
+        if (rf[0]) {
+            pax_vec2f rsz = pax_text_size(pax_font_sky_mono, 13, rf);
+            pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, w - (int)rsz.x - 8, fy + 24, rf);
         }
     }
 
@@ -1993,15 +2102,20 @@ static void render_nodes(void) {
     pax_simple_rect(&fb, 0xFF1A1A1A, 0, hdr_y, w, NODES_HEADER_H);
     pax_simple_rect(&fb, COL_DARK,   0, hdr_y + NODES_HEADER_H - 1, w, 1);
     // Right-side widths (mirrored from row render)
-    // age_x = w - age_sz.x - 6  (variable) → use fixed col widths for header
-    int age_col_w  = 52;   // "999h"
-    int dist_col_w = 52;   // "999km"
-    int pkts_col_w = 38;   // "#999"
+    int age_col_w  = 44;   // "999h"
+    int dist_col_w = 44;   // "999km" (placeholder; per-node distance not yet computed)
+    int pkts_col_w = 34;   // "#999"
+    int snr_col_w  = 36;   // "+15"
+    int rssi_col_w = 48;   // "-127"
     int age_hdr_x  = w - age_col_w - 4;
     int dist_hdr_x = age_hdr_x - dist_col_w;
     int pkts_hdr_x = dist_hdr_x - pkts_col_w;
+    int snr_hdr_x  = pkts_hdr_x - snr_col_w;
+    int rssi_hdr_x = snr_hdr_x - rssi_col_w;
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11,  4,          hdr_y + 5, "Role");
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, 68,          hdr_y + 5, "Name");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, rssi_hdr_x, hdr_y + 5, "RSSI");
+    pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, snr_hdr_x,  hdr_y + 5, "SNR");
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, pkts_hdr_x, hdr_y + 5, "#Pkt");
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, dist_hdr_x, hdr_y + 5, "Dist");
     pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 11, age_hdr_x,  hdr_y + 5, "Seen");
@@ -2050,6 +2164,8 @@ static void render_nodes(void) {
                 int age_x  = w - age_col_w  - 4;
                 int dist_x = age_x - dist_col_w;
                 int pkts_x = dist_x - pkts_col_w;
+                int snr_x  = pkts_x - snr_col_w;
+                int rssi_x = snr_x - rssi_col_w;
 
                 // Last seen / offline
                 char age_buf[20];
@@ -2070,6 +2186,27 @@ static void render_nodes(void) {
                 else   snprintf(pkts_buf, sizeof(pkts_buf), "--");
                 pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 12, pkts_x, y + 6, pkts_buf);
 
+                // RSSI/SNR kolommen
+                char rssi_buf[8], snr_buf[8];
+                pax_col_t rssi_col, snr_col;
+                if (n && n->stats_valid) {
+                    int rssi_dbm = (int)n->last_rssi_dbm;
+                    int snr_dB   = (int)n->last_snr_db_x4 / 4;
+                    snprintf(rssi_buf, sizeof(rssi_buf), "%d", rssi_dbm);
+                    snprintf(snr_buf,  sizeof(snr_buf),  "%+d", snr_dB);
+                    rssi_col = (rssi_dbm >= -80)  ? COL_GREEN :
+                               (rssi_dbm >= -105) ? COL_YELLOW : COL_RED;
+                    snr_col  = (snr_dB  >=  0)    ? COL_GREEN :
+                               (snr_dB  >= -10)   ? COL_YELLOW : COL_RED;
+                } else {
+                    snprintf(rssi_buf, sizeof(rssi_buf), "--");
+                    snprintf(snr_buf,  sizeof(snr_buf),  "--");
+                    rssi_col = COL_GRAY;
+                    snr_col  = COL_GRAY;
+                }
+                pax_draw_text(&fb, rssi_col, pax_font_sky_mono, 12, rssi_x, y + 6, rssi_buf);
+                pax_draw_text(&fb, snr_col,  pax_font_sky_mono, 12, snr_x,  y + 6, snr_buf);
+
                 // Role + name source
                 meshcore_device_role_t role = n ? n->role : (meshcore_device_role_t)contacts[d->contact_idx].role;
                 const char *src_name = n ? n->name : contacts[d->contact_idx].alias;
@@ -2089,7 +2226,7 @@ static void render_nodes(void) {
 
                 // Name (truncated)
                 char name_trunc[17];
-                int  max_name_w = pkts_x - name_x - 4;
+                int  max_name_w = rssi_x - name_x - 4;
                 int  max_chars  = max_name_w / 8;
                 if (max_chars > 16) max_chars = 16;
                 if (max_chars < 1)  max_chars = 1;
@@ -2160,9 +2297,17 @@ static void render_chat(void) {
     int rows_vis = list_h / CHAT_ROW_H;
 
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        if (!dm_target_set) {
+            pax_draw_text(&fb, COL_YELLOW, pax_font_sky_mono, 14, 10, CHAT_Y0 + 10,
+                          "Geen DM-target. Ga naar Nodes-tab en druk Enter op een contact.");
+            pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 10, CHAT_Y0 + 32,
+                          chat_count > 0 ? "(history van vorige DM hieronder)" : "");
+        }
         if (chat_count == 0) {
-            pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 10, CHAT_Y0 + 10,
-                          "No messages yet. T to type.");
+            if (dm_target_set) {
+                pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 14, 10, CHAT_Y0 + 10,
+                              "No messages yet. T to type.");
+            }
         } else {
             // Clamp scroll: 0 = top, chat_count = bottom (newest visible)
             int max_scroll = chat_count;
@@ -2307,7 +2452,7 @@ static void render_channel(void) {
                       "Enter: send  ESC: cancel  Backspace: delete");
     else
         pax_draw_text(&fb, COL_GRAY, pax_font_sky_mono, 13, 8, footer_y + 4,
-                      "T: type  W/S: scroll  Tab: next  ESC: exit");
+                      "T: type  W/S: scroll  R: clear history  Tab: next  ESC: exit");
     blit();
 }
 
@@ -2351,6 +2496,8 @@ static void handle_nav(uint32_t key) {
             dirty     = false;
             load_owner_name();
             load_lora_config();
+        } else if (chat_typing) {
+            // ESC tijdens typing wordt door handle_key gecancelled; hier niet doorstoten naar launcher
         } else if (current_view == VIEW_CHAT && dm_target_set) {
             dm_target_set = false;
         } else {
@@ -2387,8 +2534,8 @@ static void handle_nav(uint32_t key) {
                     send_dm_message(chat_input, dm_target_pub);
                     chat_add_message(chat_input, true);
                 } else {
-                    send_chat_message(chat_input);
-                    chat_add_message(chat_input, true);
+                    // No DM target: do NOT fall back to channel (was a hidden trap).
+                    chat_add_message("(geen DM-target — kies een node in Nodes-tab)", false);
                 }
                 chat_input_len = 0;
                 chat_input[0]  = '\0';
@@ -2613,9 +2760,22 @@ static void handle_key(char c) {
             load_lora_config();
             dirty     = false;
             edit_mode = false;
+        } else if (current_view == VIEW_CHANNEL && !chat_typing) {
+            // Wipe channel history (RAM ring + on-disk file)
+            if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                memset(ch_msgs, 0, sizeof(ch_msgs));
+                ch_head    = 0;
+                ch_count   = 0;
+                ch_scroll  = 0;
+                xSemaphoreGive(ch_mutex);
+            }
+            if (history_ready && xSemaphoreTake(history_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+                remove(CH_HISTORY_LOG_PATH);
+                xSemaphoreGive(history_mutex);
+            }
+            ESP_LOGI(TAG, "Channel history cleared by user (R)");
         }
-        // R on any view forces an immediate re-render (already happens via changed=true)
-    } else if ((c == 'u' || c == 'U') && !c6_available && !edit_mode && current_view == VIEW_SETTINGS) {
+    } else if ((c == 'u' || c == 'U') && !edit_mode && current_view == VIEW_SETTINGS) {
         enter_radio_bootloader();
     }
 }
@@ -2739,7 +2899,7 @@ void app_main(void) {
     DIAG(COL_GRAY, "SD mount...");
     history_init();
     DIAG(history_ready ? COL_GREEN : COL_YELLOW, "  SD: %s", history_status);
-    if (history_ready) history_load();
+    if (history_ready) { history_load(); history_load_channel(); }
 
     DIAG(COL_GRAY, "lora_init(16)...");
     res = lora_init(16);
@@ -2773,8 +2933,9 @@ void app_main(void) {
             if (mode_res == ESP_OK) {
                 lora_rx_ok = true;
                 DIAG(COL_GREEN, "  RX mode OK - starting tasks");
-                xTaskCreate(lora_rx_task, "lora_rx",    10240, NULL, 5, NULL);
-                xTaskCreate(advert_task,  "lora_advert", 6144, NULL, 4, NULL);
+                xTaskCreate(lora_rx_task,     "lora_rx",     10240, NULL, 5, NULL);
+                xTaskCreate(advert_task,      "lora_advert",  6144, NULL, 4, NULL);
+                xTaskCreate(noise_floor_task, "noise_poll",   3072, NULL, 3, NULL);  // 60s interval
             } else {
                 DIAG(COL_YELLOW, "  RX mode failed (%d)", mode_res);
             }

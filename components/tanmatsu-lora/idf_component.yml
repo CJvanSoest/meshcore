@@ -1,0 +1,17 @@
+dependencies:
+  badgeteam/badge-bsp:
+    version: '>=0.8.0'
+  idf: '>=5.5'
+  nicolaielectronics/esp-hosted-tanmatsu:
+    rules:
+    - if: target == esp32p4
+    version: '>=2.12.3'
+description: Tanmatsu LoRa component
+issues: https://github.com/nicolai-electronics/esp32-component-tanmatsu-lora/issues
+license: MIT
+repository: git://github.com/Nicolai-Electronics/esp32-component-tanmatsu-lora.git
+repository_info:
+  commit_sha: 42959bd4bfa051573a50e9cfb91e5bcf710ca902
+  path: .
+url: https://github.com/nicolai-electronics/esp32-component-tanmatsu-lora
+version: 0.1.1
