@@ -64,6 +64,7 @@
 
 #include "app_config.h"
 #include "history.h"
+#include "settings_nvs.h"
 
 static char const TAG[] = "main";
 
@@ -124,7 +125,7 @@ static rx_entry_t        rx_buf[RX_BUF_SIZE];
 static int               rx_head    = 0;
 static int               rx_count   = 0;
 static SemaphoreHandle_t rx_mutex   = NULL;
-static bool              lora_rx_ok = false;
+       bool              lora_rx_ok = false;  // shared with settings_nvs.c
 
 // ── LoRa RF statistics (laatste RX + noise floor) ─────────────────────────────
 static volatile int8_t   last_rx_rssi_dbm        = 0;   // 0 = no data
@@ -137,84 +138,23 @@ static volatile bool     noise_floor_valid       = false;
 static volatile bool     noise_floor_supported   = true; // false na NACK van oude C6
 
 // ── Node list ─────────────────────────────────────────────────────────────────
-#define MAX_NODES 20
-
-typedef struct {
-    bool                   active;
-    uint8_t                pub_key[MESHCORE_PUB_KEY_SIZE];
-    char                   name[MESHCORE_MAX_NAME_SIZE + 1];
-    meshcore_device_role_t role;
-    uint32_t               last_seen_ms;
-    uint16_t               packet_count;
-    bool                   position_valid;
-    int32_t                lat;   // degrees × 1e7
-    int32_t                lon;
-    bool                   stats_valid;
-    int8_t                 last_rssi_dbm;
-    int8_t                 last_snr_db_x4;
-} node_entry_t;
-
-static node_entry_t      node_list[MAX_NODES];
-static int               node_count  = 0;
-static int               node_scroll = 0;
-static int               node_cursor = 0;   // index in sorted list (contacts + live)
+// Storage + update_node + build_node_display + role_label live in nodes.c/h.
+#include "nodes.h"
 
 // ── Contacts (favorites) ──────────────────────────────────────────────────────
 // State + NVS persistence live in contacts.c/h.
 #include "contacts.h"
 
-// DM target (set when user selects a node in Nodes tab)
-static bool              dm_target_set  = false;
-static uint8_t           dm_target_pub[MESHCORE_PUB_KEY_SIZE] = {0};
-static char              dm_target_name[MESHCORE_MAX_NAME_SIZE + 1] = {0};
-static SemaphoreHandle_t node_mutex  = NULL;
-
 // ── Chat ──────────────────────────────────────────────────────────────────────
-// MAX_CHAT_MSGS and MAX_MSG_TEXT come from app_config.h (shared with history).
-#define MAX_INPUT_LEN  120
+// chat_msg_t, ring buffers, DM target, public-channel key, notification LED,
+// ch_*/chat_* helpers all live in chat.c/h.
+#include "chat.h"
+
 #define TAB_BAR_H      44
 #define FOOTER_H       28
 #define CHAT_ROW_H     44
 #define CHAT_Y0        (TAB_BAR_H + 4)
 #define CHAT_INPUT_H   36
-
-// Default MeshCore public channel key
-static const uint8_t PUBLIC_CHANNEL_KEY[16] = {
-    0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a,
-    0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72
-};
-static uint8_t channel_hash = 0;
-
-typedef struct {
-    bool    active;
-    bool    is_mine;
-    char    text[MAX_MSG_TEXT];
-    uint32_t timestamp_ms;
-} chat_msg_t;
-
-// DM message buffer
-static chat_msg_t        chat_msgs[MAX_CHAT_MSGS];
-static int               chat_head   = 0;
-static int               chat_count  = 0;
-static int               chat_scroll = 0;
-static SemaphoreHandle_t chat_mutex  = NULL;
-
-// Channel (GRP_TXT) message buffer
-static chat_msg_t        ch_msgs[MAX_CHAT_MSGS];
-static int               ch_head     = 0;
-static int               ch_count    = 0;
-static int               ch_scroll   = 0;
-static SemaphoreHandle_t ch_mutex    = NULL;
-
-static char chat_input[MAX_INPUT_LEN + 1] = {0};
-static int  chat_input_len                = 0;
-static bool chat_typing                   = false;
-
-// DM tab inbox-view state (backlog #18 — Light variant: single shared chat ring,
-// inbox just lets user pick which contact to switch the dm_target to).
-static bool dm_inbox_mode    = true;  // true = list of contacts; false = chat history
-static int  dm_inbox_cursor  = 0;
-static int  dm_inbox_scroll  = 0;
 
 // ── Settings: field identifiers ───────────────────────────────────────────────
 typedef enum {
@@ -235,51 +175,10 @@ typedef enum {
     FIELD_COUNT,
 } field_t;
 
-// BW options for SX1262 (kHz)
-static const uint16_t BW_OPTIONS[] = {7, 10, 15, 20, 31, 41, 62, 125, 250, 500};
-static const int      BW_COUNT     = (int)(sizeof(BW_OPTIONS) / sizeof(BW_OPTIONS[0]));
-
-// NVS keys — same namespace/keys as launcher so settings are shared
-#define NVS_LORA_FREQ  "lora.freq"
-#define NVS_LAST_TIME  "last_time_s"  // int64: last known Unix timestamp from SNTP
-#define NVS_LORA_SF    "lora.sf"
-#define NVS_LORA_BW    "lora.bandwidth"
-#define NVS_LORA_CR    "lora.codingrate"
-#define NVS_LORA_POWER "lora.power"
-#define NVS_LORA_ADVERT_INT "lora.advint_s"  // u16: advert interval in seconds
-#define NVS_LORA_ROLE       "lora.role"      // u8: meshcore_device_role_t
-#define NVS_LORA_PATHHASH   "lora.pathhash"  // u8: 1/2/3 bytes per path-hop
-#define NVS_LORA_REGION     "lora.region"    // str: lowercase region scope (e.g. "nl")
-
-// Launcher defaults (used when NVS is empty)
-#define LORA_DEF_FREQ     869618000u
-#define LORA_DEF_SF       8
-#define LORA_DEF_BW       62
-#define LORA_DEF_CR       8
-#define LORA_DEF_POWER    22
-#define LORA_DEF_SYNC     0x12
-#define LORA_DEF_PREAMBLE 16
-#define LORA_DEF_RAMP     40
-#define LORA_DEF_ADVERT_INT 300  // 5 min — reduces TX duty cycle vs old 30s
-#define LORA_DEF_ROLE     1      // MESHCORE_DEVICE_ROLE_CHAT_NODE
-// Default 1 byte for now — 2-byte RX is still buggy (#21). Bump to 2 once #21 is fixed.
-#define LORA_DEF_PATHHASH 1
-
-// LoRa profile presets (SF/BW/CR triplets)
-typedef struct {
-    const char *name;
-    uint8_t     sf;
-    uint16_t    bw;
-    uint8_t     cr;
-} lora_preset_t;
-
-static const lora_preset_t LORA_PRESETS[] = {
-    {"LR Slow",  11,  31, 8},
-    {"LR Std",   10,  62, 6},
-    {"MeshCore",  8,  62, 6},
-    {"SR Fast",   7, 250, 5},
-};
-static const int LORA_PRESET_COUNT = (int)(sizeof(LORA_PRESETS) / sizeof(LORA_PRESETS[0]));
+// LoRa defaults, BW choices, presets, NVS load/save, owner_name / advert_name /
+// region_scope / lora_cfg / advert_interval_s / lora_role / path_hash_size all
+// live in settings_nvs.c/h.
+#define NVS_LAST_TIME  "last_time_s"  // int64 SNTP timestamp (also defined in identity.c)
 
 // ── Node identity ─────────────────────────────────────────────────────────────
 // node_pub_key, node_prv_key + ready/sntp-sync flags live in identity.c/h.
@@ -287,59 +186,24 @@ static const int LORA_PRESET_COUNT = (int)(sizeof(LORA_PRESETS) / sizeof(LORA_PR
 static uint32_t last_advert_ms    = 0;
 static bool     qr_overlay_active = false;
 
-// ── Notification LED state ────────────────────────────────────────────────────
-static bool led_dm_pending      = false;
-static bool led_channel_pending = false;
+// led_dm_pending / led_channel_pending + update_notification_led live in chat.c.
 
 // ── App state ─────────────────────────────────────────────────────────────────
 static int                           selected              = 0;
 static bool                          edit_mode             = false;
 static bool                          dirty                 = false;
 static bool                          lora_ready            = false;
-static bool                          c6_available          = false;
+       bool                          c6_available          = false;
 static bool                          radio_bootloader_mode = false;
 static bool                          time_from_nvs         = false;
-static char                          owner_name[33]        = {0};
-static char                          lora_advert_name[33]  = {0};  // overrides owner_name in advert if set
 // Shared text-edit scratch for FIELD_OWNER / FIELD_ADV_NAME.
 static char                          field_edit_buf[33]    = {0};
 static int                           field_edit_len        = 0;
 static bool                          field_editing_text    = false;
-static lora_protocol_config_params_t lora_cfg              = {0};
-static uint16_t                      advert_interval_s     = LORA_DEF_ADVERT_INT;
-static meshcore_device_role_t        lora_role             = MESHCORE_DEVICE_ROLE_CHAT_NODE;
-static uint8_t                       path_hash_size        = LORA_DEF_PATHHASH;  // 1/2/3 bytes per path-hop
-static char                          region_scope[33]      = {0};                // lowercase, e.g. "nl"
 static int                           settings_scroll       = 0;
-// node_filter == UNKNOWN means "show all roles"
-static meshcore_device_role_t        node_filter           = MESHCORE_DEVICE_ROLE_UNKNOWN;
+// node_filter lives in nodes.c/h.
 
-// Replace UTF-8 multi-byte sequences (e.g. emoji) with '?' so the ASCII-only
-// font renders something visible instead of garbled bytes. Continuation bytes
-// are silently skipped — the lead byte emits one placeholder per sequence.
-static void utf8_sanitize(char *dst, size_t dst_sz, const char *src) {
-    size_t di = 0;
-    for (size_t si = 0; src[si] && di + 1 < dst_sz; si++) {
-        unsigned char c = (unsigned char)src[si];
-        if (c < 0x80) {
-            dst[di++] = (char)c;
-        } else if ((c & 0xC0) == 0xC0) {
-            dst[di++] = '?';
-        }
-    }
-    dst[di] = '\0';
-}
-
-static int lora_preset_match(void) {
-    for (int i = 0; i < LORA_PRESET_COUNT; i++) {
-        if (LORA_PRESETS[i].sf == lora_cfg.spreading_factor &&
-            LORA_PRESETS[i].bw == (uint16_t)lora_cfg.bandwidth &&
-            LORA_PRESETS[i].cr == lora_cfg.coding_rate) {
-            return i;
-        }
-    }
-    return -1;
-}
+// utf8_sanitize lives in chat.c (only its callers need it).
 
 // ── Display helpers ───────────────────────────────────────────────────────────
 static void blit(void) {
@@ -349,266 +213,11 @@ static void blit(void) {
     }
 }
 
-// ── NVS ──────────────────────────────────────────────────────────────────────
-static void load_owner_name(void) {
-    nvs_handle_t handle;
-    esp_err_t res = nvs_open("system", NVS_READONLY, &handle);
-    if (res != ESP_OK) {
-        snprintf(owner_name, sizeof(owner_name), "(no NVS)");
-        return;
-    }
-    size_t len = sizeof(owner_name) - 1;
-    res = nvs_get_str(handle, "owner.nickname", owner_name, &len);
-    if (res != ESP_OK) {
-        snprintf(owner_name, sizeof(owner_name), "(not set)");
-    }
-    nvs_close(handle);
-}
+// Owner/advert/region/lora-config load/save live in settings_nvs.c.
+// build_node_display lives in nodes.c.
 
-static void save_owner_name(void) {
-    nvs_handle_t handle;
-    esp_err_t res = nvs_open("system", NVS_READWRITE, &handle);
-    if (res != ESP_OK) {
-        ESP_LOGE(TAG, "NVS open for write failed: %d", res);
-        return;
-    }
-    nvs_set_str(handle, "owner.nickname", owner_name);
-    nvs_commit(handle);
-    nvs_close(handle);
-    ESP_LOGI(TAG, "Owner name saved: %s", owner_name);
-}
-
-static void load_lora_advert_name(void) {
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
-    size_t len = sizeof(lora_advert_name) - 1;
-    if (nvs_get_str(handle, "lora.advname", lora_advert_name, &len) != ESP_OK) {
-        lora_advert_name[0] = '\0';
-    }
-    nvs_close(handle);
-}
-
-static void save_lora_advert_name(void) {
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) {
-        ESP_LOGE(TAG, "NVS open for write failed (lora.advname)");
-        return;
-    }
-    // Empty string = "use owner_name as fallback" → remove the key.
-    if (lora_advert_name[0] == '\0') {
-        nvs_erase_key(handle, "lora.advname");
-    } else {
-        nvs_set_str(handle, "lora.advname", lora_advert_name);
-    }
-    nvs_commit(handle);
-    nvs_close(handle);
-    ESP_LOGI(TAG, "LoRa advert name saved: %s",
-             lora_advert_name[0] ? lora_advert_name : "(cleared)");
-}
-
-static void load_region_scope(void) {
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) {
-        region_scope[0] = '\0';
-        return;
-    }
-    size_t len = sizeof(region_scope) - 1;
-    if (nvs_get_str(handle, NVS_LORA_REGION, region_scope, &len) != ESP_OK) {
-        region_scope[0] = '\0';
-    }
-    nvs_close(handle);
-}
-
-static void save_region_scope(void) {
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
-    if (region_scope[0] == '\0') {
-        nvs_erase_key(handle, NVS_LORA_REGION);
-    } else {
-        nvs_set_str(handle, NVS_LORA_REGION, region_scope);
-    }
-    nvs_commit(handle);
-    nvs_close(handle);
-    ESP_LOGI(TAG, "Region scope saved: %s",
-             region_scope[0] ? region_scope : "(cleared)");
-}
-
-// Combined display row for Nodes tab: contacts on top (possibly offline),
-// then live nodes that aren't already in contacts.
-typedef struct {
-    bool is_contact;     // true: contact entry (may also be live via node_idx)
-    int  contact_idx;    // index into contacts[]; -1 if live-only
-    int  node_idx;       // index into node_list[]; -1 if offline contact
-} display_row_t;
-
-// Builds the combined view. Caller must hold node_mutex.
-static int build_node_display(display_row_t *rows, int max_rows) {
-    int n = 0;
-
-    // 1) Contacts first, filtered by node_filter on the stored role
-    for (int ci = 0; ci < contact_count && n < max_rows; ci++) {
-        if (node_filter != MESHCORE_DEVICE_ROLE_UNKNOWN &&
-            (meshcore_device_role_t)contacts[ci].role != node_filter) continue;
-        int ni = -1;
-        for (int j = 0; j < MAX_NODES; j++) {
-            if (node_list[j].active &&
-                memcmp(node_list[j].pub_key, contacts[ci].pub_key, MESHCORE_PUB_KEY_SIZE) == 0) {
-                ni = j; break;
-            }
-        }
-        rows[n].is_contact  = true;
-        rows[n].contact_idx = ci;
-        rows[n].node_idx    = ni;
-        n++;
-    }
-
-    // 2) Live nodes (not in contacts), filtered by role, sorted by last_seen desc
-    int live[MAX_NODES];
-    int live_count = 0;
-    for (int i = 0; i < MAX_NODES; i++) {
-        if (!node_list[i].active) continue;
-        if (node_filter != MESHCORE_DEVICE_ROLE_UNKNOWN &&
-            node_list[i].role != node_filter) continue;
-        if (contact_find(node_list[i].pub_key) >= 0) continue;
-        live[live_count++] = i;
-    }
-    for (int i = 1; i < live_count; i++) {
-        int k = live[i], j = i - 1;
-        while (j >= 0 && node_list[live[j]].last_seen_ms < node_list[k].last_seen_ms) {
-            live[j + 1] = live[j]; j--;
-        }
-        live[j + 1] = k;
-    }
-    for (int i = 0; i < live_count && n < max_rows; i++) {
-        rows[n].is_contact  = false;
-        rows[n].contact_idx = -1;
-        rows[n].node_idx    = live[i];
-        n++;
-    }
-    return n;
-}
-
-// ── SD-card encrypted history glue ───────────────────────────────────────────
-// Storage lives in history.c/h. The two ring-add callbacks below are passed to
-// history_load_* on boot / DM switch — they own chat-ring mutation, which is
-// why they stay here rather than in history.c.
-static void chat_ring_add_from_disk(const char *text, bool is_mine) {
-    if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
-    chat_msg_t *m   = &chat_msgs[chat_head];
-    m->active       = true;
-    m->is_mine      = is_mine;
-    m->timestamp_ms = 0;
-    utf8_sanitize(m->text, MAX_MSG_TEXT, text);
-    chat_head = (chat_head + 1) % MAX_CHAT_MSGS;
-    if (chat_count < MAX_CHAT_MSGS) chat_count++;
-    chat_scroll = chat_count;
-    xSemaphoreGive(chat_mutex);
-}
-
-static void ch_ring_add_from_disk(const char *text, bool is_mine) {
-    if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
-    chat_msg_t *m   = &ch_msgs[ch_head];
-    m->active       = true;
-    m->is_mine      = is_mine;
-    m->timestamp_ms = 0;
-    utf8_sanitize(m->text, MAX_MSG_TEXT, text);
-    ch_head = (ch_head + 1) % MAX_CHAT_MSGS;
-    if (ch_count < MAX_CHAT_MSGS) ch_count++;
-    ch_scroll = ch_count;
-    xSemaphoreGive(ch_mutex);
-}
-
-static void load_lora_from_nvs(void) {
-    lora_cfg.frequency                  = LORA_DEF_FREQ;
-    lora_cfg.spreading_factor           = LORA_DEF_SF;
-    lora_cfg.bandwidth                  = LORA_DEF_BW;
-    lora_cfg.coding_rate                = LORA_DEF_CR;
-    lora_cfg.power                      = LORA_DEF_POWER;
-    lora_cfg.sync_word                  = LORA_DEF_SYNC;
-    lora_cfg.preamble_length            = LORA_DEF_PREAMBLE;
-    lora_cfg.ramp_time                  = LORA_DEF_RAMP;
-    lora_cfg.crc_enabled                = true;
-    lora_cfg.invert_iq                  = false;
-    lora_cfg.low_data_rate_optimization = false;
-
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
-    uint32_t freq = 0;
-    uint8_t  sf = 0, cr = 0, power = 0;
-    uint16_t bw = 0;
-    if (nvs_get_u32(handle, NVS_LORA_FREQ,  &freq)  == ESP_OK && freq  != 0) lora_cfg.frequency        = freq;
-    if (nvs_get_u8 (handle, NVS_LORA_SF,    &sf)    == ESP_OK && sf    != 0) lora_cfg.spreading_factor = sf;
-    if (nvs_get_u16(handle, NVS_LORA_BW,    &bw)    == ESP_OK && bw    != 0) lora_cfg.bandwidth        = bw;
-    if (nvs_get_u8 (handle, NVS_LORA_CR,    &cr)    == ESP_OK && cr    != 0) lora_cfg.coding_rate      = cr;
-    if (nvs_get_u8 (handle, NVS_LORA_POWER, &power) == ESP_OK)               lora_cfg.power            = power;
-    uint16_t advint = 0;
-    if (nvs_get_u16(handle, NVS_LORA_ADVERT_INT, &advint) == ESP_OK && advint != 0) advert_interval_s = advint;
-    uint8_t role = 0;
-    if (nvs_get_u8(handle, NVS_LORA_ROLE, &role) == ESP_OK && role <= MESHCORE_DEVICE_ROLE_SENSOR) {
-        lora_role = (meshcore_device_role_t)role;
-    }
-    uint8_t phs = 0;
-    if (nvs_get_u8(handle, NVS_LORA_PATHHASH, &phs) == ESP_OK && phs >= 1 && phs <= 3) {
-        path_hash_size = phs;
-    }
-    nvs_close(handle);
-}
-
-static void save_lora_to_nvs(void) {
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
-    nvs_set_u32(handle, NVS_LORA_FREQ,  lora_cfg.frequency);
-    nvs_set_u8 (handle, NVS_LORA_SF,   lora_cfg.spreading_factor);
-    nvs_set_u16(handle, NVS_LORA_BW,   (uint16_t)lora_cfg.bandwidth);
-    nvs_set_u8 (handle, NVS_LORA_CR,   lora_cfg.coding_rate);
-    nvs_set_u8 (handle, NVS_LORA_POWER, lora_cfg.power);
-    nvs_set_u16(handle, NVS_LORA_ADVERT_INT, advert_interval_s);
-    nvs_set_u8 (handle, NVS_LORA_ROLE, (uint8_t)lora_role);
-    nvs_set_u8 (handle, NVS_LORA_PATHHASH, path_hash_size);
-    nvs_commit(handle);
-    nvs_close(handle);
-    ESP_LOGI(TAG, "LoRa config saved to NVS");
-}
-
-static void load_lora_config(void) {
-    load_lora_from_nvs();
-    lora_ready   = true;
-    c6_available = false;
-
-    lora_protocol_config_params_t c6_cfg = {0};
-    esp_err_t res = lora_get_config(&c6_cfg);
-    if (res == ESP_OK) {
-        c6_available = true;
-        if (c6_cfg.frequency != 0) {
-            lora_cfg = c6_cfg;
-            save_lora_to_nvs();
-            ESP_LOGI(TAG, "LoRa config from C6: freq=%luHz sf=%d", (unsigned long)lora_cfg.frequency, lora_cfg.spreading_factor);
-        } else {
-            ESP_LOGI(TAG, "C6 has empty config, pushing NVS values to C6");
-            lora_set_config(&lora_cfg);
-        }
-    } else {
-        ESP_LOGW(TAG, "C6 unavailable (err=%d) — using NVS values", res);
-    }
-}
-
-static void save_lora_config(void) {
-    save_lora_to_nvs();
-    if (c6_available) {
-        esp_err_t res = lora_set_config(&lora_cfg);
-        if (res != ESP_OK) {
-            ESP_LOGE(TAG, "lora_set_config failed: %d", res);
-        } else {
-            ESP_LOGI(TAG, "LoRa config pushed to C6");
-            // Re-enter RX mode — lora_set_config resets radio to standby
-            if (lora_rx_ok) {
-                lora_set_mode(LORA_PROTOCOL_MODE_RX);
-            }
-        }
-    }
-}
-
-static void chat_add_message(const char* text, bool is_mine);  /* forward decl */
+// LoRa NVS load/save + C6 round-trip live in settings_nvs.c.
+// chat_ring_add_from_disk / ch_ring_add_from_disk live in chat.c.
 
 static void send_advert(void) {
     if (!c6_available || !identity_is_ready()) return;
@@ -680,180 +289,10 @@ static void send_advert(void) {
 }
 
 // ── Node list helpers ─────────────────────────────────────────────────────────
-static const char* role_label(meshcore_device_role_t role) {
-    switch (role) {
-        case MESHCORE_DEVICE_ROLE_CHAT_NODE:   return "Chat";
-        case MESHCORE_DEVICE_ROLE_REPEATER:    return "Rptr";
-        case MESHCORE_DEVICE_ROLE_ROOM_SERVER: return "Room";
-        case MESHCORE_DEVICE_ROLE_SENSOR:      return "Sens";
-        default:                               return "?";
-    }
-}
+// role_label + update_node live in nodes.c.
 
-// Equirectangular distance in km between two GPS positions (lat/lon in degrees × 1e7)
-static float __attribute__((unused)) calc_dist_km(int32_t lat1_e7, int32_t lon1_e7, int32_t lat2_e7, int32_t lon2_e7) {
-    double lat1 = lat1_e7 * 1e-7 * M_PI / 180.0;
-    double lat2 = lat2_e7 * 1e-7 * M_PI / 180.0;
-    double dlat = lat2 - lat1;
-    double dlon = (lon2_e7 - lon1_e7) * 1e-7 * M_PI / 180.0;
-    double x    = dlon * cos((lat1 + lat2) * 0.5);
-    return (float)(sqrt(x * x + dlat * dlat) * 6371.0);
-}
-
-static void update_node(const meshcore_advert_t* advert, uint32_t now_ms, const lora_packet_stats_t* stats) {
-    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
-
-    // Find existing node by pub_key
-    int slot = -1;
-    for (int i = 0; i < MAX_NODES; i++) {
-        if (node_list[i].active && memcmp(node_list[i].pub_key, advert->pub_key, MESHCORE_PUB_KEY_SIZE) == 0) {
-            slot = i;
-            break;
-        }
-    }
-    // Find empty slot if new
-    if (slot < 0) {
-        for (int i = 0; i < MAX_NODES; i++) {
-            if (!node_list[i].active) { slot = i; break; }
-        }
-    }
-    // Evict oldest if full
-    if (slot < 0) {
-        uint32_t oldest_ms = UINT32_MAX;
-        for (int i = 0; i < MAX_NODES; i++) {
-            if (node_list[i].last_seen_ms < oldest_ms) {
-                oldest_ms = node_list[i].last_seen_ms;
-                slot = i;
-            }
-        }
-    }
-
-    if (slot >= 0) {
-        node_entry_t* n = &node_list[slot];
-        bool is_new = !n->active;
-        n->active       = true;
-        n->role         = advert->role;
-        n->last_seen_ms = now_ms;
-        memcpy(n->pub_key, advert->pub_key, MESHCORE_PUB_KEY_SIZE);
-        if (!is_new) n->packet_count++;
-        else         n->packet_count = 1;
-        if (advert->position_valid) {
-            n->position_valid = true;
-            n->lat = advert->position_lat;
-            n->lon = advert->position_lon;
-        }
-
-        if (advert->name_valid && advert->name[0] != '\0') {
-            strncpy(n->name, advert->name, MESHCORE_MAX_NAME_SIZE);
-            n->name[MESHCORE_MAX_NAME_SIZE] = '\0';
-        } else if (is_new) {
-            // Use first 4 bytes of pub_key as fallback ID
-            snprintf(n->name, sizeof(n->name), "%02X%02X%02X%02X",
-                     advert->pub_key[0], advert->pub_key[1],
-                     advert->pub_key[2], advert->pub_key[3]);
-        }
-
-        if (stats != NULL && stats->valid) {
-            int rssi_dbm = -(int)stats->rssi_pkt_raw / 2;
-            if (rssi_dbm < -127) rssi_dbm = -127;
-            n->last_rssi_dbm  = (int8_t)rssi_dbm;
-            n->last_snr_db_x4 = stats->snr_pkt_raw;
-            n->stats_valid    = true;
-        }
-
-        // Recalculate node_count
-        node_count = 0;
-        for (int i = 0; i < MAX_NODES; i++) {
-            if (node_list[i].active) node_count++;
-        }
-        ESP_LOGI(TAG, "Node %s (%s) seen — total %d nodes", n->name, role_label(n->role), node_count);
-    }
-
-    xSemaphoreGive(node_mutex);
-}
-
-// ── Chat helpers ──────────────────────────────────────────────────────────────
-static void chat_init(void) {
-    // Compute channel_hash = SHA256(key)[0]
-    uint8_t digest[32];
-    mbedtls_sha256(PUBLIC_CHANNEL_KEY, sizeof(PUBLIC_CHANNEL_KEY), digest, 0);
-    channel_hash = digest[0];
-    ESP_LOGI(TAG, "Channel hash: 0x%02X", channel_hash);
-}
-
-// RAM-only: for system/error messages without peer context.
-// NOT persisted (would otherwise pollute every peer's chat).
-static void chat_add_message(const char* text, bool is_mine) {
-    if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
-    chat_msg_t* m    = &chat_msgs[chat_head];
-    m->active        = true;
-    m->is_mine       = is_mine;
-    m->timestamp_ms  = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-    utf8_sanitize(m->text, MAX_MSG_TEXT, text);
-    chat_head = (chat_head + 1) % MAX_CHAT_MSGS;
-    if (chat_count < MAX_CHAT_MSGS) chat_count++;
-    chat_scroll = chat_count;
-    xSemaphoreGive(chat_mutex);
-}
-
-// DM with peer context: always persist to peer's file; only add to ring if that
-// peer is currently active (so you don't lose a DM from another peer while
-// viewing peer A's chat).
-static void chat_add_dm(const char* text, bool is_mine, const uint8_t peer_pub[32]) {
-    if (peer_pub) history_append_dm(peer_pub, text, is_mine);
-    if (dm_target_set && peer_pub &&
-        memcmp(peer_pub, dm_target_pub, MESHCORE_PUB_KEY_SIZE) == 0) {
-        chat_add_message(text, is_mine);
-    }
-}
-
-// Switch the active DM peer + reload its history from SD.
-static void dm_select_target(const uint8_t pub[32], const char *name) {
-    dm_target_set = true;
-    memcpy(dm_target_pub, pub, MESHCORE_PUB_KEY_SIZE);
-    strncpy(dm_target_name, name ? name : "", sizeof(dm_target_name) - 1);
-    dm_target_name[sizeof(dm_target_name) - 1] = '\0';
-    // Clear chat ring before loading peer's history so the prior peer's
-    // messages don't visually bleed through.
-    if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
-        memset(chat_msgs, 0, sizeof(chat_msgs));
-        chat_head   = 0;
-        chat_count  = 0;
-        chat_scroll = 0;
-        xSemaphoreGive(chat_mutex);
-    }
-    history_load_dm(pub, chat_ring_add_from_disk);
-}
-
-static void ch_add_message(const char* text, bool is_mine) {
-    if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
-    chat_msg_t* m    = &ch_msgs[ch_head];
-    m->active        = true;
-    m->is_mine       = is_mine;
-    m->timestamp_ms  = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-    utf8_sanitize(m->text, MAX_MSG_TEXT, text);
-    ch_head = (ch_head + 1) % MAX_CHAT_MSGS;
-    if (ch_count < MAX_CHAT_MSGS) ch_count++;
-    ch_scroll = ch_count;
-    xSemaphoreGive(ch_mutex);
-
-    history_append_channel(m->text, is_mine);
-}
-
-static void update_notification_led(void) {
-    tanmatsu_coprocessor_handle_t copr = NULL;
-    if (bsp_tanmatsu_coprocessor_get_handle(&copr) != ESP_OK) return;
-    if (led_dm_pending) {
-        // Green = unread DM
-        tanmatsu_coprocessor_set_message(copr, false, true, false, false, false, false, false, false);
-    } else if (led_channel_pending) {
-        // Blue = unread channel message
-        tanmatsu_coprocessor_set_message(copr, false, false, true, false, false, false, false, false);
-    } else {
-        // Off
-        tanmatsu_coprocessor_set_message(copr, false, false, false, false, false, false, false, false);
-    }
-}
+// chat_init, chat_add_message, chat_add_dm, dm_select_target, ch_add_message,
+// update_notification_led live in chat.c.
 
 static bool decrypt_grp_txt(meshcore_grp_txt_t* grp, const uint8_t* key) {
     // Verify HMAC-SHA256 (2 bytes truncated)
@@ -2932,14 +2371,9 @@ void app_main(void) {
 
     ESP_ERROR_CHECK(bsp_input_get_queue(&input_event_queue));
 
-    // Mutexes
-    rx_mutex   = xSemaphoreCreateMutex();
-    node_mutex = xSemaphoreCreateMutex();
-    chat_mutex = xSemaphoreCreateMutex();
-    ch_mutex   = xSemaphoreCreateMutex();
-    memset(node_list,  0, sizeof(node_list));
-    memset(ch_msgs,    0, sizeof(ch_msgs));
-    memset(chat_msgs,  0, sizeof(chat_msgs));
+    // Mutexes + module init
+    rx_mutex = xSemaphoreCreateMutex();
+    nodes_init();
     chat_init();
     identity_init();
 
