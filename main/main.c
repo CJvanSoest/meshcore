@@ -251,6 +251,8 @@ typedef enum {
     FIELD_ADVERT_INT,
     FIELD_PRESET,
     FIELD_ROLE,
+    FIELD_PATH_HASH_SIZE,
+    FIELD_REGION_SCOPE,
     FIELD_COUNT,
 } field_t;
 
@@ -267,6 +269,8 @@ static const int      BW_COUNT     = (int)(sizeof(BW_OPTIONS) / sizeof(BW_OPTION
 #define NVS_LORA_POWER "lora.power"
 #define NVS_LORA_ADVERT_INT "lora.advint_s"  // u16: advert interval in seconds
 #define NVS_LORA_ROLE       "lora.role"      // u8: meshcore_device_role_t
+#define NVS_LORA_PATHHASH   "lora.pathhash"  // u8: 1/2/3 bytes per path-hop
+#define NVS_LORA_REGION     "lora.region"    // str: lowercase region scope (e.g. "nl")
 
 // Launcher defaults (used when NVS is empty)
 #define LORA_DEF_FREQ     869618000u
@@ -279,6 +283,8 @@ static const int      BW_COUNT     = (int)(sizeof(BW_OPTIONS) / sizeof(BW_OPTION
 #define LORA_DEF_RAMP     40
 #define LORA_DEF_ADVERT_INT 300  // 5 min — reduces TX duty cycle vs old 30s
 #define LORA_DEF_ROLE     1      // MESHCORE_DEVICE_ROLE_CHAT_NODE
+// Default 1 byte for now — 2-byte RX is still buggy (#21). Bump to 2 once #21 is fixed.
+#define LORA_DEF_PATHHASH 1
 
 // LoRa profile presets (SF/BW/CR triplets)
 typedef struct {
@@ -325,6 +331,8 @@ static bool                          field_editing_text    = false;
 static lora_protocol_config_params_t lora_cfg              = {0};
 static uint16_t                      advert_interval_s     = LORA_DEF_ADVERT_INT;
 static meshcore_device_role_t        lora_role             = MESHCORE_DEVICE_ROLE_CHAT_NODE;
+static uint8_t                       path_hash_size        = LORA_DEF_PATHHASH;  // 1/2/3 bytes per path-hop
+static char                          region_scope[33]      = {0};                // lowercase, e.g. "nl"
 static int                           settings_scroll       = 0;
 // node_filter == UNKNOWN means "show all roles"
 static meshcore_device_role_t        node_filter           = MESHCORE_DEVICE_ROLE_UNKNOWN;
@@ -419,6 +427,55 @@ static void save_lora_advert_name(void) {
     nvs_close(handle);
     ESP_LOGI(TAG, "LoRa advert name saved: %s",
              lora_advert_name[0] ? lora_advert_name : "(cleared)");
+}
+
+static void load_path_hash_size(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) {
+        path_hash_size = LORA_DEF_PATHHASH;
+        return;
+    }
+    uint8_t v = LORA_DEF_PATHHASH;
+    if (nvs_get_u8(handle, NVS_LORA_PATHHASH, &v) != ESP_OK) v = LORA_DEF_PATHHASH;
+    if (v < 1 || v > 3) v = LORA_DEF_PATHHASH;
+    path_hash_size = v;
+    nvs_close(handle);
+}
+
+static void save_path_hash_size(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    nvs_set_u8(handle, NVS_LORA_PATHHASH, path_hash_size);
+    nvs_commit(handle);
+    nvs_close(handle);
+    ESP_LOGI(TAG, "Path hash size saved: %u byte(s)", path_hash_size);
+}
+
+static void load_region_scope(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) {
+        region_scope[0] = '\0';
+        return;
+    }
+    size_t len = sizeof(region_scope) - 1;
+    if (nvs_get_str(handle, NVS_LORA_REGION, region_scope, &len) != ESP_OK) {
+        region_scope[0] = '\0';
+    }
+    nvs_close(handle);
+}
+
+static void save_region_scope(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    if (region_scope[0] == '\0') {
+        nvs_erase_key(handle, NVS_LORA_REGION);
+    } else {
+        nvs_set_str(handle, NVS_LORA_REGION, region_scope);
+    }
+    nvs_commit(handle);
+    nvs_close(handle);
+    ESP_LOGI(TAG, "Region scope saved: %s",
+             region_scope[0] ? region_scope : "(cleared)");
 }
 
 // ── Contacts NVS ──────────────────────────────────────────────────────────────
@@ -559,7 +616,7 @@ static int contact_toggle(const uint8_t *pub, const char *name, uint8_t role) {
 #define SD_MOUNT_POINT       "/sd"
 #define HISTORY_DIR          "/sd/meshcore"
 #define HISTORY_DM_DIR       "/sd/meshcore/dm"
-#define HISTORY_LOG_PATH     "/sd/meshcore/chat.bin"      // legacy, niet meer geschreven of geladen
+#define HISTORY_LOG_PATH     "/sd/meshcore/chat.bin"      // legacy, no longer written or read
 #define CH_HISTORY_LOG_PATH  "/sd/meshcore/channel.bin"
 #define HISTORY_REC_MAGIC    "MCR1"
 
@@ -621,14 +678,14 @@ static void history_init(void) {
     ESP_LOGI(TAG, "SD mounted at %s", SD_MOUNT_POINT);
 
     mkdir(HISTORY_DIR, 0775);     // ignores EEXIST
-    mkdir(HISTORY_DM_DIR, 0775);  // per-contact DM-history dir
+    mkdir(HISTORY_DM_DIR, 0775);  // per-contact DM history dir
 
     history_derive_key();
     history_ready = true;
     history_status = "ok";
 }
 
-// Generic append: schrijft één AES-CBC encrypted record naar `path`.
+// Generic append: writes one AES-CBC encrypted record to `path`.
 // Safe to call before history_ready (becomes a no-op).
 static void history_append_impl(const char *path, const char *text, bool is_mine) {
     if (!history_ready || text == NULL) return;
@@ -671,7 +728,7 @@ static void history_append_impl(const char *path, const char *text, bool is_mine
     xSemaphoreGive(history_mutex);
 }
 
-// Callback receives decrypted text + flags; called from history_load_impl onder history_mutex.
+// Callback receives decrypted text + flags; called from history_load_impl under history_mutex.
 typedef void (*history_ring_add_fn)(const char *text, bool is_mine);
 
 static void history_load_impl(const char *path, history_ring_add_fn add) {
@@ -751,7 +808,7 @@ static void ch_ring_add_from_disk(const char *text, bool is_mine) {
     xSemaphoreGive(ch_mutex);
 }
 
-// DM-history wordt per peer geschreven via history_append_dm; geen globale chat.bin meer.
+// DM history is written per peer via history_append_dm; no more global chat.bin.
 static void history_append_channel(const char *text, bool is_mine) {
     history_append_impl(CH_HISTORY_LOG_PATH, text, is_mine);
 }
@@ -759,8 +816,8 @@ static void history_load_channel(void) {
     history_load_impl(CH_HISTORY_LOG_PATH, ch_ring_add_from_disk);
 }
 
-// Pad voor per-contact DM-history: /sd/meshcore/dm/<pubkey-hex16>.bin
-// 8 bytes pubkey-prefix als hex = 16 chars, ruim genoeg uniek voor max 16 contacts.
+// Path for per-contact DM history: /sd/meshcore/dm/<pubkey-hex16>.bin
+// 8-byte pubkey prefix as hex = 16 chars, comfortably unique for max 16 contacts.
 static void history_dm_path(const uint8_t pub[32], char *out, size_t cap) {
     snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin",
              HISTORY_DM_DIR,
@@ -774,8 +831,8 @@ static void history_append_dm(const uint8_t peer_pub[32], const char *text, bool
     history_append_impl(path, text, is_mine);
 }
 
-// Clear de DM-ring en laad de history van een specifieke peer in.
-// Aangeroepen wanneer dm_target wisselt.
+// Clear the DM ring and load a specific peer's history.
+// Called whenever dm_target changes.
 static void history_load_dm(const uint8_t peer_pub[32]) {
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
         memset(chat_msgs, 0, sizeof(chat_msgs));
@@ -819,6 +876,10 @@ static void load_lora_from_nvs(void) {
     if (nvs_get_u8(handle, NVS_LORA_ROLE, &role) == ESP_OK && role <= MESHCORE_DEVICE_ROLE_SENSOR) {
         lora_role = (meshcore_device_role_t)role;
     }
+    uint8_t phs = 0;
+    if (nvs_get_u8(handle, NVS_LORA_PATHHASH, &phs) == ESP_OK && phs >= 1 && phs <= 3) {
+        path_hash_size = phs;
+    }
     nvs_close(handle);
 }
 
@@ -832,6 +893,7 @@ static void save_lora_to_nvs(void) {
     nvs_set_u8 (handle, NVS_LORA_POWER, lora_cfg.power);
     nvs_set_u16(handle, NVS_LORA_ADVERT_INT, advert_interval_s);
     nvs_set_u8 (handle, NVS_LORA_ROLE, (uint8_t)lora_role);
+    nvs_set_u8 (handle, NVS_LORA_PATHHASH, path_hash_size);
     nvs_commit(handle);
     nvs_close(handle);
     ESP_LOGI(TAG, "LoRa config saved to NVS");
@@ -1181,8 +1243,8 @@ static void chat_init(void) {
     ESP_LOGI(TAG, "Channel hash: 0x%02X", channel_hash);
 }
 
-// RAM-only: voor system/error messages zonder peer-context.
-// Wordt NIET gepersisteerd (zou anders elke peer's chat vervuilen).
+// RAM-only: for system/error messages without peer context.
+// NOT persisted (would otherwise pollute every peer's chat).
 static void chat_add_message(const char* text, bool is_mine) {
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     chat_msg_t* m    = &chat_msgs[chat_head];
@@ -1196,9 +1258,9 @@ static void chat_add_message(const char* text, bool is_mine) {
     xSemaphoreGive(chat_mutex);
 }
 
-// DM met peer-context: persist altijd naar peer's file; alleen tonen in ring als
-// die peer momenteel actief is (zo verlies je geen DM van een andere peer terwijl
-// je de chat van peer A openhebt).
+// DM with peer context: always persist to peer's file; only add to ring if that
+// peer is currently active (so you don't lose a DM from another peer while
+// viewing peer A's chat).
 static void chat_add_dm(const char* text, bool is_mine, const uint8_t peer_pub[32]) {
     if (peer_pub) history_append_dm(peer_pub, text, is_mine);
     if (dm_target_set && peer_pub &&
@@ -1207,7 +1269,7 @@ static void chat_add_dm(const char* text, bool is_mine, const uint8_t peer_pub[3
     }
 }
 
-// Switch de actieve DM-peer + reload diens history vanaf SD.
+// Switch the active DM peer + reload its history from SD.
 static void dm_select_target(const uint8_t pub[32], const char *name) {
     dm_target_set = true;
     memcpy(dm_target_pub, pub, MESHCORE_PUB_KEY_SIZE);
@@ -1840,6 +1902,13 @@ static void field_adjust(int field, int delta) {
             lora_role = ROLES[idx];
             break;
         }
+        case FIELD_PATH_HASH_SIZE: {
+            int v = (int)path_hash_size + delta;
+            if (v < 1) v = 3;
+            if (v > 3) v = 1;
+            path_hash_size = (uint8_t)v;
+            break;
+        }
         default:
             break;
     }
@@ -2023,6 +2092,18 @@ static void render_settings(void) {
     rows[FIELD_ROLE].label = "Role";
     snprintf(rows[FIELD_ROLE].value, sizeof(rows[FIELD_ROLE].value), "%s", role_label(lora_role));
 
+    rows[FIELD_PATH_HASH_SIZE].label = "Path hash size";
+    {
+        static const char *hops[] = {"64 hops", "32 hops", "21 hops"};
+        int hi = (path_hash_size >= 1 && path_hash_size <= 3) ? (path_hash_size - 1) : 0;
+        snprintf(rows[FIELD_PATH_HASH_SIZE].value, sizeof(rows[FIELD_PATH_HASH_SIZE].value),
+                 "%u byte (%s)", path_hash_size, hops[hi]);
+    }
+
+    rows[FIELD_REGION_SCOPE].label = "Region scope";
+    snprintf(rows[FIELD_REGION_SCOPE].value, sizeof(rows[FIELD_REGION_SCOPE].value),
+             "%s", region_scope[0] ? region_scope : "(not set)");
+
     const int row_h        = 44;
     const int footer_h     = 60;
     const int y0           = TAB_BAR_H + 6;
@@ -2069,10 +2150,10 @@ static void render_settings(void) {
         }
 
         char val_disp[80];
-        if (is_sel && edit_mode && field_editing_text &&
-            (i == FIELD_OWNER || i == FIELD_ADV_NAME)) {
+        bool is_text_field = (i == FIELD_OWNER || i == FIELD_ADV_NAME || i == FIELD_REGION_SCOPE);
+        if (is_sel && edit_mode && field_editing_text && is_text_field) {
             snprintf(val_disp, sizeof(val_disp), "%s_", field_edit_buf);
-        } else if (is_sel && edit_mode && i != FIELD_OWNER && i != FIELD_ADV_NAME) {
+        } else if (is_sel && edit_mode && !is_text_field) {
             snprintf(val_disp, sizeof(val_disp), "< %s >", rows[i].value);
         } else {
             snprintf(val_disp, sizeof(val_disp), "%s", rows[i].value);
@@ -2587,7 +2668,7 @@ static void render_chat(void) {
 
     // ── Chat view: history van geselecteerde DM ───────────────────────────────
     int input_y = h - CHAT_INPUT_H - FOOTER_H;
-    int list_y0 = CHAT_Y0 + 32;        // ruimte voor header met contact-naam
+    int list_y0 = CHAT_Y0 + 32;        // room for header with contact name
     int list_h  = input_y - list_y0;
     int rows_vis = list_h / CHAT_ROW_H;
 
@@ -2767,6 +2848,7 @@ static void settings_begin_text_edit(field_t f) {
     const char *src = "";
     if (f == FIELD_OWNER && owner_name[0] && owner_name[0] != '(') src = owner_name;
     else if (f == FIELD_ADV_NAME && lora_advert_name[0])           src = lora_advert_name;
+    else if (f == FIELD_REGION_SCOPE && region_scope[0])           src = region_scope;
     strncpy(field_edit_buf, src, sizeof(field_edit_buf) - 1);
     field_edit_buf[sizeof(field_edit_buf) - 1] = '\0';
     field_edit_len     = (int)strlen(field_edit_buf);
@@ -2781,6 +2863,10 @@ static void settings_commit_text_edit(field_t f) {
         strncpy(lora_advert_name, field_edit_buf, sizeof(lora_advert_name) - 1);
         lora_advert_name[sizeof(lora_advert_name) - 1] = '\0';
         save_lora_advert_name();
+    } else if (f == FIELD_REGION_SCOPE) {
+        strncpy(region_scope, field_edit_buf, sizeof(region_scope) - 1);
+        region_scope[sizeof(region_scope) - 1] = '\0';
+        save_region_scope();
     }
     field_editing_text = false;
 }
@@ -2807,9 +2893,10 @@ static void handle_nav(uint32_t key) {
             dirty              = false;
             load_owner_name();
             load_lora_advert_name();
+            load_region_scope();
             load_lora_config();
         } else if (chat_typing) {
-            // ESC tijdens typing wordt door handle_key gecancelled; hier niet doorstoten naar launcher
+            // ESC during typing is cancelled by handle_key; don't fall through to launcher restart
         } else if (current_view == VIEW_CHAT && !dm_inbox_mode) {
             // Back to inbox instead of clearing target (keeps dm_target for return)
             dm_inbox_mode = true;
@@ -2914,14 +3001,15 @@ static void handle_nav(uint32_t key) {
             }
             if (dm_target_set) {
                 current_view   = VIEW_CHAT;
-                dm_inbox_mode  = false;  // direct in chat view bij open vanuit Nodes
+                dm_inbox_mode  = false;  // straight into chat view when opened from Nodes
                 led_dm_pending = false;
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) {
                 edit_mode = true;
-                if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME) {
+                if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME ||
+                    selected == FIELD_REGION_SCOPE) {
                     settings_begin_text_edit(selected);
                 }
             } else {
@@ -2958,6 +3046,7 @@ static void handle_key(char c) {
             dirty              = false;
             load_owner_name();
             load_lora_advert_name();
+            load_region_scope();
         } else if (c == '\r' || c == '\n') {  // Enter: save
             settings_commit_text_edit(selected);
             edit_mode = false;
@@ -2965,6 +3054,12 @@ static void handle_key(char c) {
         } else if (c == 127 || c == 8) {  // Backspace
             if (field_edit_len > 0) field_edit_buf[--field_edit_len] = '\0';
         } else if (c >= 32 && c < 127 && field_edit_len < (int)sizeof(field_edit_buf) - 1) {
+            // Region scope: force lowercase, only [a-z 0-9 -] accepted
+            if (selected == FIELD_REGION_SCOPE) {
+                if (c >= 'A' && c <= 'Z') c = c - 'A' + 'a';
+                bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
+                if (!ok) return;
+            }
             field_edit_buf[field_edit_len++] = c;
             field_edit_buf[field_edit_len]   = '\0';
         }
@@ -3060,6 +3155,7 @@ static void handle_key(char c) {
             dirty              = false;
             load_owner_name();
             load_lora_advert_name();
+            load_region_scope();
             load_lora_config();
         } else if (current_view == VIEW_CHAT && !dm_inbox_mode) {
             dm_inbox_mode = true;  // back to inbox list
@@ -3144,14 +3240,15 @@ static void handle_key(char c) {
             }
             if (dm_target_set) {
                 current_view   = VIEW_CHAT;
-                dm_inbox_mode  = false;  // direct in chat view bij open vanuit Nodes
+                dm_inbox_mode  = false;  // straight into chat view when opened from Nodes
                 led_dm_pending = false;
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) {
                 edit_mode = true;
-                if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME) {
+                if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME ||
+                    selected == FIELD_REGION_SCOPE) {
                     settings_begin_text_edit(selected);
                 }
             } else {
@@ -3165,6 +3262,7 @@ static void handle_key(char c) {
         if (current_view == VIEW_SETTINGS) {
             load_owner_name();
             load_lora_advert_name();
+            load_region_scope();
             load_lora_config();
             dirty              = false;
             edit_mode          = false;
@@ -3185,8 +3283,8 @@ static void handle_key(char c) {
             ESP_LOGI(TAG, "Channel history cleared by user (R)");
         }
     } else if ((c == 'd' || c == 'D') && current_view == VIEW_CHAT && dm_inbox_mode && !chat_typing) {
-        // Delete geselecteerde DM-conversatie: history-file + contact uit NVS.
-        // Bij volgende DM van die peer wordt contact automatisch weer toegevoegd.
+        // Delete selected DM conversation: history file + contact from NVS.
+        // Contact is re-added automatically on next DM from that peer.
         int idx_map[MAX_CONTACTS + 1];
         int idx_count = 0;
         bool active_on_top = dm_target_set;
@@ -3351,12 +3449,13 @@ void app_main(void) {
 
     load_owner_name();
     load_lora_advert_name();
+    load_region_scope();
     load_contacts();
 
     DIAG(COL_GRAY, "SD mount...");
     history_init();
     DIAG(history_ready ? COL_GREEN : COL_YELLOW, "  SD: %s", history_status);
-    // DM-history wordt per peer geladen in dm_select_target — geen boot-load meer.
+    // DM history is loaded per peer in dm_select_target — no boot-time DM load.
     if (history_ready) { history_load_channel(); }
 
     DIAG(COL_GRAY, "lora_init(16)...");
