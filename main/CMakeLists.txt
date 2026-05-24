@@ -7,6 +7,9 @@ endif()
 idf_component_register(
 	SRCS
 		"main.c"
+		"history.c"
+		"contacts.c"
+		"identity.c"
 		"ed25519.c"
 		"qrcodegen.c"
 		"meshcore/packet.c"

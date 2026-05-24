@@ -60,20 +60,10 @@
 #include "qrcodegen.h"
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 #include "esp_hosted.h"
-#include "esp_vfs_fat.h"
-#include "driver/sdmmc_host.h"
-#include "sdmmc_cmd.h"
-#include <sys/stat.h>
-
-// Tanmatsu SD-card pins (mirrors managed_components/.../tanmatsu_hardware.h,
-// which is private to the BSP target — duplicated here so we don't reach in).
-#define MC_SDCARD_CLK 43
-#define MC_SDCARD_CMD 44
-#define MC_SDCARD_D0  39
-#define MC_SDCARD_D1  40
-#define MC_SDCARD_D2  41
-#define MC_SDCARD_D3  42
 #endif
+
+#include "app_config.h"
+#include "history.h"
 
 static char const TAG[] = "main";
 
@@ -170,18 +160,8 @@ static int               node_scroll = 0;
 static int               node_cursor = 0;   // index in sorted list (contacts + live)
 
 // ── Contacts (favorites) ──────────────────────────────────────────────────────
-#define MAX_CONTACTS      16
-#define CONTACT_ALIAS_LEN 24
-
-typedef struct __attribute__((packed)) {
-    uint8_t pub_key[MESHCORE_PUB_KEY_SIZE];  // 32
-    char    alias[CONTACT_ALIAS_LEN];         // 24, NUL-padded
-    uint8_t role;                              // meshcore_device_role_t (1)
-    uint8_t flags;                             // reserved (1)
-} contact_t;
-
-static contact_t contacts[MAX_CONTACTS];
-static int       contact_count = 0;
+// State + NVS persistence live in contacts.c/h.
+#include "contacts.h"
 
 // DM target (set when user selects a node in Nodes tab)
 static bool              dm_target_set  = false;
@@ -190,8 +170,7 @@ static char              dm_target_name[MESHCORE_MAX_NAME_SIZE + 1] = {0};
 static SemaphoreHandle_t node_mutex  = NULL;
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
-#define MAX_CHAT_MSGS  50
-#define MAX_MSG_TEXT   172
+// MAX_CHAT_MSGS and MAX_MSG_TEXT come from app_config.h (shared with history).
 #define MAX_INPUT_LEN  120
 #define TAB_BAR_H      44
 #define FOOTER_H       28
@@ -303,9 +282,8 @@ static const lora_preset_t LORA_PRESETS[] = {
 static const int LORA_PRESET_COUNT = (int)(sizeof(LORA_PRESETS) / sizeof(LORA_PRESETS[0]));
 
 // ── Node identity ─────────────────────────────────────────────────────────────
-static uint8_t  node_pub_key[32]  = {0};
-static uint8_t  node_prv_key[64]  = {0};
-static bool     identity_ready    = false;
+// node_pub_key, node_prv_key + ready/sntp-sync flags live in identity.c/h.
+#include "identity.h"
 static uint32_t last_advert_ms    = 0;
 static bool     qr_overlay_active = false;
 
@@ -320,7 +298,6 @@ static bool                          dirty                 = false;
 static bool                          lora_ready            = false;
 static bool                          c6_available          = false;
 static bool                          radio_bootloader_mode = false;
-static bool                          sntp_synced           = false;
 static bool                          time_from_nvs         = false;
 static char                          owner_name[33]        = {0};
 static char                          lora_advert_name[33]  = {0};  // overrides owner_name in advert if set
@@ -456,48 +433,6 @@ static void save_region_scope(void) {
              region_scope[0] ? region_scope : "(cleared)");
 }
 
-// ── Contacts NVS ──────────────────────────────────────────────────────────────
-#define NVS_CONTACTS_BLOB "mc.contacts"
-
-static void load_contacts(void) {
-    contact_count = 0;
-    memset(contacts, 0, sizeof(contacts));
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
-    size_t blob_sz = sizeof(contacts);
-    if (nvs_get_blob(handle, NVS_CONTACTS_BLOB, contacts, &blob_sz) == ESP_OK) {
-        int n = (int)(blob_sz / sizeof(contact_t));
-        if (n > MAX_CONTACTS) n = MAX_CONTACTS;
-        contact_count = n;
-        ESP_LOGI(TAG, "Loaded %d contact(s) from NVS", contact_count);
-    }
-    nvs_close(handle);
-}
-
-static void save_contacts(void) {
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) {
-        ESP_LOGE(TAG, "NVS open for contacts write failed");
-        return;
-    }
-    if (contact_count == 0) {
-        nvs_erase_key(handle, NVS_CONTACTS_BLOB);
-    } else {
-        nvs_set_blob(handle, NVS_CONTACTS_BLOB, contacts,
-                     (size_t)contact_count * sizeof(contact_t));
-    }
-    nvs_commit(handle);
-    nvs_close(handle);
-    ESP_LOGI(TAG, "Saved %d contact(s) to NVS", contact_count);
-}
-
-static int contact_find(const uint8_t *pub) {
-    for (int i = 0; i < contact_count; i++) {
-        if (memcmp(contacts[i].pub_key, pub, MESHCORE_PUB_KEY_SIZE) == 0) return i;
-    }
-    return -1;
-}
-
 // Combined display row for Nodes tab: contacts on top (possibly offline),
 // then live nodes that aren't already in contacts.
 typedef struct {
@@ -553,213 +488,10 @@ static int build_node_display(display_row_t *rows, int max_rows) {
     return n;
 }
 
-// Idempotent add — used to persist anyone we've ever DM'd with.
-// Returns 1 if added, 0 if already known, -1 if full.
-static int contact_ensure(const uint8_t *pub, const char *name, uint8_t role) {
-    if (contact_find(pub) >= 0) return 0;
-    if (contact_count >= MAX_CONTACTS) return -1;
-    contact_t *c = &contacts[contact_count++];
-    memcpy(c->pub_key, pub, MESHCORE_PUB_KEY_SIZE);
-    strncpy(c->alias, name ? name : "", CONTACT_ALIAS_LEN - 1);
-    c->alias[CONTACT_ALIAS_LEN - 1] = '\0';
-    c->role  = role;
-    c->flags = 0;
-    save_contacts();
-    return 1;
-}
-
-// Add (uses node name as alias) or remove. Returns +1 added, 0 removed, -1 full.
-static int contact_toggle(const uint8_t *pub, const char *name, uint8_t role) {
-    int idx = contact_find(pub);
-    if (idx >= 0) {
-        // Remove: shift down
-        for (int i = idx; i < contact_count - 1; i++) contacts[i] = contacts[i + 1];
-        contact_count--;
-        memset(&contacts[contact_count], 0, sizeof(contact_t));
-        save_contacts();
-        return 0;
-    }
-    if (contact_count >= MAX_CONTACTS) return -1;
-    contact_t *c = &contacts[contact_count++];
-    memcpy(c->pub_key, pub, MESHCORE_PUB_KEY_SIZE);
-    strncpy(c->alias, name ? name : "", CONTACT_ALIAS_LEN - 1);
-    c->alias[CONTACT_ALIAS_LEN - 1] = '\0';
-    c->role  = role;
-    c->flags = 0;
-    save_contacts();
-    return 1;
-}
-
-// ── SD-card encrypted history (DM + channel, append-only) ────────────────────
-#define SD_MOUNT_POINT       "/sd"
-#define HISTORY_DIR          "/sd/meshcore"
-#define HISTORY_DM_DIR       "/sd/meshcore/dm"
-#define HISTORY_LOG_PATH     "/sd/meshcore/chat.bin"      // legacy, no longer written or read
-#define CH_HISTORY_LOG_PATH  "/sd/meshcore/channel.bin"
-#define HISTORY_REC_MAGIC    "MCR1"
-
-static bool              history_ready = false;
-static const char       *history_status = "off";   // "off"|"ok"|"no-sd"|"err"
-static uint8_t           history_key[32] = {0};    // HMAC-SHA256 output; first 16 used for AES-128
-static SemaphoreHandle_t history_mutex = NULL;
-static sdmmc_card_t     *sd_card_handle = NULL;
-
-typedef struct __attribute__((packed)) {
-    uint8_t  magic[4];      // "MCR1"
-    uint16_t plain_len;     // 1..MAX_MSG_TEXT
-    uint8_t  flags;         // bit0 = is_mine
-    uint8_t  reserved;
-    uint32_t ts_unix;       // seconds since epoch (LE)
-    uint8_t  iv[16];
-} history_rec_hdr_t;          // 28 bytes
-
-static esp_err_t history_mount_sd(void) {
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    host.slot = SDMMC_HOST_SLOT_0;  // Tanmatsu: slot 0 = µSD; slot 1 = hosted Wi-Fi link
-    host.max_freq_khz = SDMMC_FREQ_DEFAULT;
-
-    sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
-    slot.clk = MC_SDCARD_CLK;
-    slot.cmd = MC_SDCARD_CMD;
-    slot.d0  = MC_SDCARD_D0;
-    slot.d1  = MC_SDCARD_D1;
-    slot.d2  = MC_SDCARD_D2;
-    slot.d3  = MC_SDCARD_D3;
-    slot.width = 4;
-    slot.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
-
-    esp_vfs_fat_sdmmc_mount_config_t mnt = {
-        .format_if_mount_failed = false,
-        .max_files = 4,
-        .allocation_unit_size = 16 * 1024,
-    };
-    return esp_vfs_fat_sdmmc_mount(SD_MOUNT_POINT, &host, &slot, &mnt, &sd_card_handle);
-}
-
-// Derive AES-128 key from node private key. Stable per device.
-static void history_derive_key(void) {
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                    node_prv_key, 32,
-                    (const uint8_t *)"mc-history-v1", 13,
-                    history_key);  // 32 B HMAC; AES uses first 16 only
-}
-
-static void history_init(void) {
-    history_mutex = xSemaphoreCreateMutex();
-
-    esp_err_t e = history_mount_sd();
-    if (e != ESP_OK) {
-        ESP_LOGW(TAG, "SD mount failed: %s — chat history disabled", esp_err_to_name(e));
-        history_status = (e == ESP_ERR_NOT_FOUND || e == ESP_ERR_TIMEOUT) ? "no-sd" : "err";
-        return;
-    }
-    ESP_LOGI(TAG, "SD mounted at %s", SD_MOUNT_POINT);
-
-    mkdir(HISTORY_DIR, 0775);     // ignores EEXIST
-    mkdir(HISTORY_DM_DIR, 0775);  // per-contact DM history dir
-
-    history_derive_key();
-    history_ready = true;
-    history_status = "ok";
-}
-
-// Generic append: writes one AES-CBC encrypted record to `path`.
-// Safe to call before history_ready (becomes a no-op).
-static void history_append_impl(const char *path, const char *text, bool is_mine) {
-    if (!history_ready || text == NULL) return;
-    int N = (int)strnlen(text, MAX_MSG_TEXT);
-    if (N <= 0) return;
-
-    if (xSemaphoreTake(history_mutex, pdMS_TO_TICKS(200)) != pdTRUE) return;
-
-    history_rec_hdr_t hdr;
-    memcpy(hdr.magic, HISTORY_REC_MAGIC, 4);
-    hdr.plain_len = (uint16_t)N;
-    hdr.flags     = is_mine ? 0x01 : 0x00;
-    hdr.reserved  = 0;
-    hdr.ts_unix   = (uint32_t)time(NULL);
-    esp_fill_random(hdr.iv, 16);
-
-    int padded = ((N + 16) / 16) * 16;
-    uint8_t pt[MAX_MSG_TEXT + 32];
-    memcpy(pt, text, N);
-    uint8_t pad = (uint8_t)(padded - N);
-    for (int i = N; i < padded; i++) pt[i] = pad;
-
-    uint8_t ct[MAX_MSG_TEXT + 32];
-    mbedtls_aes_context aes;
-    mbedtls_aes_init(&aes);
-    mbedtls_aes_setkey_enc(&aes, history_key, 128);
-    uint8_t iv_copy[16];
-    memcpy(iv_copy, hdr.iv, 16);
-    mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, padded, iv_copy, pt, ct);
-    mbedtls_aes_free(&aes);
-
-    FILE *f = fopen(path, "ab");
-    if (f) {
-        fwrite(&hdr, sizeof(hdr), 1, f);
-        fwrite(ct,    padded,     1, f);
-        fclose(f);
-    } else {
-        ESP_LOGW(TAG, "history_append: fopen(%s) failed", path);
-    }
-    xSemaphoreGive(history_mutex);
-}
-
-// Callback receives decrypted text + flags; called from history_load_impl under history_mutex.
-typedef void (*history_ring_add_fn)(const char *text, bool is_mine);
-
-static void history_load_impl(const char *path, history_ring_add_fn add) {
-    if (!history_ready) return;
-    if (xSemaphoreTake(history_mutex, pdMS_TO_TICKS(500)) != pdTRUE) return;
-
-    FILE *f = fopen(path, "rb");
-    if (!f) { xSemaphoreGive(history_mutex); return; }
-
-    int loaded = 0;
-    while (1) {
-        history_rec_hdr_t hdr;
-        if (fread(&hdr, sizeof(hdr), 1, f) != 1) break;
-        if (memcmp(hdr.magic, HISTORY_REC_MAGIC, 4) != 0) {
-            ESP_LOGW(TAG, "history(%s): bad magic at rec %d — stop", path, loaded);
-            break;
-        }
-        if (hdr.plain_len == 0 || hdr.plain_len > MAX_MSG_TEXT) {
-            ESP_LOGW(TAG, "history(%s): bad len %u at rec %d — stop", path, hdr.plain_len, loaded);
-            break;
-        }
-        int padded = ((hdr.plain_len + 16) / 16) * 16;
-        uint8_t ct[MAX_MSG_TEXT + 32];
-        if (fread(ct, padded, 1, f) != 1) break;
-
-        uint8_t pt[MAX_MSG_TEXT + 32];
-        mbedtls_aes_context aes;
-        mbedtls_aes_init(&aes);
-        mbedtls_aes_setkey_dec(&aes, history_key, 128);
-        mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_DECRYPT, padded, hdr.iv, ct, pt);
-        mbedtls_aes_free(&aes);
-
-        uint8_t pad = pt[padded - 1];
-        if (pad == 0 || pad > 16 || (padded - pad) != hdr.plain_len) {
-            ESP_LOGW(TAG, "history(%s): decrypt mismatch at rec %d — stop", path, loaded);
-            break;
-        }
-        int N = hdr.plain_len;
-
-        char text[MAX_MSG_TEXT];
-        int copy = N < MAX_MSG_TEXT - 1 ? N : MAX_MSG_TEXT - 1;
-        memcpy(text, pt, copy);
-        text[copy] = '\0';
-
-        add(text, (hdr.flags & 0x01) != 0);
-        loaded++;
-    }
-    fclose(f);
-
-    ESP_LOGI(TAG, "history_load(%s): %d record(s) restored", path, loaded);
-    xSemaphoreGive(history_mutex);
-}
-
+// ── SD-card encrypted history glue ───────────────────────────────────────────
+// Storage lives in history.c/h. The two ring-add callbacks below are passed to
+// history_load_* on boot / DM switch — they own chat-ring mutation, which is
+// why they stay here rather than in history.c.
 static void chat_ring_add_from_disk(const char *text, bool is_mine) {
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     chat_msg_t *m   = &chat_msgs[chat_head];
@@ -784,45 +516,6 @@ static void ch_ring_add_from_disk(const char *text, bool is_mine) {
     if (ch_count < MAX_CHAT_MSGS) ch_count++;
     ch_scroll = ch_count;
     xSemaphoreGive(ch_mutex);
-}
-
-// DM history is written per peer via history_append_dm; no more global chat.bin.
-static void history_append_channel(const char *text, bool is_mine) {
-    history_append_impl(CH_HISTORY_LOG_PATH, text, is_mine);
-}
-static void history_load_channel(void) {
-    history_load_impl(CH_HISTORY_LOG_PATH, ch_ring_add_from_disk);
-}
-
-// Path for per-contact DM history: /sd/meshcore/dm/<pubkey-hex16>.bin
-// 8-byte pubkey prefix as hex = 16 chars, comfortably unique for max 16 contacts.
-static void history_dm_path(const uint8_t pub[32], char *out, size_t cap) {
-    snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin",
-             HISTORY_DM_DIR,
-             pub[0], pub[1], pub[2], pub[3], pub[4], pub[5], pub[6], pub[7]);
-}
-
-static void history_append_dm(const uint8_t peer_pub[32], const char *text, bool is_mine) {
-    if (!history_ready || peer_pub == NULL) return;
-    char path[64];
-    history_dm_path(peer_pub, path, sizeof(path));
-    history_append_impl(path, text, is_mine);
-}
-
-// Clear the DM ring and load a specific peer's history.
-// Called whenever dm_target changes.
-static void history_load_dm(const uint8_t peer_pub[32]) {
-    if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
-        memset(chat_msgs, 0, sizeof(chat_msgs));
-        chat_head   = 0;
-        chat_count  = 0;
-        chat_scroll = 0;
-        xSemaphoreGive(chat_mutex);
-    }
-    if (!history_ready || peer_pub == NULL) return;
-    char path[64];
-    history_dm_path(peer_pub, path, sizeof(path));
-    history_load_impl(path, chat_ring_add_from_disk);
 }
 
 static void load_lora_from_nvs(void) {
@@ -915,143 +608,10 @@ static void save_lora_config(void) {
     }
 }
 
-// ── Node identity ─────────────────────────────────────────────────────────────
-#define NVS_IDENTITY_SEED "node.seed"
-
 static void chat_add_message(const char* text, bool is_mine);  /* forward decl */
 
-// ── SNTP ──────────────────────────────────────────────────────────────────────
-static void sntp_sync_cb(struct timeval *tv) {
-    sntp_synced = true;
-    // Persist to NVS so the next boot without WiFi can restore a sane time
-    nvs_handle_t h;
-    if (nvs_open("system", NVS_READWRITE, &h) == ESP_OK) {
-        nvs_set_i64(h, NVS_LAST_TIME, (int64_t)tv->tv_sec);
-        nvs_commit(h);
-        nvs_close(h);
-    }
-}
-
-static void identity_init(void) {
-    uint8_t seed[32] = {0};
-
-    // Try loading existing seed from NVS
-    nvs_handle_t handle;
-    bool need_save = false;
-    if (nvs_open("system", NVS_READWRITE, &handle) == ESP_OK) {
-        size_t len = sizeof(seed);
-        if (nvs_get_blob(handle, NVS_IDENTITY_SEED, seed, &len) != ESP_OK || len != 32) {
-            // No seed yet — generate and save
-            esp_fill_random(seed, sizeof(seed));
-            nvs_set_blob(handle, NVS_IDENTITY_SEED, seed, sizeof(seed));
-            need_save = true;
-            ESP_LOGI(TAG, "New node identity generated");
-        } else {
-            ESP_LOGI(TAG, "Node identity loaded from NVS");
-        }
-        if (need_save) nvs_commit(handle);
-        nvs_close(handle);
-    } else {
-        // Can't persist — use a random ephemeral identity
-        esp_fill_random(seed, sizeof(seed));
-        ESP_LOGW(TAG, "NVS unavailable — ephemeral identity");
-    }
-
-    ed25519_create_keypair(node_pub_key, node_prv_key, seed);
-    identity_ready = true;
-
-    // RFC 7748 X25519 test vector — verifies our Montgomery ladder
-    {
-        /* RFC 7748 §5 X25519 function test vector */
-        static const uint8_t tv_prv[64] = {
-            0xa5,0x46,0xe3,0x6b,0xf0,0x52,0x7c,0x9d,0x3b,0x16,0x15,0x4b,0x82,0x46,0x5e,0xdd,
-            0x62,0x14,0x4c,0x0a,0xc1,0xfc,0x5a,0x18,0x50,0x6a,0x22,0x44,0xba,0x44,0x9a,0xc4,
-            0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-        };
-        static const uint8_t tv_pub[32] = {
-            0xe6,0xdb,0x68,0x67,0x58,0x30,0x30,0xdb,0x35,0x94,0xc1,0xa4,0x24,0xb1,0x5f,0x7c,
-            0x72,0x66,0x24,0xec,0x26,0xb3,0x35,0x3b,0x10,0xa9,0x03,0xa6,0xd0,0xab,0x1c,0x4c
-        };
-        static const uint8_t tv_expected[32] = {
-            0xc3,0xda,0x55,0x37,0x9d,0xe9,0xc6,0x90,0x8e,0x94,0xea,0x4d,0xf2,0x8d,0x08,0x4f,
-            0x32,0xec,0xcf,0x03,0x49,0x1c,0x71,0xf7,0x54,0xb4,0x07,0x55,0x77,0xa2,0x85,0x52
-        };
-        uint8_t tv_result[32];
-        ed25519_key_exchange_raw(tv_result, tv_pub, tv_prv);
-        if (memcmp(tv_result, tv_expected, 32) == 0) {
-            ESP_LOGI(TAG, "X25519 RFC7748 test vector: PASS");
-        } else {
-            ESP_LOGE(TAG, "X25519 RFC7748 test vector: FAIL got %02X%02X%02X%02X exp %02X%02X%02X%02X",
-                     tv_result[0], tv_result[1], tv_result[2], tv_result[3],
-                     tv_expected[0], tv_expected[1], tv_expected[2], tv_expected[3]);
-            char tv_msg[48];
-            snprintf(tv_msg, sizeof(tv_msg), "X25519 tv FAIL: got %02X%02X exp %02X%02X",
-                     tv_result[0], tv_result[1], tv_expected[0], tv_expected[1]);
-            chat_add_message(tv_msg, false);
-        }
-    }
-
-    // Self-consistency check A: conv(Ed25519 base point G) must equal u=9.
-    // Tests ed25519_pub_to_x25519 independently of ge_scalarmult_base.
-    {
-        // Ed25519 base point G compressed (little-endian y, sign=0):
-        // y_G = 0x6666...6658 (big-endian) → little-endian: byte[0]=0x58, bytes[1..31]=0x66
-        static const uint8_t ed25519_G[32] = {
-            0x58,0x66,0x66,0x66,0x66,0x66,0x66,0x66,
-            0x66,0x66,0x66,0x66,0x66,0x66,0x66,0x66,
-            0x66,0x66,0x66,0x66,0x66,0x66,0x66,0x66,
-            0x66,0x66,0x66,0x66,0x66,0x66,0x66,0x66
-        };
-        static const uint8_t u9[32] = {9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-                                        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-        uint8_t conv_G[32];
-        ed25519_pub_to_x25519(conv_G, ed25519_G);
-        if (memcmp(conv_G, u9, 32) == 0) {
-            ESP_LOGI(TAG, "conv(G)=9: PASS");
-        } else {
-            char msg[48];
-            snprintf(msg, sizeof(msg), "conv(G)=9 FAIL got=%02X%02X%02X%02X",
-                     conv_G[0], conv_G[1], conv_G[2], conv_G[3]);
-            chat_add_message(msg, false);
-        }
-    }
-
-    // Self-consistency check B: conv(node_pub_key) must equal X25519(our_scalar, 9).
-    // If conv(G) passes but this fails → ge_scalarmult_base is wrong.
-    {
-        static const uint8_t base9[32] = {
-            9,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-            0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0
-        };
-        uint8_t via_scalar[32], via_conv[32];
-        ed25519_key_exchange_raw(via_scalar, base9, node_prv_key);
-        ed25519_pub_to_x25519(via_conv, node_pub_key);
-        if (memcmp(via_scalar, via_conv, 32) == 0) {
-            ESP_LOGI(TAG, "DH self-check: PASS");
-        } else {
-            char sc_msg[64];
-            snprintf(sc_msg, sizeof(sc_msg), "DH self-chk FAIL sc=%02X%02X cv=%02X%02X",
-                     via_scalar[0], via_scalar[1], via_conv[0], via_conv[1]);
-            chat_add_message(sc_msg, false);
-        }
-    }
-    ESP_LOGI(TAG, "Pub key: "
-             "%02X%02X%02X%02X%02X%02X%02X%02X"
-             "%02X%02X%02X%02X%02X%02X%02X%02X"
-             "%02X%02X%02X%02X%02X%02X%02X%02X"
-             "%02X%02X%02X%02X%02X%02X%02X%02X",
-             node_pub_key[0],  node_pub_key[1],  node_pub_key[2],  node_pub_key[3],
-             node_pub_key[4],  node_pub_key[5],  node_pub_key[6],  node_pub_key[7],
-             node_pub_key[8],  node_pub_key[9],  node_pub_key[10], node_pub_key[11],
-             node_pub_key[12], node_pub_key[13], node_pub_key[14], node_pub_key[15],
-             node_pub_key[16], node_pub_key[17], node_pub_key[18], node_pub_key[19],
-             node_pub_key[20], node_pub_key[21], node_pub_key[22], node_pub_key[23],
-             node_pub_key[24], node_pub_key[25], node_pub_key[26], node_pub_key[27],
-             node_pub_key[28], node_pub_key[29], node_pub_key[30], node_pub_key[31]);
-}
-
 static void send_advert(void) {
-    if (!c6_available || !identity_ready) return;
+    if (!c6_available || !identity_is_ready()) return;
 
     meshcore_advert_t advert = {0};
     memcpy(advert.pub_key, node_pub_key, MESHCORE_PUB_KEY_SIZE);
@@ -1253,7 +813,16 @@ static void dm_select_target(const uint8_t pub[32], const char *name) {
     memcpy(dm_target_pub, pub, MESHCORE_PUB_KEY_SIZE);
     strncpy(dm_target_name, name ? name : "", sizeof(dm_target_name) - 1);
     dm_target_name[sizeof(dm_target_name) - 1] = '\0';
-    history_load_dm(pub);
+    // Clear chat ring before loading peer's history so the prior peer's
+    // messages don't visually bleed through.
+    if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+        memset(chat_msgs, 0, sizeof(chat_msgs));
+        chat_head   = 0;
+        chat_count  = 0;
+        chat_scroll = 0;
+        xSemaphoreGive(chat_mutex);
+    }
+    history_load_dm(pub, chat_ring_add_from_disk);
 }
 
 static void ch_add_message(const char* text, bool is_mine) {
@@ -1319,7 +888,7 @@ static bool decrypt_grp_txt(meshcore_grp_txt_t* grp, const uint8_t* key) {
 
 // Send an encrypted DM (TXT_MSG) to a specific node by pub_key
 static bool send_dm_message(const char* text, const uint8_t* target_pub) {
-    if (!c6_available || !identity_ready) return false;
+    if (!c6_available || !identity_is_ready()) return false;
 
     uint8_t shared[32];
     ed25519_key_exchange(shared, target_pub, node_prv_key);
@@ -1579,7 +1148,7 @@ static void lora_rx_task(void *arg) {
                     // Use do{}while(0) so 'break' exits this block, not the rx while(1)
                     do {
                         char dbg[48];
-                        if (!identity_ready || mc_msg.payload_length < 6) {
+                        if (!identity_is_ready() || mc_msg.payload_length < 6) {
                             chat_add_message("DM: not ready/short", false); break;
                         }
                         uint8_t dest_hash = mc_msg.payload[0];
@@ -2203,7 +1772,7 @@ static void render_settings(void) {
         localtime_r(&now, &t);
         char ts[48];
         pax_col_t ts_col;
-        if (sntp_synced) {
+        if (identity_sntp_synced()) {
             snprintf(ts, sizeof(ts), "SNTP %02d:%02d:%02d  %02d-%02d-%04d",
                      t.tm_hour, t.tm_min, t.tm_sec,
                      t.tm_mday, t.tm_mon + 1, t.tm_year + 1900);
@@ -2519,7 +2088,7 @@ static void render_nodes(void) {
     pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, fx, fy_text + (TXT_BODY - TXT_SMALL) / 2, ctrl);
 
     // Row 2: advert age
-    if (identity_ready) {
+    if (identity_is_ready()) {
         uint32_t now_ms2 = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         char adv_buf[48];
         if (last_advert_ms == 0) {
@@ -3201,7 +2770,7 @@ static void handle_key(char c) {
         node_filter = cycle[(idx + 1) % n];
         node_scroll = 0;
         node_cursor = 0;
-    } else if ((c == 'q' || c == 'Q') && current_view == VIEW_NODES && identity_ready) {
+    } else if ((c == 'q' || c == 'Q') && current_view == VIEW_NODES && identity_is_ready()) {
         qr_overlay_active = true;
     } else if (c == '<' || c == ',') {
         if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, -1);
@@ -3264,10 +2833,7 @@ static void handle_key(char c) {
                 ch_scroll  = 0;
                 xSemaphoreGive(ch_mutex);
             }
-            if (history_ready && xSemaphoreTake(history_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
-                remove(CH_HISTORY_LOG_PATH);
-                xSemaphoreGive(history_mutex);
-            }
+            history_delete_channel();
             ESP_LOGI(TAG, "Channel history cleared by user (R)");
         }
     } else if ((c == 'd' || c == 'D') && current_view == VIEW_CHAT && dm_inbox_mode && !chat_typing) {
@@ -3302,17 +2868,12 @@ static void handle_key(char c) {
                 target_name[sizeof(target_name) - 1] = '\0';
             }
 
-            if (history_ready && xSemaphoreTake(history_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
-                char path[64];
-                history_dm_path(target_pub, path, sizeof(path));
-                remove(path);
-                xSemaphoreGive(history_mutex);
-            }
+            history_delete_dm(target_pub);
             if (ci >= 0) {
                 for (int j = ci; j < contact_count - 1; j++) contacts[j] = contacts[j + 1];
                 memset(&contacts[contact_count - 1], 0, sizeof(contact_t));
                 contact_count--;
-                save_contacts();
+                contacts_save();
             }
             if (dm_inbox_cursor > 0) dm_inbox_cursor--;
             ESP_LOGI(TAG, "DM deleted by user (D): %s", target_name);
@@ -3413,7 +2974,7 @@ void app_main(void) {
         DIAG(res == ESP_OK ? COL_GREEN : COL_YELLOW, "  wifi connect: %s",
              res == ESP_OK ? "OK" : "no saved networks");
         if (res == ESP_OK) {
-            esp_sntp_set_time_sync_notification_cb(sntp_sync_cb);
+            esp_sntp_set_time_sync_notification_cb(identity_sntp_sync_cb);
             esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
             esp_sntp_setservername(0, "pool.ntp.org");
             esp_sntp_init();
@@ -3421,7 +2982,7 @@ void app_main(void) {
     }
 
     // Restore last known time from NVS when no WiFi/SNTP available
-    if (!sntp_synced) {
+    if (!identity_sntp_synced()) {
         nvs_handle_t h;
         if (nvs_open("system", NVS_READONLY, &h) == ESP_OK) {
             int64_t saved = 0;
@@ -3438,13 +2999,13 @@ void app_main(void) {
     load_owner_name();
     load_lora_advert_name();
     load_region_scope();
-    load_contacts();
+    contacts_load();
 
     DIAG(COL_GRAY, "SD mount...");
-    history_init();
-    DIAG(history_ready ? COL_GREEN : COL_YELLOW, "  SD: %s", history_status);
+    history_init(node_prv_key);
+    DIAG(history_is_ready() ? COL_GREEN : COL_YELLOW, "  SD: %s", history_status());
     // DM history is loaded per peer in dm_select_target — no boot-time DM load.
-    if (history_ready) { history_load_channel(); }
+    if (history_is_ready()) { history_load_channel(ch_ring_add_from_disk); }
 
     DIAG(COL_GRAY, "lora_init(16)...");
     res = lora_init(16);
