@@ -558,7 +558,8 @@ static int contact_toggle(const uint8_t *pub, const char *name, uint8_t role) {
 // ── SD-card encrypted history (DM + channel, append-only) ────────────────────
 #define SD_MOUNT_POINT       "/sd"
 #define HISTORY_DIR          "/sd/meshcore"
-#define HISTORY_LOG_PATH     "/sd/meshcore/chat.bin"
+#define HISTORY_DM_DIR       "/sd/meshcore/dm"
+#define HISTORY_LOG_PATH     "/sd/meshcore/chat.bin"      // legacy, niet meer geschreven of geladen
 #define CH_HISTORY_LOG_PATH  "/sd/meshcore/channel.bin"
 #define HISTORY_REC_MAGIC    "MCR1"
 
@@ -619,7 +620,8 @@ static void history_init(void) {
     }
     ESP_LOGI(TAG, "SD mounted at %s", SD_MOUNT_POINT);
 
-    mkdir(HISTORY_DIR, 0775);  // ignores EEXIST
+    mkdir(HISTORY_DIR, 0775);     // ignores EEXIST
+    mkdir(HISTORY_DM_DIR, 0775);  // per-contact DM-history dir
 
     history_derive_key();
     history_ready = true;
@@ -749,17 +751,43 @@ static void ch_ring_add_from_disk(const char *text, bool is_mine) {
     xSemaphoreGive(ch_mutex);
 }
 
-static void history_append(const char *text, bool is_mine) {
-    history_append_impl(HISTORY_LOG_PATH, text, is_mine);
-}
+// DM-history wordt per peer geschreven via history_append_dm; geen globale chat.bin meer.
 static void history_append_channel(const char *text, bool is_mine) {
     history_append_impl(CH_HISTORY_LOG_PATH, text, is_mine);
 }
-static void history_load(void) {
-    history_load_impl(HISTORY_LOG_PATH, chat_ring_add_from_disk);
-}
 static void history_load_channel(void) {
     history_load_impl(CH_HISTORY_LOG_PATH, ch_ring_add_from_disk);
+}
+
+// Pad voor per-contact DM-history: /sd/meshcore/dm/<pubkey-hex16>.bin
+// 8 bytes pubkey-prefix als hex = 16 chars, ruim genoeg uniek voor max 16 contacts.
+static void history_dm_path(const uint8_t pub[32], char *out, size_t cap) {
+    snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin",
+             HISTORY_DM_DIR,
+             pub[0], pub[1], pub[2], pub[3], pub[4], pub[5], pub[6], pub[7]);
+}
+
+static void history_append_dm(const uint8_t peer_pub[32], const char *text, bool is_mine) {
+    if (!history_ready || peer_pub == NULL) return;
+    char path[64];
+    history_dm_path(peer_pub, path, sizeof(path));
+    history_append_impl(path, text, is_mine);
+}
+
+// Clear de DM-ring en laad de history van een specifieke peer in.
+// Aangeroepen wanneer dm_target wisselt.
+static void history_load_dm(const uint8_t peer_pub[32]) {
+    if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+        memset(chat_msgs, 0, sizeof(chat_msgs));
+        chat_head   = 0;
+        chat_count  = 0;
+        chat_scroll = 0;
+        xSemaphoreGive(chat_mutex);
+    }
+    if (!history_ready || peer_pub == NULL) return;
+    char path[64];
+    history_dm_path(peer_pub, path, sizeof(path));
+    history_load_impl(path, chat_ring_add_from_disk);
 }
 
 static void load_lora_from_nvs(void) {
@@ -1153,6 +1181,8 @@ static void chat_init(void) {
     ESP_LOGI(TAG, "Channel hash: 0x%02X", channel_hash);
 }
 
+// RAM-only: voor system/error messages zonder peer-context.
+// Wordt NIET gepersisteerd (zou anders elke peer's chat vervuilen).
 static void chat_add_message(const char* text, bool is_mine) {
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     chat_msg_t* m    = &chat_msgs[chat_head];
@@ -1164,8 +1194,26 @@ static void chat_add_message(const char* text, bool is_mine) {
     if (chat_count < MAX_CHAT_MSGS) chat_count++;
     chat_scroll = chat_count;
     xSemaphoreGive(chat_mutex);
+}
 
-    history_append(m->text, is_mine);
+// DM met peer-context: persist altijd naar peer's file; alleen tonen in ring als
+// die peer momenteel actief is (zo verlies je geen DM van een andere peer terwijl
+// je de chat van peer A openhebt).
+static void chat_add_dm(const char* text, bool is_mine, const uint8_t peer_pub[32]) {
+    if (peer_pub) history_append_dm(peer_pub, text, is_mine);
+    if (dm_target_set && peer_pub &&
+        memcmp(peer_pub, dm_target_pub, MESHCORE_PUB_KEY_SIZE) == 0) {
+        chat_add_message(text, is_mine);
+    }
+}
+
+// Switch de actieve DM-peer + reload diens history vanaf SD.
+static void dm_select_target(const uint8_t pub[32], const char *name) {
+    dm_target_set = true;
+    memcpy(dm_target_pub, pub, MESHCORE_PUB_KEY_SIZE);
+    strncpy(dm_target_name, name ? name : "", sizeof(dm_target_name) - 1);
+    dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+    history_load_dm(pub);
 }
 
 static void ch_add_message(const char* text, bool is_mine) {
@@ -1599,9 +1647,12 @@ static void lora_rx_task(void *arg) {
                             snprintf(display, sizeof(display), "[?%02X] %s", src_hash, dm_text);
 
                         ESP_LOGI(TAG, "DM RX: %s", display);
-                        chat_add_message(display, false);
+                        chat_add_dm(display, false, sender_pub);
                         contact_ensure(sender_pub, sender_name, (uint8_t)sender_role);
-                        if (current_view != VIEW_CHAT) {
+                        bool viewing_sender = (current_view == VIEW_CHAT && !dm_inbox_mode &&
+                                               dm_target_set &&
+                                               memcmp(sender_pub, dm_target_pub, MESHCORE_PUB_KEY_SIZE) == 0);
+                        if (!viewing_sender) {
                             led_dm_pending = true;
                             update_notification_led();
                         }
@@ -2529,7 +2580,7 @@ static void render_chat(void) {
         pax_simple_rect(&fb, COL_HEADER, 0, fy_base, w, footer_h);
         pax_simple_rect(&fb, COL_PANEL,  0, fy_base, w, 1);
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy_base + (footer_h - TXT_SMALL) / 2,
-                      "W/S: navigate   Enter: open chat   Tab: next tab   Nodes: add contact");
+                      "W/S: nav   Enter: open   D: delete   Tab: next");
         blit();
         return;
     }
@@ -2807,10 +2858,7 @@ static void handle_nav(uint32_t key) {
             if (dm_inbox_cursor < idx_count) {
                 int e = idx_map[dm_inbox_cursor];
                 if (e >= 0) {
-                    dm_target_set = true;
-                    memcpy(dm_target_pub, contacts[e].pub_key, MESHCORE_PUB_KEY_SIZE);
-                    strncpy(dm_target_name, contacts[e].alias, sizeof(dm_target_name) - 1);
-                    dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+                    dm_select_target(contacts[e].pub_key, contacts[e].alias);
                 }
                 dm_inbox_mode = false;
                 led_dm_pending = false;
@@ -2825,7 +2873,7 @@ static void handle_nav(uint32_t key) {
                     ch_add_message(chat_input, true);
                 } else if (dm_target_set) {
                     send_dm_message(chat_input, dm_target_pub);
-                    chat_add_message(chat_input, true);
+                    chat_add_dm(chat_input, true, dm_target_pub);
                     // Persist target so it stays in the inbox after reboot.
                     meshcore_device_role_t r = MESHCORE_DEVICE_ROLE_CHAT_NODE;
                     if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -2855,17 +2903,11 @@ static void handle_nav(uint32_t key) {
                     display_row_t *d = &rows_dl[node_cursor];
                     if (d->node_idx >= 0) {
                         node_entry_t *n = &node_list[d->node_idx];
-                        dm_target_set = true;
-                        memcpy(dm_target_pub, n->pub_key, MESHCORE_PUB_KEY_SIZE);
-                        strncpy(dm_target_name, n->name, sizeof(dm_target_name) - 1);
-                        dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+                        dm_select_target(n->pub_key, n->name);
                         contact_ensure(n->pub_key, n->name, (uint8_t)n->role);
                     } else if (d->is_contact) {
                         contact_t *c = &contacts[d->contact_idx];
-                        dm_target_set = true;
-                        memcpy(dm_target_pub, c->pub_key, MESHCORE_PUB_KEY_SIZE);
-                        strncpy(dm_target_name, c->alias, sizeof(dm_target_name) - 1);
-                        dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+                        dm_select_target(c->pub_key, c->alias);
                     }
                 }
                 xSemaphoreGive(node_mutex);
@@ -2957,7 +2999,7 @@ static void handle_key(char c) {
                         ch_add_message(chat_input, true);
                     } else if (dm_target_set) {
                         send_dm_message(chat_input, dm_target_pub);
-                        chat_add_message(chat_input, true);
+                        chat_add_dm(chat_input, true, dm_target_pub);
                     } else {
                         send_chat_message(chat_input);
                         chat_add_message(chat_input, true);
@@ -3091,17 +3133,11 @@ static void handle_key(char c) {
                     display_row_t *d = &rows_dl[node_cursor];
                     if (d->node_idx >= 0) {
                         node_entry_t *n = &node_list[d->node_idx];
-                        dm_target_set = true;
-                        memcpy(dm_target_pub, n->pub_key, MESHCORE_PUB_KEY_SIZE);
-                        strncpy(dm_target_name, n->name, sizeof(dm_target_name) - 1);
-                        dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+                        dm_select_target(n->pub_key, n->name);
                         contact_ensure(n->pub_key, n->name, (uint8_t)n->role);
                     } else if (d->is_contact) {
                         contact_t *c2 = &contacts[d->contact_idx];
-                        dm_target_set = true;
-                        memcpy(dm_target_pub, c2->pub_key, MESHCORE_PUB_KEY_SIZE);
-                        strncpy(dm_target_name, c2->alias, sizeof(dm_target_name) - 1);
-                        dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+                        dm_select_target(c2->pub_key, c2->alias);
                     }
                 }
                 xSemaphoreGive(node_mutex);
@@ -3147,6 +3183,53 @@ static void handle_key(char c) {
                 xSemaphoreGive(history_mutex);
             }
             ESP_LOGI(TAG, "Channel history cleared by user (R)");
+        }
+    } else if ((c == 'd' || c == 'D') && current_view == VIEW_CHAT && dm_inbox_mode && !chat_typing) {
+        // Delete geselecteerde DM-conversatie: history-file + contact uit NVS.
+        // Bij volgende DM van die peer wordt contact automatisch weer toegevoegd.
+        int idx_map[MAX_CONTACTS + 1];
+        int idx_count = 0;
+        bool active_on_top = dm_target_set;
+        if (active_on_top) idx_map[idx_count++] = -1;
+        for (int i = 0; i < contact_count && idx_count < MAX_CONTACTS + 1; i++) {
+            if (active_on_top && memcmp(contacts[i].pub_key, dm_target_pub, MESHCORE_PUB_KEY_SIZE) == 0)
+                continue;
+            idx_map[idx_count++] = i;
+        }
+        if (dm_inbox_cursor < idx_count) {
+            int e = idx_map[dm_inbox_cursor];
+            uint8_t target_pub[MESHCORE_PUB_KEY_SIZE];
+            char    target_name[MESHCORE_MAX_NAME_SIZE + 1];
+            int     ci = -1;
+            if (e == -1) {
+                memcpy(target_pub, dm_target_pub, MESHCORE_PUB_KEY_SIZE);
+                strncpy(target_name, dm_target_name, sizeof(target_name) - 1);
+                target_name[sizeof(target_name) - 1] = '\0';
+                ci = contact_find(dm_target_pub);
+                dm_target_set = false;
+                memset(chat_msgs, 0, sizeof(chat_msgs));
+                chat_head = chat_count = chat_scroll = 0;
+            } else {
+                ci = e;
+                memcpy(target_pub, contacts[ci].pub_key, MESHCORE_PUB_KEY_SIZE);
+                strncpy(target_name, contacts[ci].alias, sizeof(target_name) - 1);
+                target_name[sizeof(target_name) - 1] = '\0';
+            }
+
+            if (history_ready && xSemaphoreTake(history_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+                char path[64];
+                history_dm_path(target_pub, path, sizeof(path));
+                remove(path);
+                xSemaphoreGive(history_mutex);
+            }
+            if (ci >= 0) {
+                for (int j = ci; j < contact_count - 1; j++) contacts[j] = contacts[j + 1];
+                memset(&contacts[contact_count - 1], 0, sizeof(contact_t));
+                contact_count--;
+                save_contacts();
+            }
+            if (dm_inbox_cursor > 0) dm_inbox_cursor--;
+            ESP_LOGI(TAG, "DM deleted by user (D): %s", target_name);
         }
     } else if ((c == 'u' || c == 'U') && !edit_mode && current_view == VIEW_SETTINGS) {
         enter_radio_bootloader();
@@ -3273,7 +3356,8 @@ void app_main(void) {
     DIAG(COL_GRAY, "SD mount...");
     history_init();
     DIAG(history_ready ? COL_GREEN : COL_YELLOW, "  SD: %s", history_status);
-    if (history_ready) { history_load(); history_load_channel(); }
+    // DM-history wordt per peer geladen in dm_select_target — geen boot-load meer.
+    if (history_ready) { history_load_channel(); }
 
     DIAG(COL_GRAY, "lora_init(16)...");
     res = lora_init(16);
