@@ -150,17 +150,18 @@ static void load_impl(const char *path, history_ring_add_fn add) {
     FILE *f = fopen(path, "rb");
     if (!f) { xSemaphoreGive(s_mutex); return; }
 
-    int loaded = 0;
+    int  loaded = 0;
+    bool fatal  = false;
     while (1) {
         history_rec_hdr_t hdr;
         if (fread(&hdr, sizeof(hdr), 1, f) != 1) break;
         if (memcmp(hdr.magic, HISTORY_REC_MAGIC, 4) != 0) {
             ESP_LOGW(TAG, "(%s): bad magic at rec %d — stop", path, loaded);
-            break;
+            fatal = true; break;
         }
         if (hdr.plain_len == 0 || hdr.plain_len > MAX_MSG_TEXT) {
             ESP_LOGW(TAG, "(%s): bad len %u at rec %d — stop", path, hdr.plain_len, loaded);
-            break;
+            fatal = true; break;
         }
         int padded = ((hdr.plain_len + 16) / 16) * 16;
         uint8_t ct[MAX_MSG_TEXT + 32];
@@ -176,7 +177,7 @@ static void load_impl(const char *path, history_ring_add_fn add) {
         uint8_t pad = pt[padded - 1];
         if (pad == 0 || pad > 16 || (padded - pad) != hdr.plain_len) {
             ESP_LOGW(TAG, "(%s): decrypt mismatch at rec %d — stop", path, loaded);
-            break;
+            fatal = true; break;
         }
         int N = hdr.plain_len;
 
@@ -189,6 +190,14 @@ static void load_impl(const char *path, history_ring_add_fn add) {
         loaded++;
     }
     fclose(f);
+
+    // Self-heal: a file that cannot be parsed at all (likely written with a
+    // previous identity key) blocks all future loads. Wipe it so the next
+    // append starts a fresh log under the current key.
+    if (fatal && loaded == 0) {
+        ESP_LOGW(TAG, "(%s): unreadable from start — removing stale file", path);
+        remove(path);
+    }
 
     ESP_LOGI(TAG, "load(%s): %d record(s) restored", path, loaded);
     xSemaphoreGive(s_mutex);
