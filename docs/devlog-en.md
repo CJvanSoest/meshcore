@@ -110,6 +110,40 @@ The lesson: where a setting's name implies more than it delivers, name the gap e
 
 ---
 
+## What I Learned During the Restyle Week
+
+A few days spent making this app visually consistent with another project on a different badge (WHY2025). The lessons aren't the kind you find in a style guide.
+
+### 12. A colour palette is an API between apps
+
+The four tabs of the meshcore-app now share the same Tokyo Night palette as my LoRa-info app on the WHY2025 badge. I copied the hex values one-for-one, kept all existing `COL_*` names, and only replaced the numbers behind them. Ninety-nine call-sites stayed untouched.
+
+The lesson: if you want two apps to feel like part of the same family, treat the colour palette as a shared definition rather than as a scattering of incidental hex values. The discipline that makes a public API stable — naming, fewest moving parts, no accidental coupling — applies to design tokens too.
+
+### 13. Pick a font for your most-shown glyph, not your favourite word
+
+I switched from a monospace bitmap font to a proportional one (Saira). It looks better in prose — but its "1" glyph is thin, and at small sizes it's hard to distinguish from a lowercase "l". In an app full of RSSI values, SNR readings, and pagination counters like "1-8/11", that's a real legibility bug, not a cosmetic gripe.
+
+The fix was unglamorous: bump numeric fields up one type-size step. The lesson is broader. When you choose a font, test it on the characters your app actually displays most often. A font that reads beautifully in a paragraph of running text can still be wrong if your screen is mostly digits.
+
+### 14. Persistent UI requires persistent data
+
+After a restart, the DM tab stopped showing the list of people I'd been chatting with. My first instinct was that the view was broken. The view was fine — the data wasn't there. Contacts only got saved when the user explicitly favourited them, never automatically as a side effect of actual DM traffic.
+
+The fix was one small, idempotent helper (`contact_ensure`) called from every code path that creates a DM relationship: receiving a message, sending a message, and opening a chat from the node list. Three call-sites, no new storage format, no new schema.
+
+The lesson: when a UI is supposed to remember something, the fix lives in the storage layer, not the render layer. If you find yourself trying to make the view "remember" something, you've usually misdiagnosed the bug.
+
+### 15. Reuse before you rebuild
+
+The DM inbox presented a classic fork in the road. Option A: extend the storage layer with per-contact buffers and per-contact files on SD. Option B: a thin UI overlay on top of the existing globally-shared chat buffer.
+
+Option A was the architecturally tidier choice. Option B got me 80% of the UX win for maybe 10% of the work, and crucially it didn't block doing Option A later if it ever turns out to matter. I picked B. Per-contact storage is now an explicit item on the roadmap, but it stays out of this release.
+
+The lesson is one I keep relearning: incremental improvements are fine — as long as they don't foreclose the bigger step you might want to take later. Default to the smaller, reversible move.
+
+---
+
 ## Links
 
 - Source: [github.com/CJvanSoest/meshcore](https://github.com/CJvanSoest/meshcore)
