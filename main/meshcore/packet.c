@@ -35,11 +35,19 @@ int meshcore_serialize(const meshcore_message_t* message, uint8_t* out_data, uin
 
     if (message->route == MESHCORE_ROUTE_TYPE_TRANSPORT_FLOOD ||
         message->route == MESHCORE_ROUTE_TYPE_TRANSPORT_DIRECT) {
-        memcpy(&out_data[position], message->transport_codes, member_size(meshcore_line_header_t, transport_codes));
-        position += sizeof(uint16_t);
+        // Two transport_codes (uint16 each) = 4 bytes on the wire.
+        memcpy(&out_data[position], message->transport_codes, sizeof(message->transport_codes));
+        position += sizeof(message->transport_codes);
     }
 
-    out_data[position]  = message->path_length;
+    {
+        uint8_t bph = message->bytes_per_hop ? message->bytes_per_hop : 1;
+        if (bph > 3) return -1;
+        if (message->path_length % bph != 0) return -1;
+        uint8_t hop_count = message->path_length / bph;
+        if (hop_count > 0x3F) return -1;
+        out_data[position] = ((uint8_t)((bph - 1) & 0x03) << 6) | (hop_count & 0x3F);
+    }
     position           += sizeof(uint8_t);
     memcpy(&out_data[position], message->path, message->path_length);
     position += message->path_length;
@@ -66,16 +74,25 @@ int meshcore_deserialize(uint8_t* data, uint8_t size, meshcore_message_t* out_me
 
     if (out_message->route == MESHCORE_ROUTE_TYPE_TRANSPORT_FLOOD ||
         out_message->route == MESHCORE_ROUTE_TYPE_TRANSPORT_DIRECT) {
-        if (size - position < sizeof(uint16_t)) return -1;
-        memcpy(out_message->transport_codes, line_header->transport_codes, sizeof(uint16_t));
-        position += sizeof(uint16_t);
+        // Two transport_codes (uint16 each) = 4 bytes on the wire.
+        if (size - position < sizeof(out_message->transport_codes)) return -1;
+        memcpy(out_message->transport_codes, &data[position], sizeof(out_message->transport_codes));
+        position += sizeof(out_message->transport_codes);
     }
 
     if (size - position < sizeof(uint8_t)) return -1;
-    out_message->path_length  = data[position] & 0x3F;
-    position                 += sizeof(uint8_t);
+    {
+        uint8_t plb       = data[position];
+        uint8_t hop_count = plb & 0x3F;
+        uint8_t bph       = ((plb >> 6) & 0x03) + 1;  // 00->1, 01->2, 10->3
+        if (bph > 3) return -1;
+        out_message->bytes_per_hop = bph;
+        out_message->path_length   = hop_count * bph;
+    }
+    position += sizeof(uint8_t);
 
     if (out_message->path_length > MESHCORE_MAX_PATH_SIZE) return -1;
+    if (size - position < out_message->path_length) return -1;
     memcpy(out_message->path, &data[position], out_message->path_length);
     position += out_message->path_length;
 

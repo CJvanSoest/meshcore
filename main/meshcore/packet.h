@@ -48,7 +48,12 @@ typedef struct {
     meshcore_route_type_t   route;
     uint8_t                 version;
     uint16_t                transport_codes[2];
+    // path_length is the BYTE count of valid data in path[].
+    // The wire-format byte that carries path_length encodes the per-hop size
+    // in its upper 2 bits (00=1B, 01=2B, 10=3B) and the hop count in the lower
+    // 6 bits — so path_length == hop_count * bytes_per_hop.
     uint8_t                 path_length;
+    uint8_t                 bytes_per_hop;  // 1, 2 or 3; 0 from caller means "use 1"
     uint8_t                 path[MESHCORE_MAX_PATH_SIZE];
     uint8_t                 payload_length;
     uint8_t                 payload[MESHCORE_MAX_PAYLOAD_SIZE];

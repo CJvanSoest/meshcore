@@ -429,28 +429,6 @@ static void save_lora_advert_name(void) {
              lora_advert_name[0] ? lora_advert_name : "(cleared)");
 }
 
-static void load_path_hash_size(void) {
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) {
-        path_hash_size = LORA_DEF_PATHHASH;
-        return;
-    }
-    uint8_t v = LORA_DEF_PATHHASH;
-    if (nvs_get_u8(handle, NVS_LORA_PATHHASH, &v) != ESP_OK) v = LORA_DEF_PATHHASH;
-    if (v < 1 || v > 3) v = LORA_DEF_PATHHASH;
-    path_hash_size = v;
-    nvs_close(handle);
-}
-
-static void save_path_hash_size(void) {
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
-    nvs_set_u8(handle, NVS_LORA_PATHHASH, path_hash_size);
-    nvs_commit(handle);
-    nvs_close(handle);
-    ESP_LOGI(TAG, "Path hash size saved: %u byte(s)", path_hash_size);
-}
-
 static void load_region_scope(void) {
     nvs_handle_t handle;
     if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) {
@@ -1740,29 +1718,38 @@ static void lora_rx_task(void *arg) {
                             }
 
                             // 2. Build and encrypt inner data.
-                            //    Layout: path_len | type | ack_crc[4] | path_bytes[path_len] | zero-pad
+                            //    Layout: path_len_byte | type | ack_crc[4] | path_bytes[hops*bph] | zero-pad
+                            //    path_len_byte encodes bytes-per-hop in upper 2 bits, hop count in lower 6.
                             //    Total size rounded up to a 16-byte AES block boundary.
-                            //    We reverse the incoming mc_msg.path[] so the receiver learns the
-                            //    correct sequence of repeaters back to us. Cap path_len so the
-                            //    inner buffer stays within 2 AES blocks (32B); longer paths fall
-                            //    back to path_len=0 (flood-only learning, still functional).
-                            uint8_t ret_path_len = mc_msg.path_length;
-                            if (ret_path_len > 26) ret_path_len = 0;
+                            //    We reverse the incoming hops so the receiver learns the correct
+                            //    sequence of repeaters back to us. Cap so the inner buffer stays
+                            //    within 2 AES blocks (32B); longer paths fall back to 0 hops.
+                            uint8_t ret_bph        = mc_msg.bytes_per_hop ? mc_msg.bytes_per_hop : 1;
+                            uint8_t ret_hop_count  = (ret_bph > 0) ? (mc_msg.path_length / ret_bph) : 0;
+                            uint8_t ret_path_bytes = ret_hop_count * ret_bph;
+                            if (ret_path_bytes > 26) {
+                                ret_hop_count  = 0;
+                                ret_path_bytes = 0;
+                            }
 
-                            size_t  inner_size = ((6 + (size_t)ret_path_len + 15) / 16) * 16;
+                            size_t  inner_size = ((6 + (size_t)ret_path_bytes + 15) / 16) * 16;
                             if (inner_size < 16) inner_size = 16;
                             if (inner_size > 32) inner_size = 32;
 
                             uint8_t inner[32]       = {0};
                             uint8_t path_cipher[32] = {0};
-                            inner[0] = ret_path_len;
+                            inner[0] = ((uint8_t)((ret_bph - 1) & 0x03) << 6) | (ret_hop_count & 0x3F);
                             inner[1] = MESHCORE_PAYLOAD_TYPE_ACK;   // = 0x03
                             inner[2] = sha_out[0];
                             inner[3] = sha_out[1];
                             inner[4] = sha_out[2];
                             inner[5] = sha_out[3];
-                            for (int p = 0; p < ret_path_len; p++) {
-                                inner[6 + p] = mc_msg.path[ret_path_len - 1 - p];
+                            // Reverse hop-by-hop (each hop is bph bytes wide).
+                            for (uint8_t h = 0; h < ret_hop_count; h++) {
+                                uint8_t src_hop = ret_hop_count - 1 - h;
+                                memcpy(&inner[6 + h * ret_bph],
+                                       &mc_msg.path[src_hop * ret_bph],
+                                       ret_bph);
                             }
                             // remaining bytes = 0 padding
 
@@ -1795,8 +1782,9 @@ static void lora_rx_task(void *arg) {
                             memcpy(&path_msg.payload[4], path_cipher, inner_size);
                             path_msg.payload_length = 4 + inner_size;
 
-                            ESP_LOGI(TAG, "PATH_RETURN: ret_path_len=%u inner_size=%u",
-                                     (unsigned)ret_path_len, (unsigned)inner_size);
+                            ESP_LOGI(TAG, "PATH_RETURN: hops=%u bph=%u inner_size=%u",
+                                     (unsigned)ret_hop_count, (unsigned)ret_bph,
+                                     (unsigned)inner_size);
 
                             uint8_t path_data[MESHCORE_MAX_TRANS_UNIT];
                             uint8_t path_sz = 0;
