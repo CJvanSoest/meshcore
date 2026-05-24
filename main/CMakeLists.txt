@@ -13,6 +13,7 @@ idf_component_register(
 		"settings_nvs.c"
 		"nodes.c"
 		"chat.c"
+		"radio.c"
 		"ed25519.c"
 		"qrcodegen.c"
 		"meshcore/packet.c"
