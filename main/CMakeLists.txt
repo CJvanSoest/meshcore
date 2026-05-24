@@ -14,6 +14,8 @@ idf_component_register(
 		"nodes.c"
 		"chat.c"
 		"radio.c"
+		"input.c"
+		"render.c"
 		"ed25519.c"
 		"qrcodegen.c"
 		"meshcore/packet.c"
