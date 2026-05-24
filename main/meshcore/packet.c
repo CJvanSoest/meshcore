@@ -72,7 +72,7 @@ int meshcore_deserialize(uint8_t* data, uint8_t size, meshcore_message_t* out_me
     }
 
     if (size - position < sizeof(uint8_t)) return -1;
-    out_message->path_length  = data[position];
+    out_message->path_length  = data[position] & 0x3F;
     position                 += sizeof(uint8_t);
 
     if (out_message->path_length > MESHCORE_MAX_PATH_SIZE) return -1;

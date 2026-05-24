@@ -240,6 +240,7 @@ static int  dm_inbox_scroll  = 0;
 // ── Settings: field identifiers ───────────────────────────────────────────────
 typedef enum {
     FIELD_OWNER = 0,
+    FIELD_ADV_NAME,
     FIELD_FREQ,
     FIELD_SF,
     FIELD_BW,
@@ -316,6 +317,11 @@ static bool                          radio_bootloader_mode = false;
 static bool                          sntp_synced           = false;
 static bool                          time_from_nvs         = false;
 static char                          owner_name[33]        = {0};
+static char                          lora_advert_name[33]  = {0};  // overrides owner_name in advert if set
+// Shared text-edit scratch for FIELD_OWNER / FIELD_ADV_NAME.
+static char                          field_edit_buf[33]    = {0};
+static int                           field_edit_len        = 0;
+static bool                          field_editing_text    = false;
 static lora_protocol_config_params_t lora_cfg              = {0};
 static uint16_t                      advert_interval_s     = LORA_DEF_ADVERT_INT;
 static meshcore_device_role_t        lora_role             = MESHCORE_DEVICE_ROLE_CHAT_NODE;
@@ -385,6 +391,34 @@ static void save_owner_name(void) {
     nvs_commit(handle);
     nvs_close(handle);
     ESP_LOGI(TAG, "Owner name saved: %s", owner_name);
+}
+
+static void load_lora_advert_name(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
+    size_t len = sizeof(lora_advert_name) - 1;
+    if (nvs_get_str(handle, "lora.advname", lora_advert_name, &len) != ESP_OK) {
+        lora_advert_name[0] = '\0';
+    }
+    nvs_close(handle);
+}
+
+static void save_lora_advert_name(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) {
+        ESP_LOGE(TAG, "NVS open for write failed (lora.advname)");
+        return;
+    }
+    // Empty string = "use owner_name as fallback" → remove the key.
+    if (lora_advert_name[0] == '\0') {
+        nvs_erase_key(handle, "lora.advname");
+    } else {
+        nvs_set_str(handle, "lora.advname", lora_advert_name);
+    }
+    nvs_commit(handle);
+    nvs_close(handle);
+    ESP_LOGI(TAG, "LoRa advert name saved: %s",
+             lora_advert_name[0] ? lora_advert_name : "(cleared)");
 }
 
 // ── Contacts NVS ──────────────────────────────────────────────────────────────
@@ -956,8 +990,10 @@ static void send_advert(void) {
     advert.timestamp = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
     advert.role      = lora_role;
 
-    if (owner_name[0] && owner_name[0] != '(') {
-        strncpy(advert.name, owner_name, MESHCORE_MAX_NAME_SIZE);
+    const char *adv_src = lora_advert_name[0] ? lora_advert_name :
+                          ((owner_name[0] && owner_name[0] != '(') ? owner_name : NULL);
+    if (adv_src) {
+        strncpy(advert.name, adv_src, MESHCORE_MAX_NAME_SIZE);
         advert.name_valid = true;
     }
 
@@ -1252,10 +1288,12 @@ static bool send_chat_message(const char* text) {
     uint32_t ts = (uint32_t)time(NULL);
     uint8_t  plain[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
     size_t   text_len = strlen(text);
-    // Include owner name prefix: "name: text"
+    // Include name prefix: "name: text" — same fallback as send_advert.
+    const char *name_src = lora_advert_name[0] ? lora_advert_name :
+                           ((owner_name[0] && owner_name[0] != '(') ? owner_name : NULL);
     char prefixed[MAX_MSG_TEXT];
-    if (owner_name[0] && owner_name[0] != '(') {
-        snprintf(prefixed, sizeof(prefixed), "%s: %s", owner_name, text);
+    if (name_src) {
+        snprintf(prefixed, sizeof(prefixed), "%s: %s", name_src, text);
     } else {
         snprintf(prefixed, sizeof(prefixed), "%s", text);
     }
@@ -1588,42 +1626,64 @@ static void lora_rx_task(void *arg) {
                                 mbedtls_sha256_free(&sha_ctx);
                             }
 
-                            // 2. Build and encrypt inner data
-                            uint8_t inner[16] = {0};
-                            inner[0] = 0x00;                        // path_len = 0
+                            // 2. Build and encrypt inner data.
+                            //    Layout: path_len | type | ack_crc[4] | path_bytes[path_len] | zero-pad
+                            //    Total size rounded up to a 16-byte AES block boundary.
+                            //    We reverse the incoming mc_msg.path[] so the receiver learns the
+                            //    correct sequence of repeaters back to us. Cap path_len so the
+                            //    inner buffer stays within 2 AES blocks (32B); longer paths fall
+                            //    back to path_len=0 (flood-only learning, still functional).
+                            uint8_t ret_path_len = mc_msg.path_length;
+                            if (ret_path_len > 26) ret_path_len = 0;
+
+                            size_t  inner_size = ((6 + (size_t)ret_path_len + 15) / 16) * 16;
+                            if (inner_size < 16) inner_size = 16;
+                            if (inner_size > 32) inner_size = 32;
+
+                            uint8_t inner[32]       = {0};
+                            uint8_t path_cipher[32] = {0};
+                            inner[0] = ret_path_len;
                             inner[1] = MESHCORE_PAYLOAD_TYPE_ACK;   // = 0x03
                             inner[2] = sha_out[0];
                             inner[3] = sha_out[1];
                             inner[4] = sha_out[2];
                             inner[5] = sha_out[3];
-                            // inner[6..15] = 0 (zero padding for AES block)
+                            for (int p = 0; p < ret_path_len; p++) {
+                                inner[6 + p] = mc_msg.path[ret_path_len - 1 - p];
+                            }
+                            // remaining bytes = 0 padding
 
-                            uint8_t path_cipher[16];
                             {
                                 mbedtls_aes_context aes;
                                 mbedtls_aes_init(&aes);
                                 mbedtls_aes_setkey_enc(&aes, good_secret, 128);
-                                mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, inner, path_cipher);
+                                for (size_t bi = 0; bi < inner_size; bi += 16) {
+                                    mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT,
+                                                          &inner[bi], &path_cipher[bi]);
+                                }
                                 mbedtls_aes_free(&aes);
                             }
 
                             // 3. MAC = HMAC-SHA256(good_secret[32], ciphertext)[0:2]
                             uint8_t path_mac[32];
                             mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                                            good_secret, 32, path_cipher, 16, path_mac);
+                                            good_secret, 32, path_cipher, inner_size, path_mac);
 
-                            // 4. Build PATH packet
+                            // 4. Build PATH packet (outer still floods)
                             meshcore_message_t path_msg = {0};
                             path_msg.type          = MESHCORE_PAYLOAD_TYPE_PATH;
                             path_msg.route         = MESHCORE_ROUTE_TYPE_FLOOD;
                             path_msg.version       = 0;
                             path_msg.path_length   = 0;
-                            path_msg.payload[0]    = src_hash;        // dest = iPhone hash
-                            path_msg.payload[1]    = node_pub_key[0]; // src  = our hash
+                            path_msg.payload[0]    = src_hash;        // dest hash
+                            path_msg.payload[1]    = node_pub_key[0]; // src  hash (us)
                             path_msg.payload[2]    = path_mac[0];
                             path_msg.payload[3]    = path_mac[1];
-                            memcpy(&path_msg.payload[4], path_cipher, 16);
-                            path_msg.payload_length = 20;
+                            memcpy(&path_msg.payload[4], path_cipher, inner_size);
+                            path_msg.payload_length = 4 + inner_size;
+
+                            ESP_LOGI(TAG, "PATH_RETURN: ret_path_len=%u inner_size=%u",
+                                     (unsigned)ret_path_len, (unsigned)inner_size);
 
                             uint8_t path_data[MESHCORE_MAX_TRANS_UNIT];
                             uint8_t path_sz = 0;
@@ -1866,6 +1926,10 @@ static void render_settings(void) {
     snprintf(rows[FIELD_OWNER].value, sizeof(rows[FIELD_OWNER].value), "%s", owner_name);
     rows[FIELD_OWNER].label = "Owner name";
 
+    rows[FIELD_ADV_NAME].label = "Advert name";
+    snprintf(rows[FIELD_ADV_NAME].value, sizeof(rows[FIELD_ADV_NAME].value), "%s",
+             lora_advert_name[0] ? lora_advert_name : "(use owner)");
+
     rows[FIELD_FREQ].label = "Frequency";
     snprintf(rows[FIELD_FREQ].value, sizeof(rows[FIELD_FREQ].value),
              "%.3f MHz", (double)lora_cfg.frequency / 1000000.0);
@@ -1954,7 +2018,10 @@ static void render_settings(void) {
         }
 
         char val_disp[80];
-        if (is_sel && edit_mode && i != FIELD_OWNER) {
+        if (is_sel && edit_mode && field_editing_text &&
+            (i == FIELD_OWNER || i == FIELD_ADV_NAME)) {
+            snprintf(val_disp, sizeof(val_disp), "%s_", field_edit_buf);
+        } else if (is_sel && edit_mode && i != FIELD_OWNER && i != FIELD_ADV_NAME) {
             snprintf(val_disp, sizeof(val_disp), "< %s >", rows[i].value);
         } else {
             snprintf(val_disp, sizeof(val_disp), "%s", rows[i].value);
@@ -1976,14 +2043,17 @@ static void render_settings(void) {
 
     const char *hint = NULL;
     pax_col_t   hint_col = COL_GRAY;
-    if (edit_mode && selected != FIELD_OWNER) {
+    if (edit_mode && field_editing_text) {
+        hint = "Type to edit   Backspace: del   Enter: save   ESC: cancel";
+    } else if (edit_mode) {
         hint = "Up/Down or W/S: adjust   Enter: save   ESC: cancel";
     } else if (!c6_available) {
         hint = "NVS only — C6 unavailable   U: flash radio";
         hint_col = COL_AMBER;
     } else if (selected == FIELD_OWNER) {
-        hint = "Owner name: edit not yet supported (set via launcher)";
-        hint_col = COL_AMBER;
+        hint = "Owner name is shared with launcher (Enter to edit)";
+    } else if (selected == FIELD_ADV_NAME) {
+        hint = "Advert name overrides owner in LoRa adverts (empty=use owner)";
     } else if (selected == FIELD_SYNC) {
         hint = "Sync word: 0x12 = public LoRa. Isolates networks.";
     } else if (selected == FIELD_PREAMBLE) {
@@ -2060,11 +2130,15 @@ static void render_qr_overlay(void) {
     for (int i = 0; i < 32; i++) snprintf(&hex_key[i * 2], 3, "%02x", node_pub_key[i]);
     hex_key[64] = '\0';
 
-    // URL-encode owner name (replace spaces with +)
+    // Use same name as send_advert: lora_advert_name overrides owner_name when set.
+    const char *adv_src = lora_advert_name[0] ? lora_advert_name :
+                          ((owner_name[0] && owner_name[0] != '(') ? owner_name : "");
+
+    // URL-encode (replace spaces with +)
     char encoded_name[64];
     int ei = 0;
-    for (int i = 0; owner_name[i] && ei < 62; i++) {
-        char c = owner_name[i];
+    for (int i = 0; adv_src[i] && ei < 62; i++) {
+        char c = adv_src[i];
         if (c == ' ') { encoded_name[ei++] = '+'; }
         else          { encoded_name[ei++] = c; }
     }
@@ -2126,7 +2200,8 @@ static void render_qr_overlay(void) {
 
     // Name below QR
     char name_label[80];
-    snprintf(name_label, sizeof(name_label), "%s  [press any key to close]", owner_name);
+    snprintf(name_label, sizeof(name_label), "%s  [press any key to close]",
+             adv_src[0] ? adv_src : "(no name)");
     pax_vec2f nsz = pax_text_size(FONT, TXT_SMALL, name_label);
     pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL,
                   (w - (int)nsz.x) / 2, qr_y + qr_px + margin + 6, name_label);
@@ -2636,6 +2711,29 @@ static void render(void) {
 }
 
 // ── Input handling ────────────────────────────────────────────────────────────
+// Settings: text-field edit helpers (shared between handle_nav and handle_key).
+static void settings_begin_text_edit(field_t f) {
+    const char *src = "";
+    if (f == FIELD_OWNER && owner_name[0] && owner_name[0] != '(') src = owner_name;
+    else if (f == FIELD_ADV_NAME && lora_advert_name[0])           src = lora_advert_name;
+    strncpy(field_edit_buf, src, sizeof(field_edit_buf) - 1);
+    field_edit_buf[sizeof(field_edit_buf) - 1] = '\0';
+    field_edit_len     = (int)strlen(field_edit_buf);
+    field_editing_text = true;
+}
+static void settings_commit_text_edit(field_t f) {
+    if (f == FIELD_OWNER) {
+        strncpy(owner_name, field_edit_buf, sizeof(owner_name) - 1);
+        owner_name[sizeof(owner_name) - 1] = '\0';
+        save_owner_name();
+    } else if (f == FIELD_ADV_NAME) {
+        strncpy(lora_advert_name, field_edit_buf, sizeof(lora_advert_name) - 1);
+        lora_advert_name[sizeof(lora_advert_name) - 1] = '\0';
+        save_lora_advert_name();
+    }
+    field_editing_text = false;
+}
+
 static void handle_nav(uint32_t key) {
     if (radio_bootloader_mode) {
         if (key == BSP_INPUT_NAVIGATION_KEY_F1 || key == BSP_INPUT_NAVIGATION_KEY_ESC) {
@@ -2653,9 +2751,11 @@ static void handle_nav(uint32_t key) {
 
     if (key == BSP_INPUT_NAVIGATION_KEY_F1 || key == BSP_INPUT_NAVIGATION_KEY_ESC) {
         if (edit_mode) {
-            edit_mode = false;
-            dirty     = false;
+            edit_mode          = false;
+            field_editing_text = false;
+            dirty              = false;
             load_owner_name();
+            load_lora_advert_name();
             load_lora_config();
         } else if (chat_typing) {
             // ESC tijdens typing wordt door handle_key gecancelled; hier niet doorstoten naar launcher
@@ -2669,7 +2769,7 @@ static void handle_nav(uint32_t key) {
     } else if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
         if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) selected = (selected - 1 + FIELD_COUNT) % FIELD_COUNT;
-            else if (selected != FIELD_OWNER) field_adjust(selected, +1);
+            else if (!field_editing_text) field_adjust(selected, +1);
         } else if (current_view == VIEW_NODES) {
             if (node_cursor > 0) node_cursor--;
         } else if (current_view == VIEW_CHAT && dm_inbox_mode) {
@@ -2678,7 +2778,7 @@ static void handle_nav(uint32_t key) {
     } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
         if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) selected = (selected + 1) % FIELD_COUNT;
-            else if (selected != FIELD_OWNER) field_adjust(selected, -1);
+            else if (!field_editing_text) field_adjust(selected, -1);
         } else if (current_view == VIEW_NODES) {
             int upper = node_count + contact_count - 1;
             if (upper < 0) upper = 0;
@@ -2689,9 +2789,9 @@ static void handle_nav(uint32_t key) {
             if (dm_inbox_cursor < upper) dm_inbox_cursor++;
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_LEFT) {
-        if (current_view == VIEW_SETTINGS && edit_mode && selected != FIELD_OWNER) field_adjust(selected, -1);
+        if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, -1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT) {
-        if (current_view == VIEW_SETTINGS && edit_mode && selected != FIELD_OWNER) field_adjust(selected, +1);
+        if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, +1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
         // Inbox: pick a conversation
         if (current_view == VIEW_CHAT && dm_inbox_mode && !chat_typing) {
@@ -2779,9 +2879,12 @@ static void handle_nav(uint32_t key) {
         } else if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) {
                 edit_mode = true;
+                if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME) {
+                    settings_begin_text_edit(selected);
+                }
             } else {
-                if (selected == FIELD_OWNER) save_owner_name();
-                else save_lora_config();
+                if (field_editing_text)        settings_commit_text_edit(selected);
+                else                            save_lora_config();
                 edit_mode = false;
                 dirty     = false;
             }
@@ -2801,6 +2904,28 @@ static void handle_key(char c) {
     // QR overlay: ESC closes it, all other keys ignored
     if (qr_overlay_active) {
         if (c == 27) qr_overlay_active = false;
+        return;
+    }
+
+    // Settings text-edit (FIELD_OWNER / FIELD_ADV_NAME): intercept all printable
+    // characters so the global W/S/T/F/L/Q/R/T shortcuts don't fire while typing.
+    if (current_view == VIEW_SETTINGS && edit_mode && field_editing_text) {
+        if (c == 27) {  // ESC: cancel
+            edit_mode          = false;
+            field_editing_text = false;
+            dirty              = false;
+            load_owner_name();
+            load_lora_advert_name();
+        } else if (c == '\r' || c == '\n') {  // Enter: save
+            settings_commit_text_edit(selected);
+            edit_mode = false;
+            dirty     = false;
+        } else if (c == 127 || c == 8) {  // Backspace
+            if (field_edit_len > 0) field_edit_buf[--field_edit_len] = '\0';
+        } else if (c >= 32 && c < 127 && field_edit_len < (int)sizeof(field_edit_buf) - 1) {
+            field_edit_buf[field_edit_len++] = c;
+            field_edit_buf[field_edit_len]   = '\0';
+        }
         return;
     }
 
@@ -2888,9 +3013,11 @@ static void handle_key(char c) {
 
     if (c == 27) {
         if (edit_mode) {
-            edit_mode = false;
-            dirty     = false;
+            edit_mode          = false;
+            field_editing_text = false;
+            dirty              = false;
             load_owner_name();
+            load_lora_advert_name();
             load_lora_config();
         } else if (current_view == VIEW_CHAT && !dm_inbox_mode) {
             dm_inbox_mode = true;  // back to inbox list
@@ -2901,14 +3028,14 @@ static void handle_key(char c) {
     } else if (c == 'w' || c == 'W') {
         if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) selected = (selected - 1 + FIELD_COUNT) % FIELD_COUNT;
-            else if (selected != FIELD_OWNER) field_adjust(selected, +1);
+            else if (!field_editing_text) field_adjust(selected, +1);
         } else if (current_view == VIEW_NODES) {
             if (node_cursor > 0) node_cursor--;
         }
     } else if (c == 's' || c == 'S') {
         if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) selected = (selected + 1) % FIELD_COUNT;
-            else if (selected != FIELD_OWNER) field_adjust(selected, -1);
+            else if (!field_editing_text) field_adjust(selected, -1);
         } else if (current_view == VIEW_NODES) {
             int upper = node_count + contact_count - 1;
             if (upper < 0) upper = 0;
@@ -2951,9 +3078,9 @@ static void handle_key(char c) {
     } else if ((c == 'q' || c == 'Q') && current_view == VIEW_NODES && identity_ready) {
         qr_overlay_active = true;
     } else if (c == '<' || c == ',') {
-        if (current_view == VIEW_SETTINGS && edit_mode && selected != FIELD_OWNER) field_adjust(selected, -1);
+        if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, -1);
     } else if (c == '>' || c == '.') {
-        if (current_view == VIEW_SETTINGS && edit_mode && selected != FIELD_OWNER) field_adjust(selected, +1);
+        if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, +1);
     } else if (c == '\r' || c == '\n') {
         if (current_view == VIEW_NODES) {
             // Select node/contact under cursor → open DM in Chat tab
@@ -2988,9 +3115,12 @@ static void handle_key(char c) {
         } else if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) {
                 edit_mode = true;
+                if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME) {
+                    settings_begin_text_edit(selected);
+                }
             } else {
-                if (selected == FIELD_OWNER) save_owner_name();
-                else save_lora_config();
+                if (field_editing_text)        settings_commit_text_edit(selected);
+                else                            save_lora_config();
                 edit_mode = false;
                 dirty     = false;
             }
@@ -2998,9 +3128,11 @@ static void handle_key(char c) {
     } else if (c == 'r' || c == 'R') {
         if (current_view == VIEW_SETTINGS) {
             load_owner_name();
+            load_lora_advert_name();
             load_lora_config();
-            dirty     = false;
-            edit_mode = false;
+            dirty              = false;
+            edit_mode          = false;
+            field_editing_text = false;
         } else if (current_view == VIEW_CHANNEL && !chat_typing) {
             // Wipe channel history (RAM ring + on-disk file)
             if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
@@ -3135,6 +3267,7 @@ void app_main(void) {
     }
 
     load_owner_name();
+    load_lora_advert_name();
     load_contacts();
 
     DIAG(COL_GRAY, "SD mount...");

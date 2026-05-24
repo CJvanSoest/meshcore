@@ -144,6 +144,44 @@ The lesson is one I keep relearning: incremental improvements are fine — as lo
 
 ---
 
+## What I Learned About Text Input and Protocol Archaeology
+
+A short sprint to make the badge's owner name editable, give the LoRa advertisement a separate name, and dig into why direct messages from a peer device kept failing in one specific mode. Four lessons came out of it.
+
+### 16. One text-input helper, multiple fields
+
+The owner name and the new LoRa advertisement name both needed to be editable. Rather than build two parallel edit modes, I added one editing state (`field_editing_text`) and one edit buffer, with two thin helpers — `settings_begin_text_edit(field)` and `settings_commit_text_edit(field)` — that pick which field gets loaded and saved. The keystroke handler doesn't know about fields at all; it only knows "text is being typed, write to the buffer."
+
+The payoff: adding a third editable field is now a single case statement, not a new input mode. Shared edit state with per-field load/commit hooks scales better than a mode per field, and stays clean as the field list grows.
+
+### 17. One source of truth, three visible places
+
+After adding the separate advertisement name, scanning the badge's QR code still showed the old owner name on the other device. The fallback logic ("use advertisement name if set, else owner name") was baked into `send_advert()` and nowhere else. The fix was to synchronise the same fallback across three call-sites: `send_advert`, the QR overlay (both the URL `name=` parameter and the on-screen label), and the channel chat prefix.
+
+The lesson: once a derived value is computed in more than one place, that's a symptom. Extract the choice once and use it everywhere — otherwise you'll guarantee at least one site that gets forgotten the next time the logic changes.
+
+### 18. Acknowledging is not the same as teaching the route back
+
+For every incoming direct message, the badge was sending a PATH_RETURN reply with `path_length=0`, regardless of how many repeaters the message had crossed on the way in. The remote node could therefore never learn a reverse path and had to flood every subsequent message. Fix: take the inbound `path[]`, reverse it, and embed it in the encrypted inner data of the PATH_RETURN (padded to a 16- or 32-byte AES block, HMAC over the ciphertext).
+
+The lesson generalises: in a mesh network, an acknowledgement isn't the same thing as giving the other side a usable route back. Both ends of a conversation need a working path, or you keep paying for floods on every single message.
+
+### 19. Hex dump first, documentation second
+
+Direct messages from a peer device started failing the moment I switched its "path hash size" setting from 1 byte to 2. Our deserialiser was reading the second byte of the packet as a path length of 64 — invalid, dropped. I temporarily extended the RX log to dump the full hex payload. Side by side with a working 1-byte packet, the rest of the bytes were identical: same destination, source, MAC, ciphertext at the same offsets. Only the second byte differed: `0x00` vs `0x40`.
+
+That observation alone was enough to conclude that `0x40` is a flag bit packed into the path-length byte, not a literal 64-hop path. Mask became `& 0x3F` — lower six bits as length, top two bits ignored. No upstream-source archaeology needed.
+
+The lesson: when you suspect a field is being misread, dump the raw wire format and compare with a known-working variant. That comparison is faster and more certain than reading the spec.
+
+### 20. A fix that looks right is not the same as one that works end-to-end
+
+The mask change above was elegant, justified by the hex dump, and built cleanly. In real-world testing, direct messages in 2-byte mode still failed. There is clearly more to the protocol mode change than just one flag bit. I added the unresolved case to the backlog as an explicit open item rather than papering over it with a half-fix.
+
+The lesson: if the end-to-end test doesn't pass, your fix isn't finished. An explicit open issue is better than a silently broken code path that looks healthy because the unit-level check is green.
+
+---
+
 ## Links
 
 - Source: [github.com/CJvanSoest/meshcore](https://github.com/CJvanSoest/meshcore)
