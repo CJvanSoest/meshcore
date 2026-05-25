@@ -105,14 +105,14 @@ schematics are available on the Tanmatsu documentation site.
   </tr>
   <tr>
     <td><img src="docs/screen-dm-inbox.svg" width="360"></td>
-    <td><img src="docs/screen-dm.svg" width="360"></td>
+    <td><img src="docs/screen-dm.png" width="360"></td>
   </tr>
   <tr>
     <td align="center"><b>Public channel</b></td>
     <td></td>
   </tr>
   <tr>
-    <td><img src="docs/screen-channel.svg" width="360"></td>
+    <td><img src="docs/screen-channel.png" width="360"></td>
     <td></td>
   </tr>
   <tr>
