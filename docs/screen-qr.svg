@@ -145,7 +145,7 @@
   <!-- Annotation box -->
   <rect x="40" y="450" width="320" height="140" fill="#16161E" rx="4"/>
   <text x="50" y="470" fill="#7AA2F7" font-family="'Saira',sans-serif" font-size="10" font-weight="500">QR encodes:</text>
-  <text x="50" y="484" fill="#C0CAF5" font-family="'Saira',sans-serif" font-size="9" font-family="monospace">meshcore://contact/add?</text>
+  <text x="50" y="484" fill="#C0CAF5" font-family="monospace" font-size="9">meshcore://contact/add?</text>
   <text x="50" y="496" fill="#C0CAF5" font-family="monospace" font-size="9">  name=TanmatsuUser&amp;</text>
   <text x="50" y="508" fill="#C0CAF5" font-family="monospace" font-size="9">  public_key=&lt;ed25519 pub, hex&gt;&amp;</text>
   <text x="50" y="520" fill="#C0CAF5" font-family="monospace" font-size="9">  type=1</text>
