@@ -58,17 +58,17 @@ preference points to it.
 
 ## Launcher dependency
 
-MeshCore requires the **patched local launcher** at
-`/Users/cjvs/stack/Projects/Tanmatsu/tanmatsu-launcher`:
+MeshCore requires a **patched local checkout** of the
+[tanmatsu-launcher](https://github.com/Nicolai-Electronics/tanmatsu-launcher)
+with the following two patches applied on top of the upstream `main` branch:
 
 | Patch | What it does | Why |
 |---|---|---|
-| WiFi auto-connect on boot (`main/main.c:154`) | Always call `wifi_connect_try_all()` regardless of NTP state | Stock launcher only reconnects when NTP is enabled — MeshCore needs WiFi for SNTP and to keep the WiFi-LED meaningful |
+| WiFi auto-connect on boot (`main/main.c` around the wifi-init block) | Always call `wifi_connect_try_all()` regardless of NTP state | Stock launcher only reconnects when NTP is enabled — MeshCore needs WiFi for SNTP and to keep the WiFi-LED meaningful |
 | badge-elf-api / badge-bsp type fix | Renames `lcd_color_rgb_pixel_format_t` → `bsp_display_color_format_t` (and friends) in the managed_components copy | Upstream `badge-elf-api 0.6.0` was not bumped for `badge-bsp 0.9.9` signature change; build fails otherwise with `-Werror=incompatible-pointer-types` |
 
-Both patches are documented in the maintainer's memory file
-`tanmatsu_launcher_patches.md`. After an upstream launcher release, check
-whether they have been folded in; if not, re-apply.
+After an upstream launcher release, check whether these have been folded in;
+if not, re-apply.
 
 ## Required launcher version
 
@@ -89,6 +89,6 @@ MeshCore Settings tab. Full instructions in
 | Symptom | Cause | Fix |
 |---|---|---|
 | Build cached for wrong target (`esp32` instead of `esp32p4`) | Stale `build/tanmatsu/` from a different target | `rm -rf build/tanmatsu` and rebuild |
-| `idf.py` warns about `python_env` mismatch | Wrong `IDF_TOOLS_PATH` exported | `export IDF_TOOLS_PATH=/Users/cjvs/.espressif IDF_PATH=/Users/cjvs/esp/esp-idf` (or use the values from the `.IDF_*` files) |
+| `idf.py` warns about `python_env` mismatch | Wrong `IDF_TOOLS_PATH` exported | Re-export from the repo's `.IDF_PATH` and `.IDF_TOOLS_PATH` files (or whichever ESP-IDF install the tools were pinned to) |
 | `make upload` fails with "Device not configured" | Serial port unable to open | Make sure no monitor is attached; for raw read with DTR/RTS off, set `s.dtr = False; s.rts = False` before opening |
 | badge-elf-api type mismatch after `rm dependencies.lock + reconfigure` | The local patches in `managed_components/badgeteam__badge-elf-api/` were wiped | Re-apply the patches documented in [`launcher patches memory`](Build-Deploy.md#launcher-dependency) |
