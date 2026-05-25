@@ -1,67 +1,47 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Public Channel — Tokyo Night palette, consistent row spacing.
-     Same layout as DM minus the "‹ name" back-button. Idle input border = green. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640">
+<!-- Public Channel view (empty / first-launch state) — matches the actual
+     badge screen with "No channel messages yet" placeholder.
+     Saira font loaded from Google Fonts so the on-screen typography matches
+     the bitmap Saira used on the device. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640" font-family="'Saira', sans-serif">
+  <defs>
+    <style type="text/css">
+      @import url('https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600&amp;display=swap');
+      text { font-family: 'Saira', 'Helvetica Neue', sans-serif; }
+    </style>
+  </defs>
+
   <rect width="400" height="640" fill="#1A1B26" rx="4"/>
   <rect x="0.5" y="0.5" width="399" height="639" fill="none" stroke="#24283B" stroke-width="1" rx="4"/>
 
   <!-- ── Tab bar ── -->
   <rect x="0" y="0" width="400" height="22" fill="#16161E" rx="4"/>
   <rect x="0" y="11" width="400" height="11" fill="#16161E"/>
-  <text x="37"  y="16" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" text-anchor="middle">Settings</text>
-  <text x="112" y="16" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" text-anchor="middle">Nodes</text>
-  <text x="187" y="16" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" text-anchor="middle">DM</text>
+  <text x="37"  y="16" fill="#565F89" font-size="11" text-anchor="middle">Settings</text>
+  <text x="112" y="16" fill="#565F89" font-size="11" text-anchor="middle">Nodes</text>
+  <text x="187" y="16" fill="#565F89" font-size="11" text-anchor="middle">DM</text>
   <rect x="225" y="0" width="75" height="22" fill="#7AA2F7" rx="4"/>
   <rect x="225" y="11" width="75" height="11" fill="#7AA2F7"/>
-  <text x="262" y="16" fill="#16161E" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" font-weight="600" text-anchor="middle">Channel</text>
-  <text x="394" y="16" fill="#9ECE6A" font-family="'Saira','Helvetica Neue',sans-serif" font-size="10" text-anchor="end">72%</text>
-  <text x="370" y="16" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="10" text-anchor="end">|</text>
-  <text x="360" y="16" fill="#9ECE6A" font-family="'Saira','Helvetica Neue',sans-serif" font-size="10" text-anchor="end">RX:12</text>
+  <text x="262" y="16" fill="#16161E" font-size="11" font-weight="600" text-anchor="middle">Channel</text>
+  <text x="394" y="16" fill="#9ECE6A" font-size="10" text-anchor="end">97%</text>
+  <text x="370" y="16" fill="#565F89" font-size="10" text-anchor="end">|</text>
+  <text x="360" y="16" fill="#9ECE6A" font-size="10" text-anchor="end">RX:0</text>
   <rect x="0" y="21" width="400" height="1" fill="#24283B"/>
 
-  <!-- ── Header (CHAT_Y0=24, h=14) ── -->
-  <rect x="0" y="24" width="400" height="14" fill="#24283B"/>
-  <text x="10" y="35" fill="#C0CAF5" font-family="'Saira','Helvetica Neue',sans-serif" font-size="10" font-weight="500">Public channel</text>
+  <!-- ── Header ("Public channel" in PANEL strip) ── -->
+  <rect x="0" y="24" width="400" height="16" fill="#24283B"/>
+  <text x="10" y="36" fill="#C0CAF5" font-size="12" font-weight="500">Public channel</text>
 
-  <!-- ── Channel rows (list_y0=40, row_h=22) ── -->
+  <!-- ── Empty state placeholder ── -->
+  <text x="14" y="62" fill="#565F89" font-size="13">No channel messages yet. Press T to send.</text>
 
-  <!-- Row 0 (peer) — y=40 -->
-  <text x="14" y="52" fill="#C0CAF5" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11">Anyone at the badge workshop?</text>
+  <!-- ── Input bar (idle: GREEN top border + green hint text) ── -->
+  <rect x="0" y="606" width="400" height="2" fill="#9ECE6A"/>
+  <rect x="0" y="608" width="400" height="18" fill="#24283B"/>
+  <text x="10" y="620" fill="#9ECE6A" font-size="12">T: send channel message</text>
 
-  <!-- Row 1 (mine) — y=62 -->
-  <rect x="244" y="63" width="144" height="18" fill="#24283B"/>
-  <text x="384" y="74" fill="#7AA2F7" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" text-anchor="end">Yes! Just arrived</text>
-  <text x="384" y="82" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="7" text-anchor="end">You</text>
-
-  <!-- Row 2 (peer) — y=84 -->
-  <text x="14" y="96" fill="#C0CAF5" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11">Soldering stations are free</text>
-
-  <!-- Row 3 (peer) — y=106 -->
-  <text x="14" y="118" fill="#C0CAF5" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11">Starting in 10 min, hurry!</text>
-
-  <!-- Row 4 (mine) — y=128 -->
-  <rect x="290" y="129" width="98" height="18" fill="#24283B"/>
-  <text x="384" y="140" fill="#7AA2F7" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" text-anchor="end">On my way!</text>
-  <text x="384" y="148" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="7" text-anchor="end">You</text>
-
-  <!-- Row 5 (peer) — y=150 -->
-  <text x="14" y="162" fill="#C0CAF5" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11">Which room? Main hall or annex?</text>
-
-  <!-- Row 6 (mine) — y=172 -->
-  <rect x="266" y="173" width="122" height="18" fill="#24283B"/>
-  <text x="384" y="184" fill="#7AA2F7" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" text-anchor="end">Annex B, room 3</text>
-  <text x="384" y="192" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="7" text-anchor="end">You</text>
-
-  <!-- Row 7 (peer) — y=194 -->
-  <text x="14" y="206" fill="#C0CAF5" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11">Thanks, see you there!</text>
-
-  <!-- ── Input bar (idle → top border = GREEN) ── -->
-  <rect x="0" y="608" width="400" height="1" fill="#9ECE6A"/>
-  <rect x="0" y="609" width="400" height="18" fill="#24283B"/>
-  <text x="10" y="621" fill="#9ECE6A" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11">T: send channel message</text>
-
-  <!-- ── Footer (single line, h=14) ── -->
+  <!-- ── Footer ── -->
   <rect x="0" y="626" width="400" height="14" fill="#16161E"/>
   <rect x="0" y="626" width="400" height="1" fill="#24283B"/>
-  <text x="6" y="637" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="9">T: type   W/S: scroll   R: clear history   Tab: next</text>
+  <text x="6" y="637" fill="#565F89" font-size="10">T: type   W/S: scroll   R: clear history   Tab: next</text>
 </svg>

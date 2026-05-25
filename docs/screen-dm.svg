@@ -1,66 +1,47 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- DM conversation view (after Enter on a contact in the inbox).
-     CHAT_Y0=48 (real) → 24 here. Header strip 28 (real) → 14 here.
-     CHAT_ROW_H=44 → 22 here. CHAT_INPUT_H=36 → 18. FOOTER_H=28 → 14. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640">
+<!-- DM conversation view (idle, mostly empty) — matches actual badge screen
+     when a DM target is selected but no messages have been exchanged.
+     Saira font loaded from Google Fonts so the on-screen typography matches
+     the bitmap Saira used on the device. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640" font-family="'Saira', sans-serif">
+  <defs>
+    <style type="text/css">
+      @import url('https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600&amp;display=swap');
+      text { font-family: 'Saira', 'Helvetica Neue', sans-serif; }
+    </style>
+  </defs>
+
   <rect width="400" height="640" fill="#1A1B26" rx="4"/>
   <rect x="0.5" y="0.5" width="399" height="639" fill="none" stroke="#24283B" stroke-width="1" rx="4"/>
 
   <!-- ── Tab bar ── -->
   <rect x="0" y="0" width="400" height="22" fill="#16161E" rx="4"/>
   <rect x="0" y="11" width="400" height="11" fill="#16161E"/>
-  <text x="37"  y="16" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" text-anchor="middle">Settings</text>
-  <text x="112" y="16" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" text-anchor="middle">Nodes</text>
+  <text x="37"  y="16" fill="#565F89" font-size="11" text-anchor="middle">Settings</text>
+  <text x="112" y="16" fill="#565F89" font-size="11" text-anchor="middle">Nodes</text>
   <rect x="150" y="0" width="75" height="22" fill="#7AA2F7" rx="4"/>
   <rect x="150" y="11" width="75" height="11" fill="#7AA2F7"/>
-  <text x="187" y="16" fill="#16161E" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" font-weight="600" text-anchor="middle">DM</text>
-  <text x="262" y="16" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" text-anchor="middle">Channel</text>
-  <text x="394" y="16" fill="#9ECE6A" font-family="'Saira','Helvetica Neue',sans-serif" font-size="10" text-anchor="end">72%</text>
-  <text x="370" y="16" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="10" text-anchor="end">|</text>
-  <text x="360" y="16" fill="#9ECE6A" font-family="'Saira','Helvetica Neue',sans-serif" font-size="10" text-anchor="end">RX:12</text>
+  <text x="187" y="16" fill="#16161E" font-size="11" font-weight="600" text-anchor="middle">DM</text>
+  <text x="262" y="16" fill="#565F89" font-size="11" text-anchor="middle">Channel</text>
+  <text x="394" y="16" fill="#9ECE6A" font-size="10" text-anchor="end">97%</text>
+  <text x="370" y="16" fill="#565F89" font-size="10" text-anchor="end">|</text>
+  <text x="360" y="16" fill="#9ECE6A" font-size="10" text-anchor="end">RX:0</text>
   <rect x="0" y="21" width="400" height="1" fill="#24283B"/>
 
-  <!-- ── Conversation header (CHAT_Y0=24, h=14) ── -->
-  <rect x="0" y="24" width="400" height="14" fill="#24283B"/>
-  <text x="10" y="35" fill="#C0CAF5" font-family="'Saira','Helvetica Neue',sans-serif" font-size="10" font-weight="500">‹  Alice</text>
+  <!-- ── Conversation header (PANEL strip with "‹ Name") ── -->
+  <rect x="0" y="24" width="400" height="16" fill="#24283B"/>
+  <text x="10" y="36" fill="#C0CAF5" font-size="12" font-weight="500">‹  NL-MET-spot</text>
 
-  <!-- ── Chat rows (list_y0=40, row_h=22, mine = right-aligned PANEL bubble + COL_BLUE text + "You" label) ── -->
+  <!-- ── Empty / sparse conversation: one peer message ── -->
+  <text x="14" y="60" fill="#C0CAF5" font-size="13">[NL-MET-spot] Test</text>
 
-  <!-- Row 0 (peer) — y=40 -->
-  <text x="14" y="52" fill="#C0CAF5" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11">Hey, are you at the badge talk?</text>
+  <!-- ── Input bar (idle: AMBER top border + amber hint text) ── -->
+  <rect x="0" y="606" width="400" height="2" fill="#E0AF68"/>
+  <rect x="0" y="608" width="400" height="18" fill="#24283B"/>
+  <text x="10" y="620" fill="#E0AF68" font-size="12">T: type message</text>
 
-  <!-- Row 1 (mine) — y=62 -->
-  <rect x="248" y="63" width="140" height="18" fill="#24283B"/>
-  <text x="384" y="74" fill="#7AA2F7" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" text-anchor="end">Yes, coming now!</text>
-  <text x="384" y="82" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="7" text-anchor="end">You</text>
-
-  <!-- Row 2 (peer) — y=84 -->
-  <text x="14" y="96" fill="#C0CAF5" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11">Limited seats — hurry up :)</text>
-
-  <!-- Row 3 (mine) — y=106 -->
-  <rect x="227" y="107" width="161" height="18" fill="#24283B"/>
-  <text x="384" y="118" fill="#7AA2F7" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" text-anchor="end">Save me a spot please!</text>
-  <text x="384" y="126" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="7" text-anchor="end">You</text>
-
-  <!-- Row 4 (peer) — y=128 -->
-  <text x="14" y="140" fill="#C0CAF5" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11">Done! See you soon</text>
-
-  <!-- Row 5 (mine) — y=150 -->
-  <rect x="262" y="151" width="126" height="18" fill="#24283B"/>
-  <text x="384" y="162" fill="#7AA2F7" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11" text-anchor="end">On my way, 2 min</text>
-  <text x="384" y="170" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="7" text-anchor="end">You</text>
-
-  <!-- Row 6 (peer) — y=172 -->
-  <text x="14" y="184" fill="#C0CAF5" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11">We're in row 3 left side!</text>
-
-  <!-- ── Input bar (typing mode → top border = ACCENT blue) ── -->
-  <rect x="0" y="608" width="400" height="1" fill="#7AA2F7"/>
-  <rect x="0" y="609" width="400" height="18" fill="#24283B"/>
-  <text x="10"  y="621" fill="#C0CAF5" font-family="'Saira','Helvetica Neue',sans-serif" font-size="11">DM Alice&gt; How many rows?_</text>
-  <text x="390" y="621" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="9" text-anchor="end">14/120</text>
-
-  <!-- ── Footer (single line, h=14) ── -->
+  <!-- ── Footer ── -->
   <rect x="0" y="626" width="400" height="14" fill="#16161E"/>
   <rect x="0" y="626" width="400" height="1" fill="#24283B"/>
-  <text x="6" y="637" fill="#565F89" font-family="'Saira','Helvetica Neue',sans-serif" font-size="9">Enter: send   ESC: back to inbox   Bksp: delete</text>
+  <text x="6" y="637" fill="#565F89" font-size="10">T: type   W/S: scroll   ESC: back to inbox   Tab: next tab</text>
 </svg>
