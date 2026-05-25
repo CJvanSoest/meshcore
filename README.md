@@ -32,10 +32,10 @@ schematics are available on the Tanmatsu documentation site.
 
 | Tab | Description |
 |---|---|
-| **Settings** | Configure LoRa radio parameters; stored in NVS and synced to C6 |
-| **Nodes** | Live list of heard MeshCore nodes — role, name, packet count, last seen |
-| **DM** | End-to-end encrypted direct messages; select a node in Nodes tab to start |
-| **Channel** | Public channel chat (AES-ECB, shared channel key) |
+| **Settings** | 14 LoRa & identity fields; stored in NVS and synced to C6 (frequency, SF/BW/CR, TX power, sync word, preamble, advert interval, presets, role, path hash size, region scope, owner & advert names) |
+| **Nodes** | Live list of heard MeshCore nodes — role, name, RSSI/SNR, packet count, last-seen; favourites are starred; press L to filter by role |
+| **DM** | Inbox of conversations + per-contact end-to-end encrypted thread; persisted to SD card |
+| **Channel** | Public channel chat (AES-128-ECB, shared channel key); persisted to SD card |
 
 ### Highlights
 
@@ -43,23 +43,38 @@ schematics are available on the Tanmatsu documentation site.
   (confirmed working: DM send/receive, delivered acknowledgement, channel chat)
 - **End-to-end encryption** — Ed25519 keypair generated on first boot, stored
   in NVS; DMs encrypted with ECDH (Ed25519 → Curve25519) + AES-128-ECB
+- **Persistent chat history** — DMs and channel messages are stored on the
+  microSD card under `/sd/meshcore/`, AES-CBC encrypted with a key derived
+  from the identity private key. Self-heals on identity change: unreadable
+  files are wiped on next load so a fresh log can be written
 - **QR contact sharing** — press Q in Nodes tab to show a QR code that can be
   scanned directly by the MeshCore app to add you as a contact
+- **Saved contacts** — press F on a node to mark it as a favourite (persisted
+  to NVS); favourites stay in the list even when out of radio range
+- **RSSI / SNR per node** — extracted from the C6 radio (requires the patched
+  `tanmatsu-radio` firmware); colour coded green / amber / red by signal quality
+- **Battery + RX status** — top-right of every screen
 - **Message LED** — bottom-left LED on the badge lights up for incoming
   messages: green = DM, blue = channel; clears when the tab is opened
 - **Real timestamps** — SNTP synchronisation via WiFi for correct message times
-  on the receiving iOS/Android device
+  on the receiving iOS/Android device; last-known time is persisted to NVS
+  for boots without WiFi
 
 ### Controls
 
 | Key | Action |
 |---|---|
 | Tab | Cycle through tabs |
-| Enter (on node) | Open DM conversation with that node |
+| W / S | Scroll up / down (or adjust value in edit mode) |
+| Enter | Edit a setting / open conversation / send DM target |
+| ESC | Cancel edit / leave conversation / return to DM inbox |
 | T | Start typing a message (DM or Channel tab) |
-| W / S | Scroll up / down |
 | A | Send advertisement (announce yourself to the mesh) |
+| F | Toggle favourite contact (Nodes tab) |
+| L | Cycle role filter (Nodes tab) |
 | Q | Show QR code (Nodes tab) |
+| D | Delete conversation (DM inbox) |
+| R | Reload settings from NVS / clear channel history |
 | U | Put C6 radio into bootloader mode (for firmware update) |
 | F1 / Red X | Exit to launcher |
 
@@ -69,22 +84,59 @@ schematics are available on the Tanmatsu documentation site.
 
 <table>
   <tr>
+    <td align="center"><b>Boot diagnostics</b></td>
     <td align="center"><b>Settings</b></td>
-    <td align="center"><b>Nodes</b></td>
   </tr>
   <tr>
+    <td><img src="docs/screen-boot.svg" width="360"></td>
     <td><img src="docs/screen-settings.svg" width="360"></td>
-    <td><img src="docs/screen-nodes.svg" width="360"></td>
   </tr>
   <tr>
-    <td align="center"><b>DM</b></td>
-    <td align="center"><b>Channel</b></td>
+    <td align="center"><b>Nodes</b></td>
+    <td align="center"><b>QR contact card</b></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screen-nodes.svg" width="360"></td>
+    <td><img src="docs/screen-qr.svg" width="360"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>DM conversation</b></td>
+    <td align="center"><b>Public channel</b></td>
   </tr>
   <tr>
     <td><img src="docs/screen-dm.svg" width="360"></td>
     <td><img src="docs/screen-channel.svg" width="360"></td>
   </tr>
+  <tr>
+    <td align="center"><b>Radio bootloader (U)</b></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screen-radio-bootloader.svg" width="360"></td>
+    <td></td>
+  </tr>
 </table>
+
+---
+
+## Code layout
+
+The application is split into focused modules under `main/`:
+
+| File | Responsibility |
+|---|---|
+| `main.c` | Entry point: boot diagnostics, BSP/SD/LoRa init, event loop |
+| `render.c` / `render.h` | All drawing (Tokyo Night palette, layout constants, per-view renderers) |
+| `input.c` / `input.h` | Key/navigation dispatch, edit-mode state machine |
+| `settings_nvs.c` / `settings_nvs.h` | LoRa config + owner/advert name persistence to NVS, presets |
+| `identity.c` / `identity.h` | Ed25519 keypair generation and storage, SNTP wiring |
+| `nodes.c` / `nodes.h` | Heard-node table + role filter + display row builder |
+| `contacts.c` / `contacts.h` | Saved-contact list (favourites) with NVS persistence |
+| `chat.c` / `chat.h` | DM and channel ring buffers, send/receive helpers, LED notification |
+| `radio.c` / `radio.h` | LoRa TX/RX tasks, advert sending, RSSI/SNR stats |
+| `history.c` / `history.h` | SD-card mount, encrypted append/load, self-heal on bad records |
+| `ui_state.h` / `app_config.h` | Shared enums and `extern` declarations across modules |
+| `ed25519.c` / `qrcodegen.c` | Vendored cryptography and QR encoding |
 
 ---
 
@@ -92,6 +144,10 @@ schematics are available on the Tanmatsu documentation site.
 
 Read about the development journey and lessons learned on Medium:
 [Building a MeshCore Client on the Tanmatsu Badge](https://medium.com/@cjvansoest/building-a-meshcore-client-on-the-tanmatsu-badge-cfc46f02227f)
+
+For implementation details (architecture, protocol notes, NVS layout, SD-card
+encryption, build/deploy, C6 patches) see the in-repo wiki:
+[`docs/wiki/Home.md`](docs/wiki/Home.md).
 
 ---
 
@@ -111,6 +167,18 @@ IDF_PATH=$(cat .IDF_PATH) IDF_TOOLS_PATH=$(cat .IDF_TOOLS_PATH) \
     -DIDF_TARGET=esp32p4 \
     -DFAT=0'
 ```
+
+Or use the `Makefile` wrapper that captures the above and the upload step:
+
+```sh
+make build  DEVICE=tanmatsu       # produces build/tanmatsu/*.bin
+make upload DEVICE=tanmatsu       # badgelink appfs upload — keeps the launcher
+```
+
+`make upload` uses `badgelink` to push the ELF over USB into the appfs
+partition, so the existing launcher and other apps remain untouched. A full
+`idf.py flash` would overwrite the application partition and erase the
+launcher — only use it for first-time provisioning.
 
 ---
 
@@ -154,8 +222,8 @@ The current sync status is shown live in the **Settings tab footer**:
 
 | Component | Version | Notes |
 |---|---|---|
-| **Tanmatsu launcher** | v0.1.2 | Required for correct LoRa info display (Hz fix, PR #91) |
-| **C6 radio firmware** (tanmatsu-radio) | v2.12.3 | Flashed manually — see below |
+| **Tanmatsu launcher** | v0.1.2 (local patches) | Required for correct LoRa info display (Hz fix, PR #91). The local checkout also has a WiFi auto-connect patch — the upstream launcher only reconnects when NTP is enabled, which leaves MeshCore without WiFi if the user disabled NTP. |
+| **C6 radio firmware** (tanmatsu-radio) | v2.12.3 + RSSI/SNR patches | Flashed manually — see below |
 
 The launcher will show a **"mismatch firmware"** warning because it expects radio firmware v2.7.3
 internally. This is cosmetic — the MeshCore app communicates with the radio library directly and

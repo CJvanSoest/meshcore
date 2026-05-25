@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- QR-overlay (press Q in Nodes tab) — encodes meshcore://contact/add?... URL.
+     Stylised representation of the actual QR pattern. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640">
+  <rect width="400" height="640" fill="#1A1B26" rx="4"/>
+  <rect x="0.5" y="0.5" width="399" height="639" fill="none" stroke="#24283B" stroke-width="1" rx="4"/>
+
+  <!-- Title -->
+  <text x="200" y="170" fill="#E0AF68" font-family="'Saira',sans-serif" font-size="14" font-weight="500" text-anchor="middle">Scan to add contact</text>
+
+  <!-- QR card (white background w/ 8px margin) -->
+  <rect x="100" y="190" width="200" height="200" fill="#FFFFFF"/>
+
+  <!-- Stylised QR pattern: 12×12 grid of 16×16 modules (with 8px margin = inset 8) -->
+  <!-- Position markers (top-left, top-right, bottom-left) -->
+  <!-- Top-left finder -->
+  <rect x="108" y="198" width="42" height="42" fill="#000000"/>
+  <rect x="114" y="204" width="30" height="30" fill="#FFFFFF"/>
+  <rect x="120" y="210" width="18" height="18" fill="#000000"/>
+  <!-- Top-right finder -->
+  <rect x="250" y="198" width="42" height="42" fill="#000000"/>
+  <rect x="256" y="204" width="30" height="30" fill="#FFFFFF"/>
+  <rect x="262" y="210" width="18" height="18" fill="#000000"/>
+  <!-- Bottom-left finder -->
+  <rect x="108" y="340" width="42" height="42" fill="#000000"/>
+  <rect x="114" y="346" width="30" height="30" fill="#FFFFFF"/>
+  <rect x="120" y="352" width="18" height="18" fill="#000000"/>
+
+  <!-- Random data modules to simulate QR payload -->
+  <g fill="#000000">
+    <rect x="158" y="198" width="6" height="6"/>
+    <rect x="170" y="198" width="6" height="6"/>
+    <rect x="182" y="198" width="6" height="6"/>
+    <rect x="194" y="198" width="6" height="6"/>
+    <rect x="212" y="198" width="6" height="6"/>
+    <rect x="224" y="198" width="6" height="6"/>
+    <rect x="164" y="204" width="6" height="6"/>
+    <rect x="176" y="204" width="6" height="6"/>
+    <rect x="200" y="204" width="6" height="6"/>
+    <rect x="218" y="204" width="6" height="6"/>
+    <rect x="230" y="204" width="6" height="6"/>
+    <rect x="158" y="210" width="6" height="6"/>
+    <rect x="170" y="210" width="6" height="6"/>
+    <rect x="188" y="210" width="6" height="6"/>
+    <rect x="200" y="210" width="6" height="6"/>
+    <rect x="224" y="210" width="6" height="6"/>
+    <rect x="236" y="210" width="6" height="6"/>
+    <rect x="158" y="222" width="6" height="6"/>
+    <rect x="170" y="222" width="6" height="6"/>
+    <rect x="194" y="222" width="6" height="6"/>
+    <rect x="206" y="222" width="6" height="6"/>
+    <rect x="218" y="222" width="6" height="6"/>
+    <rect x="236" y="222" width="6" height="6"/>
+    <rect x="158" y="248" width="6" height="6"/>
+    <rect x="170" y="248" width="6" height="6"/>
+    <rect x="188" y="248" width="6" height="6"/>
+    <rect x="206" y="248" width="6" height="6"/>
+    <rect x="224" y="248" width="6" height="6"/>
+    <rect x="242" y="248" width="6" height="6"/>
+    <rect x="266" y="248" width="6" height="6"/>
+    <rect x="278" y="248" width="6" height="6"/>
+    <rect x="158" y="260" width="6" height="6"/>
+    <rect x="176" y="260" width="6" height="6"/>
+    <rect x="194" y="260" width="6" height="6"/>
+    <rect x="212" y="260" width="6" height="6"/>
+    <rect x="230" y="260" width="6" height="6"/>
+    <rect x="254" y="260" width="6" height="6"/>
+    <rect x="272" y="260" width="6" height="6"/>
+    <rect x="284" y="260" width="6" height="6"/>
+    <rect x="164" y="272" width="6" height="6"/>
+    <rect x="182" y="272" width="6" height="6"/>
+    <rect x="200" y="272" width="6" height="6"/>
+    <rect x="218" y="272" width="6" height="6"/>
+    <rect x="236" y="272" width="6" height="6"/>
+    <rect x="248" y="272" width="6" height="6"/>
+    <rect x="266" y="272" width="6" height="6"/>
+    <rect x="158" y="284" width="6" height="6"/>
+    <rect x="176" y="284" width="6" height="6"/>
+    <rect x="188" y="284" width="6" height="6"/>
+    <rect x="206" y="284" width="6" height="6"/>
+    <rect x="224" y="284" width="6" height="6"/>
+    <rect x="248" y="284" width="6" height="6"/>
+    <rect x="278" y="284" width="6" height="6"/>
+    <rect x="164" y="296" width="6" height="6"/>
+    <rect x="194" y="296" width="6" height="6"/>
+    <rect x="212" y="296" width="6" height="6"/>
+    <rect x="230" y="296" width="6" height="6"/>
+    <rect x="254" y="296" width="6" height="6"/>
+    <rect x="272" y="296" width="6" height="6"/>
+    <rect x="158" y="308" width="6" height="6"/>
+    <rect x="176" y="308" width="6" height="6"/>
+    <rect x="200" y="308" width="6" height="6"/>
+    <rect x="218" y="308" width="6" height="6"/>
+    <rect x="248" y="308" width="6" height="6"/>
+    <rect x="266" y="308" width="6" height="6"/>
+    <rect x="284" y="308" width="6" height="6"/>
+    <rect x="158" y="320" width="6" height="6"/>
+    <rect x="170" y="320" width="6" height="6"/>
+    <rect x="188" y="320" width="6" height="6"/>
+    <rect x="212" y="320" width="6" height="6"/>
+    <rect x="230" y="320" width="6" height="6"/>
+    <rect x="242" y="320" width="6" height="6"/>
+    <rect x="260" y="320" width="6" height="6"/>
+    <rect x="278" y="320" width="6" height="6"/>
+    <rect x="164" y="346" width="6" height="6"/>
+    <rect x="176" y="346" width="6" height="6"/>
+    <rect x="194" y="346" width="6" height="6"/>
+    <rect x="206" y="346" width="6" height="6"/>
+    <rect x="218" y="346" width="6" height="6"/>
+    <rect x="230" y="346" width="6" height="6"/>
+    <rect x="248" y="346" width="6" height="6"/>
+    <rect x="266" y="346" width="6" height="6"/>
+    <rect x="284" y="346" width="6" height="6"/>
+    <rect x="158" y="358" width="6" height="6"/>
+    <rect x="182" y="358" width="6" height="6"/>
+    <rect x="200" y="358" width="6" height="6"/>
+    <rect x="224" y="358" width="6" height="6"/>
+    <rect x="242" y="358" width="6" height="6"/>
+    <rect x="254" y="358" width="6" height="6"/>
+    <rect x="272" y="358" width="6" height="6"/>
+    <rect x="164" y="370" width="6" height="6"/>
+    <rect x="188" y="370" width="6" height="6"/>
+    <rect x="206" y="370" width="6" height="6"/>
+    <rect x="224" y="370" width="6" height="6"/>
+    <rect x="248" y="370" width="6" height="6"/>
+    <rect x="272" y="370" width="6" height="6"/>
+    <rect x="284" y="370" width="6" height="6"/>
+  </g>
+
+  <!-- Caption -->
+  <text x="200" y="416" fill="#565F89" font-family="'Saira',sans-serif" font-size="11" text-anchor="middle">TanmatsuUser  [press any key to close]</text>
+
+  <!-- Annotation box -->
+  <rect x="40" y="450" width="320" height="140" fill="#16161E" rx="4"/>
+  <text x="50" y="470" fill="#7AA2F7" font-family="'Saira',sans-serif" font-size="10" font-weight="500">QR encodes:</text>
+  <text x="50" y="484" fill="#C0CAF5" font-family="'Saira',sans-serif" font-size="9" font-family="monospace">meshcore://contact/add?</text>
+  <text x="50" y="496" fill="#C0CAF5" font-family="monospace" font-size="9">  name=TanmatsuUser&amp;</text>
+  <text x="50" y="508" fill="#C0CAF5" font-family="monospace" font-size="9">  public_key=&lt;ed25519 pub, hex&gt;&amp;</text>
+  <text x="50" y="520" fill="#C0CAF5" font-family="monospace" font-size="9">  type=1</text>
+  <text x="50" y="540" fill="#565F89" font-family="'Saira',sans-serif" font-size="9" font-style="italic">Scannable by the MeshCore iOS/Android</text>
+  <text x="50" y="552" fill="#565F89" font-family="'Saira',sans-serif" font-size="9" font-style="italic">app to add this Tanmatsu as a contact.</text>
+  <text x="50" y="572" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="9">name = advert_name (if set) else owner</text>
+</svg>

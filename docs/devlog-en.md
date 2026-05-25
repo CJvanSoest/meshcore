@@ -182,6 +182,42 @@ The lesson: if the end-to-end test doesn't pass, your fix isn't finished. An exp
 
 ---
 
+## What I Learned About Refactoring, Self-Healing Data, and Documentation
+
+Two weeks after the v2 release: a big cleanup, one stubborn bug that only appeared after an NVS erase, and a documentation sprint to lock in everything that had changed.
+
+### 21. A file that's no longer reviewable is a design failure
+
+`main.c` had grown to about 3000 lines — protocol parsing, NVS helpers, rendering, input handling, SD-card history, identity management, all in one place. I split it into nine modules with a clear theme per file (`history`, `contacts`, `identity`, `settings_nvs`, `nodes`, `chat`, `radio`, `input`, `render`) plus a `ui_state.h` for the shared `extern` declarations. Zero behavioural change — pure organisation.
+
+The result: `main.c` is 320 lines that only do `app_main()` (boot, init, event loop), and everything else is navigable per concern. The lesson: when a file is so big you can't find anything without `grep`, that *is* the refactoring signal. Don't wait for a functional excuse.
+
+### 22. A key you no longer have blocks you forever
+
+After an NVS erase (accidentally triggered by flashing a new partition table), the app started up with a freshly generated Ed25519 identity. The chat history on the SD card was encrypted with an AES key derived from the *old* private key. Symptom: new DMs arrived, the notification LED blinked, but the text never appeared in the chat view — and after a restart it was still missing.
+
+Diagnosis from the serial log: the load loop failed at record 0 with `bad magic` and stopped, so new records were never loaded either; the old garbage at the start of the file kept blocking everything behind it. Fix: a `fatal` flag in the load loop; if the file is unreadable *from record 0* the whole file is removed, so the next append starts a fresh log under the current key. Readable prefixes are preserved (a corrupt tail is left alone) — only fully unreadable files get wiped.
+
+The lesson generalises: persistent data encrypted with a key that lives on a different persistence plane needs a recovery path when that key disappears. Otherwise old ciphertext blocks the door forever.
+
+### 23. A launcher setting you assume is on, sometimes isn't
+
+During the post-v2 testing the badge launcher got an update and the Tanmatsu picked up a new WiFi behaviour: it stopped auto-reconnecting after every reboot. The root cause in the upstream launcher: `wifi_connect_try_all()` was only called when NTP was enabled. Reasonable for many users (no NTP = no need for WiFi), but for me a launcher upgrade had silently flipped the default for a behaviour I depended on.
+
+Local patch in our launcher checkout: always try WiFi, leave the NTP path independent. Not pushed upstream — it's a project-specific assumption — but documented in a memory file so I can check at every launcher update whether the patch is still needed.
+
+The lesson: for upstream dependencies whose defaults shape your runtime behaviour, keep a list of your local patches *and why*. Otherwise you'll spend months puzzled by "it worked yesterday."
+
+### 24. Docs are a snapshot, not a sequel
+
+After the refactor and the self-heal fix, the existing SVG screenshots and README were no longer accurate. A new round: six SVGs (boot, settings, nodes, DM, channel, QR, radio-bootloader) in the current Tokyo Night palette, README updated with the module table and all the new settings fields and a Makefile quick-start, and a `docs/wiki/` set up with eight markdown pages per topic (architecture, protocol, UI, NVS, SD card, C6 radio, build).
+
+I chose markdown files in the repo over a real `.wiki.git` — they render directly on Gitea/GitHub and can be promoted with `cp` to a separate wiki repo later if I want one.
+
+The lesson: documentation doesn't keep itself current. After a big refactor, block out a deliberate docs sprint *before* you build the next thing. Otherwise the wiki sits months later describing a UI that no longer exists.
+
+---
+
 ## Links
 
 - Source: [github.com/CJvanSoest/meshcore](https://github.com/CJvanSoest/meshcore)

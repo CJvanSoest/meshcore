@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Boot diagnostics screen — Tokyo Night palette
+     Real device: 800×1280, this SVG is half-scale (400×640). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640">
+  <rect width="400" height="640" fill="#1A1B26" rx="4"/>
+  <rect x="0.5" y="0.5" width="399" height="639" fill="none" stroke="#24283B" stroke-width="1" rx="4"/>
+
+  <!-- Title: "MeshCore v4" — amber, TXT_TITLE -->
+  <text x="14" y="28" fill="#E0AF68" font-family="'Saira',sans-serif" font-size="14" font-weight="500">MeshCore v4</text>
+
+  <!-- DIAG lines (y0=50 in real coords, line=22 → half = y0=25, line=11) -->
+  <text x="14" y="50"  fill="#565F89" font-family="'Saira',sans-serif" font-size="9">wifi_connection_init_stack...</text>
+  <text x="14" y="61"  fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="9">  wifi init: OK (0)</text>
+  <text x="14" y="72"  fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="9">  wifi connect: OK</text>
+  <text x="14" y="83"  fill="#565F89" font-family="'Saira',sans-serif" font-size="9">SD mount...</text>
+  <text x="14" y="94"  fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="9">  SD: ok</text>
+  <text x="14" y="105" fill="#565F89" font-family="'Saira',sans-serif" font-size="9">lora_init(16)...</text>
+  <text x="14" y="116" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="9">  lora_init: OK (0)</text>
+  <text x="14" y="127" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="9">NVS: 869.618MHz SF8 BW62</text>
+  <text x="14" y="138" fill="#565F89" font-family="'Saira',sans-serif" font-size="9">lora_get_config from C6...</text>
+  <text x="14" y="149" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="9">  C6 OK! 869.618MHz SF8</text>
+  <text x="14" y="160" fill="#565F89" font-family="'Saira',sans-serif" font-size="9">lora_set_mode(RX)...</text>
+  <text x="14" y="171" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="9">  RX mode OK - starting tasks</text>
+
+  <!-- Annotation -->
+  <text x="14" y="220" fill="#7AA2F7" font-family="'Saira',sans-serif" font-size="10" font-style="italic">Boot diagnostics — shown for ~3s before</text>
+  <text x="14" y="233" fill="#7AA2F7" font-family="'Saira',sans-serif" font-size="10" font-style="italic">handing off to the main UI.</text>
+  <text x="14" y="252" fill="#565F89" font-family="'Saira',sans-serif" font-size="9">Colour coding:</text>
+  <text x="22" y="266" fill="#565F89" font-family="'Saira',sans-serif" font-size="9">• gray  = step starting</text>
+  <text x="22" y="278" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="9">• green = success</text>
+  <text x="22" y="290" fill="#E0AF68" font-family="'Saira',sans-serif" font-size="9">• amber = partial / using NVS fallback</text>
+  <text x="22" y="302" fill="#F7768E" font-family="'Saira',sans-serif" font-size="9">• red   = hard failure</text>
+</svg>
