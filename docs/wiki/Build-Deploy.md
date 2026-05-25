@@ -82,7 +82,7 @@ Built separately from the
 (or upstream + local patches). Use the C6 sub-toolchain (esp32c6 target,
 same IDF version). Flash via esptool over USB after pressing `U` in the
 MeshCore Settings tab. Full instructions in
-[C6-Radio.md](C6-Radio.md#firmware-update-workflow).
+[C6 Radio](C6-Radio#firmware-update-workflow).
 
 ## Build env quirks
 
@@ -91,4 +91,4 @@ MeshCore Settings tab. Full instructions in
 | Build cached for wrong target (`esp32` instead of `esp32p4`) | Stale `build/tanmatsu/` from a different target | `rm -rf build/tanmatsu` and rebuild |
 | `idf.py` warns about `python_env` mismatch | Wrong `IDF_TOOLS_PATH` exported | Re-export from the repo's `.IDF_PATH` and `.IDF_TOOLS_PATH` files (or whichever ESP-IDF install the tools were pinned to) |
 | `make upload` fails with "Device not configured" | Serial port unable to open | Make sure no monitor is attached; for raw read with DTR/RTS off, set `s.dtr = False; s.rts = False` before opening |
-| badge-elf-api type mismatch after `rm dependencies.lock + reconfigure` | The local patches in `managed_components/badgeteam__badge-elf-api/` were wiped | Re-apply the patches documented in [`launcher patches memory`](Build-Deploy.md#launcher-dependency) |
+| badge-elf-api type mismatch after `rm dependencies.lock + reconfigure` | The local patches in `managed_components/badgeteam__badge-elf-api/` were wiped | Re-apply the patches documented in [Launcher dependency](#launcher-dependency) |

@@ -29,9 +29,8 @@ to the host. We run a **patched build** that:
 2. Stores them in the per-packet metadata
 3. Returns them via the existing `lora_recv_packet` struct
 
-See [`tanmatsu_radio_fork.md`](https://github.com/CJvanSoest/meshcore/blob/main/docs/wiki/C6-Radio.md)
-in the maintainer's notes; the patch lives in a local checkout (not an
-upstream PR) and must be re-applied after upstream releases.
+The patch lives in a local checkout (not an upstream PR) and must be
+re-applied after upstream releases.
 
 In the Nodes tab the RSSI column is coloured:
 
