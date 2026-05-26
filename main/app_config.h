@@ -7,6 +7,11 @@
 #define MAX_CHAT_MSGS 50
 #define MAX_MSG_TEXT  172
 
+// Hand-maintained label for the tanmatsu-radio C6 firmware currently on
+// the badge. Upstream protocol doesn't yet expose the app version (only
+// SX126x silicon version) — bump this string whenever you re-flash the C6.
+#define TANMATSU_RADIO_FW_LABEL "v3.0.0+rssi-snr-v2"
+
 // Top-level tab/view selection. Lives here because both render, input, and
 // rx_task need to read it.
 typedef enum {
