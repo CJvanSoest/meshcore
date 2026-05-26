@@ -3,4 +3,10 @@ dependencies:
   badgeteam/badge-bsp: "^0.9.9"
   nicolaielectronics/tanmatsu-wifi: "^1.1.2"
   robotman2412/pax-gfx: "^2.1.0"
-  nicolaielectronics/tanmatsu-lora: "^0.1.1"
+  nicolaielectronics/tanmatsu-lora:
+    git: http://192.168.2.25:3000/CJ/tanmatsu-lora.git
+    version: main
+    # Gitea fork of upstream HEAD (handle-based API) + CJ patches for
+    # PACKET_RX_V2 (per-packet RSSI/SNR stats) and GET_RSSI_INST
+    # (noise-floor poll). Pairs with tanmatsu-radio feature/rssi-snr-v2
+    # branch on the C6 side. Upstream PR pending.

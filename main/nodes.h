@@ -9,7 +9,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-#include "lora.h"  // lora_packet_stats_t
+#include "lora.h"
+#include "radio.h"  // lora_packet_stats_t (stub for upstream-API build)
 #include "meshcore/packet.h"
 #include "meshcore/payload/advert.h"
 

@@ -248,9 +248,9 @@ void app_main(void) {
     // DM history is loaded per peer in dm_select_target — no boot-time DM load.
     if (history_is_ready()) { history_load_channel(ch_ring_add_from_disk); }
 
-    DIAG(COL_GRAY, "lora_init(16)...");
-    res = lora_init(16);
-    DIAG(res == ESP_OK ? COL_GREEN : COL_RED, "  lora_init: %s (%d)",
+    DIAG(COL_GRAY, "lora_init_remote(16)...");
+    res = lora_init_remote(&lora_handle, 16);
+    DIAG(res == ESP_OK ? COL_GREEN : COL_RED, "  lora_init_remote: %s (%d)",
          res == ESP_OK ? "OK" : "FAIL", res);
 
     load_lora_from_nvs();
@@ -259,9 +259,18 @@ void app_main(void) {
          (double)lora_cfg.frequency / 1000000.0, lora_cfg.spreading_factor, (int)lora_cfg.bandwidth);
 
     if (res == ESP_OK) {
+        // Query radio firmware version once at boot (for display in Settings).
+        lora_protocol_status_params_t status = {0};
+        if (lora_get_status(&lora_handle, &status) == ESP_OK) {
+            // status.version_string is fixed-length, may not be null-terminated.
+            size_t n = sizeof(status.version_string);
+            if (n > RADIO_FW_VERSION_LEN - 1) n = RADIO_FW_VERSION_LEN - 1;
+            memcpy(radio_fw_version, status.version_string, n);
+            radio_fw_version[n] = '\0';
+        }
         DIAG(COL_GRAY, "lora_get_config from C6...");
         lora_protocol_config_params_t c6_cfg = {0};
-        esp_err_t cfg_res = lora_get_config(&c6_cfg);
+        esp_err_t cfg_res = lora_get_config(&lora_handle, &c6_cfg);
         if (cfg_res == ESP_OK) {
             c6_available = true;
             if (c6_cfg.frequency != 0) {
@@ -271,12 +280,12 @@ void app_main(void) {
                      (double)lora_cfg.frequency / 1000000.0, lora_cfg.spreading_factor);
             } else {
                 DIAG(COL_YELLOW, "  C6 fresh - pushing NVS config");
-                lora_set_config(&lora_cfg);
+                lora_set_config(&lora_handle, &lora_cfg);
             }
 
             // Set RX mode and start background task
             DIAG(COL_GRAY, "lora_set_mode(RX)...");
-            esp_err_t mode_res = lora_set_mode(LORA_PROTOCOL_MODE_RX);
+            esp_err_t mode_res = lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_RX);
             if (mode_res == ESP_OK) {
                 lora_rx_ok = true;
                 DIAG(COL_GREEN, "  RX mode OK - starting tasks");
@@ -288,7 +297,7 @@ void app_main(void) {
             DIAG(COL_YELLOW, "  C6 unavail (err=%d) - NVS only", cfg_res);
         }
     } else {
-        DIAG(COL_YELLOW, "lora_init failed - NVS values only");
+        DIAG(COL_YELLOW, "lora_init_remote failed - NVS values only");
     }
 
     vTaskDelay(pdMS_TO_TICKS(3000));
