@@ -13,6 +13,7 @@ idf_component_register(
 		"settings_nvs.c"
 		"nodes.c"
 		"chat.c"
+		"channels.c"
 		"radio.c"
 		"input.c"
 		"render.c"
