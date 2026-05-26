@@ -98,6 +98,7 @@ app_view_t current_view = VIEW_SETTINGS;
 // chat_msg_t, ring buffers, DM target, public-channel key, notification LED,
 // ch_*/chat_* helpers all live in chat.c/h.
 #include "chat.h"
+#include "channels.h"
 
 // field_t lives in ui_state.h (shared with input.c and render.c).
 
@@ -182,6 +183,7 @@ void app_main(void) {
     // Module init (radio_start_tasks below creates rx_mutex when tasks come up).
     nodes_init();
     chat_init();
+    channels_init();
     identity_init();
 
     int  diag_y    = 50;

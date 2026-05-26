@@ -20,6 +20,7 @@
 
 #include "app_config.h"
 #include "chat.h"
+#include "channels.h"
 #include "contacts.h"
 #include "identity.h"
 #include "nodes.h"
@@ -228,10 +229,18 @@ bool send_chat_message(const char *text) {
     plain[4] = 0;  // text_type = normal
     memcpy(&plain[5], prefixed, text_len);
 
+    // Pick the active channel's key + hash; fall back to Public (idx 0) if
+    // active_channel_idx is somehow out of range.
+    int ch_idx = (active_channel_idx >= 0 && active_channel_idx < channel_count &&
+                  channels[active_channel_idx].active)
+                 ? active_channel_idx : 0;
+    const uint8_t *ch_secret = channels[ch_idx].secret;
+    uint8_t        ch_hash   = channels[ch_idx].hash;
+
     uint8_t cipher[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
     mbedtls_aes_context aes;
     mbedtls_aes_init(&aes);
-    mbedtls_aes_setkey_enc(&aes, PUBLIC_CHANNEL_KEY, 128);
+    mbedtls_aes_setkey_enc(&aes, ch_secret, 128);
     for (size_t i = 0; i < padded / MESHCORE_CIPHER_BLOCK_SIZE; i++) {
         mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT,
                                &plain[i * MESHCORE_CIPHER_BLOCK_SIZE],
@@ -241,11 +250,11 @@ bool send_chat_message(const char *text) {
 
     uint8_t mac[32];
     mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                    PUBLIC_CHANNEL_KEY, MESHCORE_CIPHER_KEY_SIZE,
+                    ch_secret, MESHCORE_CIPHER_KEY_SIZE,
                     cipher, (uint16_t)padded, mac);
 
     meshcore_grp_txt_t grp = {0};
-    grp.channel_hash = channel_hash;
+    grp.channel_hash = ch_hash;
     memcpy(grp.mac, mac, MESHCORE_CIPHER_MAC_SIZE);
     grp.data_length = (uint8_t)padded;
     memcpy(grp.data, cipher, padded);
@@ -391,12 +400,47 @@ static void lora_rx_task(void *arg) {
                 } else if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_GRP_TXT) {
                     meshcore_grp_txt_t grp = {0};
                     if (meshcore_grp_txt_deserialize(mc_msg.payload, mc_msg.payload_length, &grp) >= 0) {
-                        if (decrypt_grp_txt(&grp, PUBLIC_CHANNEL_KEY)) {
-                            ESP_LOGI(TAG, "Channel RX: %s", grp.decrypted.text);
-                            ch_add_message(grp.decrypted.text, false);
-                            if (current_view != VIEW_CHANNEL) {
-                                led_channel_pending = true;
-                                update_notification_led();
+                        // Brute-force over all configured channels. The wire
+                        // channel_hash is only an optimisation hint — we use
+                        // the matching channel index to pick the secret, but
+                        // accept on MAC verify only. If hash doesn't match
+                        // anything we still try every key (some senders set
+                        // hash=0x00 even though they encrypt with a real key).
+                        int hit = channels_find_by_hash(grp.channel_hash);
+                        int start = (hit >= 0) ? hit : 0;
+                        int end   = (hit >= 0) ? hit + 1 : channel_count;
+                        bool decrypted = false;
+                        for (int ci = start; ci < end; ci++) {
+                            if (!channels[ci].active) continue;
+                            meshcore_grp_txt_t attempt = grp;  // structcopy: keep original mac+data for next try
+                            if (decrypt_grp_txt(&attempt, channels[ci].secret)) {
+                                ESP_LOGI(TAG, "Channel RX [%s]: %s",
+                                         channels[ci].name, attempt.decrypted.text);
+                                ch_add_message(attempt.decrypted.text, false);
+                                if (current_view != VIEW_CHANNEL) {
+                                    led_channel_pending = true;
+                                    update_notification_led();
+                                }
+                                decrypted = true;
+                                break;
+                            }
+                        }
+                        if (!decrypted && hit >= 0) {
+                            // Hash claimed a known channel but MAC didn't verify —
+                            // fall back to trying everything else.
+                            for (int ci = 0; ci < channel_count; ci++) {
+                                if (ci == hit || !channels[ci].active) continue;
+                                meshcore_grp_txt_t attempt = grp;
+                                if (decrypt_grp_txt(&attempt, channels[ci].secret)) {
+                                    ESP_LOGI(TAG, "Channel RX [%s] (hash mismatch): %s",
+                                             channels[ci].name, attempt.decrypted.text);
+                                    ch_add_message(attempt.decrypted.text, false);
+                                    if (current_view != VIEW_CHANNEL) {
+                                        led_channel_pending = true;
+                                        update_notification_led();
+                                    }
+                                    break;
+                                }
                             }
                         }
                     }
