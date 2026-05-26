@@ -115,3 +115,16 @@ Beide PRs gepaird in description; bevatten screenshots van werkende RSSI/SNR/noi
 📸 **Screenshots in PR-description zijn geen luxe.** GitHub PR-description accepteert drag-drop van afbeeldingen (auto-upload naar githubusercontent CDN). Twee foto's geplaatst: één van Settings-footer met `RX:-31 SNR:+12 N:-101`, één van Nodes-tab met RSSI/SNR-kolommen gevuld. Voor een reviewer (Renze) bewijs: "dit werkt op echte hardware, niet alleen theoretisch in mijn code". Les: een feature-PR zonder beeld is een belofte; mét beeld is het een bewijsstuk.
 
 ---
+
+## Update — multi-channel feature data-laag (mei 2026)
+
+Eerste iteratie van #channels: data-storage + RX brute-force + TX active-channel. Nog geen UI om channels te beheren, maar de pipeline werkt eind-tot-eind.
+
+🪪 **Channel-key uit Discord-conversatie als spec.** Renze bevestigde in DM: voor non-Public kanalen is de 16-byte AES-key gewoon de eerste 16 bytes van `SHA256(channel_name_including_'#')`. Dat klinkt te simpel om waar te zijn — maar end-to-end test bevestigde het meteen. Een T-Beam stuurde `#test` chat, onze `channels_add_by_name("#test")` afgeleid via dezelfde formule, en de brute-force HMAC matchte. Les: voor undocumenteerde protocol-details, vraag de auteur — de echte spec is vaak één zin lang, niet drie pagina's reverse engineering.
+
+🔄 **Brute-force MAC-verify > hash-shortcut alleen.** MeshCore's channel_hash byte in de payload is *advisory* — meerdere kanalen kunnen op één hash-byte botsen, en sommige nodes (geobserveerd: oude T-Beam configuraties) zenden zelfs `chash=0x00` ongeacht hun werkelijke key. Onze decode probeert eerst de hash-gematchte channel als optimisatie, en valt bij MAC-mismatch terug op alle andere channels. Les: in een protocol waarbij meerdere keys hetzelfde formaat delen, is "MAC verifieert" de enige bron van waarheid; hash is een hint, geen filter.
+
+🧪 **Debug-bootstrap is een legitieme test-stap.** In `channels_init` voegen we bij eerste boot automatisch een `#test` channel toe — niet als productie-feature, maar zodat ik kon valideren dat de brute-force loop werkt zonder eerst een UI te bouwen. Eén regel code, idempotent (skip als al in NVS), en weg te halen zodra er een echte Add-channel UI is. Les: hardcoded testdata in init-paden is OK als het idempotent + verwijderbaar is — soms is dat het kortste pad tussen "code geschreven" en "feature bewezen werkend".
+
+🏷️ **Visuele disambiguatie zonder data-schema-change.** Met één gedeelde `ch_msgs` ring zou je niet kunnen zien of een bericht uit `Public` of `#test` kwam. Snelste fix: prepend `[name]` aan de tekst voordat-ie de ring in gaat. Vijf minuten code, geen struct-changes, geen render-changes. Volledige per-channel ring + cursor + filter komt later — als deze inline prefix te druk wordt. Les: een struct uitbreiden is werk; een tekstprefix toevoegen is een commit. Kies welke pijn je vandaag wil dragen.
+
