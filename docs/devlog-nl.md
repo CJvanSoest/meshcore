@@ -82,3 +82,36 @@ Twee weken na de v2-release: een grote opruimactie, één hardnekkige bug die al
 
 📚 **Docs zijn een momentopname, niet een aflevering.** Na de refactor + self-heal-fix waren de bestaande SVG-screenshots en README niet meer correct. Nieuwe ronde: 6 SVGs (boot, settings, nodes, dm, channel, qr, radio-bootloader) in het huidige Tokyo Night palette, README bijgewerkt met de module-tabel + alle nieuwe Settings-velden + Makefile-quickstart, en een `docs/wiki/` opgezet met 8 markdown-pagina's per onderwerp (architectuur, protocol, UI, NVS, SD, C6-radio, build). Markdown-pagina's in plaats van een echte `.wiki.git` — ze renderen direct op Gitea/GitHub en zijn met `cp` te promoveren als ik later wel een aparte wiki-repo wil. Les: documentatie groeit niet vanzelf mee — plan na een grote refactor een vaste doc-sprint in voordat je verder bouwt, anders staat de wiki maanden later op een UI die niet meer bestaat.
 
+
+---
+
+## Update — Radio v3.0.0 + handle-based LoRa API + Gitea-forks (mei 2026)
+
+Nicolai bracht `tanmatsu-radio v3.0.0` uit met een breaking change: de SDIO-commands tussen P4 en C6 zijn gewijzigd, en het bijbehorende `tanmatsu-lora` component is overgegaan op een **handle-based API** (`lora_init_remote(&handle, ...)`, alle calls krijgen `lora_handle_t*` als eerste argument). Nieuwe upstream API ondersteunt ook **meerdere LoRa-radio's tegelijk** — futureproofing waar we nu nog geen gebruik van maken.
+
+🔄 **Een breaking API is een uitnodiging om je integratiepunten te tellen.** Migratie raakte 17 call-sites verspreid over `main.c`, `radio.c` en `settings_nvs.c` — exact de plekken waar de oude lora-globals werden geraakt. Het verbouwen tot één `lora_handle_t lora_handle = {0};` global plus extern in `radio.h` was triviaal; ze allemaal vinden via grep was het echte werk. Les: een refactor die "naar handle-based" gaat is een goeie aanleiding om te zien hoe diep een library je codebase in zit. Hoe meer handle-args je moet doorgeven, hoe meer onzichtbare koppeling er was.
+
+⚠️ **Build vanuit de verkeerde working copy zonder het te merken.** Eerste poging gebouwd vanuit `/Volumes/Projects/Tanmatsu/meshcore-settings` — een pré-refactor copy waar `main.c` nog 3000 regels was. Geuploadt naar de badge, UI toonde de oude monolithische look. Vijf minuten verbazing voordat ik realiseerde dat de juiste source op `~/stack/Projects/Tanmatsu/meshcore-settings` stond met de modulaire 320-regel `main.c` + `chat.c`/`render.c`/etc. Les: meerdere checkouts van dezelfde repo is een footgun; check `git status` + bestandsdatum op de file die je net hebt gewijzigd, niet alleen `pwd`.
+
+🧪 **Local fork bewaren tijdens een upstream-bump.** Onze fork van `tanmatsu-lora` (PACKET_RX_V2 + GET_RSSI_INST patches voor RSSI/SNR + noise floor) is **niet** mee-geüpgrade door de upstream-bump — die API was nog niet handle-based. Compromis: tijdelijk uit `components/` gehaald en de upstream HEAD gebruikt, met stubs in de app zodat het bouwde maar zonder RSSI/SNR. Later op de dag de patches opnieuw aangebracht op de nieuwe handle-based base — als feature-branch op een Gitea-fork (`CJ/tanmatsu-radio` + `CJ/tanmatsu-lora`). App's `idf_component.yml` wijst nu naar `http://192.168.2.25:3000/CJ/tanmatsu-lora.git` (Gitea url). Les: bij upstream-API-breaks is "tijdelijk uitschakelen + later opnieuw aanbrengen" sneller dan "blokkeren tot de patches gemigreerd zijn". De stubs vingen één compile-cyclus op, daarna kon ik de patches opnieuw schrijven met een rustig hoofd.
+
+🪪 **De protocol-versie die je leest is niet altijd wat je dacht.** Voor de "Radio firmware" weergave in Settings: de huidige `lora_get_status` retourneert een `version_string` van 16 bytes. Aangenomen dat dit de `tanmatsu-radio` app-versie zou zijn (v3.0.0 etc) — maar het bleek de **silicon chip ID** te zijn (`sx1261 V20 2002`). De C6-app-versie wordt vandaag de dag niet via dit protocol blootgesteld. Compromis: één read-only "Radio chip" rij voor de silicon-versie, en een tweede "Radio firmware" rij met een hand-onderhouden `#define TANMATSU_RADIO_FW_LABEL` in `app_config.h`. Bumpen bij elke re-flash. Eerlijke labels > misleidende auto-detect. Les: voor je een geadverteerd veld in je UI toont, lees de bron — niet de naam.
+
+📚 **Gitea als fork-host is goedkoper dan GitHub voor work-in-progress.** Voor onze patches op `tanmatsu-radio` (C6 firmware) en `tanmatsu-lora` (P4 component) twee Gitea-repos aangemaakt via de Gitea-API (token uit Infisical). App's `idf_component.yml` wijst nu naar `git: http://192.168.2.25:3000/CJ/...` — de IDF component manager kan rechtstreeks zo'n git-URL hanteren. Voordeel: feature-branch live houden zonder een GitHub-PR-cycle nodig te hebben. De upstream PR naar Nicolai-Electronics komt later. Les: een privé fork-mirror op je eigen Gitea is een ontbrekend stuk gereedschap tussen "lokaal werken" en "publiek PR'en" — geen pressure on PR cadence, wél versiecontrole.
+
+
+## Update — Upstream PRs voor RSSI/SNR (mei 2026)
+
+Onze fork-patches naar Nicolai-Electronics doorgezet als twee gekoppelde PRs:
+- `tanmatsu-radio` (C6 firmware): PACKET_RX_V2 + GET_RSSI_INST handlers
+- `esp32-component-tanmatsu-lora` (P4 component): stats fields + lora_get_rssi_inst()
+
+Beide PRs gepaird in description; bevatten screenshots van werkende RSSI/SNR/noise-floor in Settings-footer en Nodes-tab. KRITIEK in de PR-tekst: noise-floor poll interval moet 60s blijven (5s breekt SX1262 preamble→header transitie — diagnose 2026-05-23).
+
+🪞 **Fork-mirror als WIP-host, GitHub als PR-host.** Onze ontwikkel-cyclus liep via Gitea (snel, privé, geen review-druk). Voor de PRs naar Nicolai zijn de patches gespiegeld naar GitHub-forks via een tweede `github` remote. Op die manier krijgen we beide werelden: rustig itereren op Gitea, publiek PR'en vanaf GitHub. Les: een privé fork-mirror tussen "lokaal" en "publiek PR" voorkomt premature feedback-rondes en houdt je hoofdrepo schoon.
+
+🔒 **GitHub email-privacy blokkeert pushes met je echte email.** Eerste push faalde met "push declined due to email privacy restrictions" omdat ons commit-author de privé-email had. Fix: zowel author als committer email zetten op `<username>@users.noreply.github.com`. Voor alle TOEKOMSTIGE Gitea→GitHub mirrors: meteen `git config user.email "...@users.noreply.github.com"` zetten in elke checkout van een GitHub-fork. Les: GitHub's privacy-policy is een onzichtbare push-gate; check je committer-email voordat je een mirror opzet.
+
+📸 **Screenshots in PR-description zijn geen luxe.** GitHub PR-description accepteert drag-drop van afbeeldingen (auto-upload naar githubusercontent CDN). Twee foto's geplaatst: één van Settings-footer met `RX:-31 SNR:+12 N:-101`, één van Nodes-tab met RSSI/SNR-kolommen gevuld. Voor een reviewer (Renze) bewijs: "dit werkt op echte hardware, niet alleen theoretisch in mijn code". Les: een feature-PR zonder beeld is een belofte; mét beeld is het een bewijsstuk.
+
+---
