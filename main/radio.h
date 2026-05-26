@@ -11,6 +11,15 @@
 
 #include "lora.h"  // lora_protocol_lora_packet_t
 
+// Shared LoRa radio handle (radio v3.0.0 handle-based API).
+// Defined in radio.c; used by main.c and settings_nvs.c too.
+extern lora_handle_t lora_handle;
+
+// tanmatsu-radio firmware version string reported by C6 via lora_get_status().
+// Populated once after lora_init_remote() in main.c boot path; "?" until then.
+#define RADIO_FW_VERSION_LEN 17
+extern char radio_fw_version[RADIO_FW_VERSION_LEN];
+
 // ── RX ring buffer (raw packets, for debug display) ──────────────────────────
 #define RX_BUF_SIZE 32
 

@@ -285,7 +285,10 @@ void handle_nav(uint32_t key) {
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {
-            if (!edit_mode) {
+            // FIELD_RADIO_FW is read-only — Enter is no-op.
+            if (selected == FIELD_RADIO_FW) {
+                // ignore
+            } else if (!edit_mode) {
                 edit_mode = true;
                 if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME ||
                     selected == FIELD_REGION_SCOPE) {
@@ -521,7 +524,10 @@ void handle_key(char c) {
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {
-            if (!edit_mode) {
+            // FIELD_RADIO_FW is read-only — Enter is no-op.
+            if (selected == FIELD_RADIO_FW) {
+                // ignore
+            } else if (!edit_mode) {
                 edit_mode = true;
                 if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME ||
                     selected == FIELD_REGION_SCOPE) {

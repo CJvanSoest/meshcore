@@ -27,6 +27,12 @@
 
 static const char *TAG = "radio";
 
+// Shared LoRa handle for radio v3.0.0 API. Single SDIO-connected (remote) radio.
+lora_handle_t lora_handle = {0};
+
+// Filled in main.c after lora_init_remote() + lora_get_status() succeeds.
+char radio_fw_version[RADIO_FW_VERSION_LEN] = "?";
+
 // c6_available lives in main.c (set during boot once the C6 responds).
 extern bool c6_available;
 
@@ -99,9 +105,9 @@ void send_advert(void) {
     pkt.length = pkt_len;
     memcpy(pkt.data, pkt_data, pkt_len);
 
-    lora_set_mode(LORA_PROTOCOL_MODE_TX);
-    esp_err_t res = lora_send_packet(&pkt);
-    lora_set_mode(LORA_PROTOCOL_MODE_RX);
+    lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_TX);
+    esp_err_t res = lora_send_packet(&lora_handle, &pkt);
+    lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_RX);
 
     if (res == ESP_OK) {
         last_advert_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
@@ -192,7 +198,7 @@ bool send_dm_message(const char *text, const uint8_t *target_pub) {
     lora_protocol_lora_packet_t pkt = {0};
     pkt.length = pkt_len;
     memcpy(pkt.data, pkt_data, pkt_len);
-    return lora_send_packet(&pkt) == ESP_OK;
+    return lora_send_packet(&lora_handle, &pkt) == ESP_OK;
 }
 
 // ── Public-channel TX (GRP_TXT) ──────────────────────────────────────────────
@@ -264,9 +270,9 @@ bool send_chat_message(const char *text) {
     pkt.length = pkt_len;
     memcpy(pkt.data, pkt_data, pkt_len);
 
-    lora_set_mode(LORA_PROTOCOL_MODE_TX);
-    esp_err_t res = lora_send_packet(&pkt);
-    lora_set_mode(LORA_PROTOCOL_MODE_RX);
+    lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_TX);
+    esp_err_t res = lora_send_packet(&lora_handle, &pkt);
+    lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_RX);
 
     if (res == ESP_OK) {
         ESP_LOGI(TAG, "Chat sent: %s", prefixed);
@@ -319,7 +325,7 @@ static void noise_floor_task(void *arg) {
         vTaskDelay(pdMS_TO_TICKS(60000));
         if (!noise_floor_supported) continue;
         uint8_t   raw = 0;
-        esp_err_t r   = lora_get_rssi_inst(&raw);
+        esp_err_t r   = lora_get_rssi_inst(&lora_handle, &raw);
         if (r == ESP_OK) {
             int dbm = -(int)raw / 2;
             if (dbm < -127) dbm = -127;
@@ -337,7 +343,7 @@ static void lora_rx_task(void *arg) {
     ESP_LOGI(TAG, "LoRa RX task started");
     while (1) {
         lora_protocol_lora_packet_t pkt = {0};
-        esp_err_t res = lora_receive_packet(&pkt, pdMS_TO_TICKS(10000));
+        esp_err_t res = lora_receive_packet(&lora_handle, &pkt, pdMS_TO_TICKS(10000));
         if (res == ESP_OK && pkt.length > 0) {
             uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
@@ -605,7 +611,7 @@ static void lora_rx_task(void *arg) {
                                 lora_protocol_lora_packet_t lora_pkt = {0};
                                 lora_pkt.length = path_sz;
                                 memcpy(lora_pkt.data, path_data, path_sz);
-                                lora_send_packet(&lora_pkt);
+                                lora_send_packet(&lora_handle, &lora_pkt);
                             }
                         }
                     } while (0);

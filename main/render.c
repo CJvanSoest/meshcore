@@ -169,6 +169,14 @@ static void render_settings(void) {
     typedef struct { const char *label; char value[64]; } row_t;
     row_t rows[FIELD_COUNT];
 
+    // The version_string from lora_get_status reports the SX126x silicon
+    // version (e.g. "sx1261 V20 2002"), NOT the tanmatsu-radio app version
+    // (e.g. v3.0.0). Renze's protocol doesn't yet expose app version — TODO:
+    // upstream PR to add a GET_FW_VERSION command or extend status payload.
+    rows[FIELD_RADIO_FW].label = "Radio chip";
+    snprintf(rows[FIELD_RADIO_FW].value, sizeof(rows[FIELD_RADIO_FW].value), "%s",
+             radio_fw_version[0] ? radio_fw_version : "?");
+
     snprintf(rows[FIELD_OWNER].value, sizeof(rows[FIELD_OWNER].value), "%s", owner_name);
     rows[FIELD_OWNER].label = "Owner name";
 
