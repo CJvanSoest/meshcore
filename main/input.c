@@ -14,6 +14,7 @@
 
 #include "app_config.h"
 #include "chat.h"
+#include "channels.h"
 #include "contacts.h"
 #include "history.h"
 #include "identity.h"
@@ -239,7 +240,13 @@ void handle_nav(uint32_t key) {
             if (chat_input_len > 0) {
                 if (current_view == VIEW_CHANNEL) {
                     send_chat_message(chat_input);
-                    ch_add_message(chat_input, true);
+                    char prefixed[MAX_MSG_TEXT];
+                    const char *ch_name =
+                        (active_channel_idx >= 0 && active_channel_idx < channel_count &&
+                         channels[active_channel_idx].active)
+                        ? channels[active_channel_idx].name : "Public";
+                    snprintf(prefixed, sizeof(prefixed), "[%s] %s", ch_name, chat_input);
+                    ch_add_message(prefixed, true);
                 } else if (dm_target_set) {
                     send_dm_message(chat_input, dm_target_pub);
                     chat_add_dm(chat_input, true, dm_target_pub);
@@ -372,7 +379,13 @@ void handle_key(char c) {
                 if (chat_input_len > 0) {
                     if (current_view == VIEW_CHANNEL) {
                         send_chat_message(chat_input);
-                        ch_add_message(chat_input, true);
+                        char prefixed[MAX_MSG_TEXT];
+                        const char *ch_name =
+                            (active_channel_idx >= 0 && active_channel_idx < channel_count &&
+                             channels[active_channel_idx].active)
+                            ? channels[active_channel_idx].name : "Public";
+                        snprintf(prefixed, sizeof(prefixed), "[%s] %s", ch_name, chat_input);
+                        ch_add_message(prefixed, true);
                     } else if (dm_target_set) {
                         send_dm_message(chat_input, dm_target_pub);
                         chat_add_dm(chat_input, true, dm_target_pub);

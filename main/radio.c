@@ -416,7 +416,10 @@ static void lora_rx_task(void *arg) {
                             if (decrypt_grp_txt(&attempt, channels[ci].secret)) {
                                 ESP_LOGI(TAG, "Channel RX [%s]: %s",
                                          channels[ci].name, attempt.decrypted.text);
-                                ch_add_message(attempt.decrypted.text, false);
+                                char prefixed[MAX_MSG_TEXT];
+                                snprintf(prefixed, sizeof(prefixed), "[%s] %s",
+                                         channels[ci].name, attempt.decrypted.text);
+                                ch_add_message(prefixed, false);
                                 if (current_view != VIEW_CHANNEL) {
                                     led_channel_pending = true;
                                     update_notification_led();
@@ -434,7 +437,10 @@ static void lora_rx_task(void *arg) {
                                 if (decrypt_grp_txt(&attempt, channels[ci].secret)) {
                                     ESP_LOGI(TAG, "Channel RX [%s] (hash mismatch): %s",
                                              channels[ci].name, attempt.decrypted.text);
-                                    ch_add_message(attempt.decrypted.text, false);
+                                    char prefixed[MAX_MSG_TEXT];
+                                    snprintf(prefixed, sizeof(prefixed), "[%s] %s",
+                                             channels[ci].name, attempt.decrypted.text);
+                                    ch_add_message(prefixed, false);
                                     if (current_view != VIEW_CHANNEL) {
                                         led_channel_pending = true;
                                         update_notification_led();
