@@ -285,8 +285,8 @@ void handle_nav(uint32_t key) {
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {
-            // FIELD_RADIO_FW is read-only — Enter is no-op.
-            if (selected == FIELD_RADIO_FW) {
+            // FIELD_RADIO_FW / FIELD_RADIO_FW_APP are read-only — Enter no-op.
+            if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP) {
                 // ignore
             } else if (!edit_mode) {
                 edit_mode = true;
@@ -524,8 +524,8 @@ void handle_key(char c) {
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {
-            // FIELD_RADIO_FW is read-only — Enter is no-op.
-            if (selected == FIELD_RADIO_FW) {
+            // FIELD_RADIO_FW / FIELD_RADIO_FW_APP are read-only — Enter no-op.
+            if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP) {
                 // ignore
             } else if (!edit_mode) {
                 edit_mode = true;

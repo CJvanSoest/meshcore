@@ -8,7 +8,8 @@
 
 // ── Settings tab: field identifiers (also drives FIELD_COUNT for nav wrap) ───
 typedef enum {
-    FIELD_RADIO_FW = 0,  // read-only — shows tanmatsu-radio firmware version reported by C6
+    FIELD_RADIO_FW = 0,      // read-only — SX126x silicon version reported by C6
+    FIELD_RADIO_FW_APP,      // read-only — hand-maintained tanmatsu-radio app fw label
     FIELD_OWNER,
     FIELD_ADV_NAME,
     FIELD_FREQ,
