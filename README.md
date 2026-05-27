@@ -39,6 +39,17 @@ A [MeshCore](https://meshcore.co.uk) LoRa mesh communication app for the
   encrypted with ECDH + AES-128-ECB; channel uses shared key
 - **Persistent chat history** on microSD (AES-CBC encrypted, self-heals on
   identity change)
+- **Multi-channel** — public channel + user-added `#channels`, picker UI
+  with add/delete, brute-force MAC verify on RX, region scope visible in header
+- **Region scope on the wire** — `ROUTE_TYPE_TRANSPORT_FLOOD` with
+  HMAC-SHA256 transport codes per upstream MeshCore (mc-radar compatible)
+- **Per-message metadata** — local time, hop count, ACK state inline under
+  each chat bubble
+- **Unread badges** on the tab bar for missed DM / channel messages
+- **Manual GPS coords** (×1e6 upstream scale) for Nodes-tab Dist column +
+  advert position field
+- **Twemoji-based emoji picker** — 8 base smileys, UTF-8 round-trip with
+  other MeshCore clients
 - **QR contact sharing** — show a QR that the mobile app can scan directly
 - **Saved contacts** — favourites stay in the list even when out of range
 - **Live RSSI / SNR** per heard node (requires patched `tanmatsu-radio` firmware)
@@ -83,6 +94,26 @@ first to set up `.IDF_PATH` and `.IDF_TOOLS_PATH`.
 make build  DEVICE=tanmatsu       # produces build/tanmatsu/*.bin
 make upload DEVICE=tanmatsu       # badgelink appfs upload — keeps the launcher
 ```
+
+### Install with custom tile icon
+
+`make upload` puts the binary in AppFS; the launcher shows a generic
+"app" icon for AppFS entries. For the custom MeshCore tile icon (see
+`assets/`), drop the bundle on SD instead:
+
+```sh
+SLUG=nl.cj.meshcore
+BL=path/to/badgelink.sh
+
+$BL fs mkdir   /sd/apps/$SLUG
+$BL fs upload  /sd/apps/$SLUG/metadata.json  assets/metadata.json
+$BL fs upload  /sd/apps/$SLUG/icon32.png     assets/icon-32.png
+$BL fs upload  /sd/apps/$SLUG/meshcore.bin   build/tanmatsu/application.bin
+```
+
+The launcher's `create_list_of_apps_from_directory` reads `metadata.json`,
+loads the 32×32 PNG into the tile, and registers `meshcore.bin` as the
+executable. Same bundle is the artifact for a future appstore upload.
 
 Full toolchain setup, partition layout, launcher patches, and C6 radio
 firmware flashing are documented in

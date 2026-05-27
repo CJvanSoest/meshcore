@@ -278,6 +278,68 @@ In the previous session I added `[#test] name: text` prefixes to disambiguate ch
 
 The lesson: redundant visualizations pile up during iteration — periodic cleanup is part of the work. Or better: every time you add a new display affordance, ask "which old one does this obsolete?"
 
+### 34. Programmatic drawing vs. real bitmaps
+
+First take at emoji: hand-drawn with `pax_simple_circle` + `pax_simple_arc`.
+Technically worked, but the result looked like yellow blobs with vague
+features. Second take: Twemoji 32×32 ARGB bitmaps embedded as
+`static const uint32_t[]` arrays in flash. `pax_buf_init` wraps each
+array in a `pax_buf_t`; `pax_draw_image_sized` scales them to inline
+text size at hardware-accelerated speed.
+
+The lesson: for pixel-art with expression, an asset pipeline
+(download + downscale + embed) is cheaper than drawing primitives.
+Programmatic drawing is fine for schema-icons (arrows, checks); for
+character glyphs that need to be *recognised*, it's not.
+
+### 35. UTF-8 cross-platform is free when you actually do UTF-8
+
+The wire format for emoji is just the Unicode codepoint as 4-byte
+UTF-8. No custom protocol, no tokens, no separate payload type. An
+emoji-aware receiver (iPhone app) renders the glyph; a non-aware
+receiver shows a `?` or nothing — but the message stays intact.
+
+The lesson: for protocol features that are optional on the receiver
+side, pick a wire format that degrades to "do nothing" instead of
+"broken message" on legacy clients.
+
+### 36. Two input paths means two handlers
+
+First flash test: emoji picker selection via D-pad didn't work, and
+the picker hung around into the next typing session. Diagnosis:
+keyboard Enter delivers `\r` to `handle_key`; D-pad center delivers
+`BSP_INPUT_NAVIGATION_KEY_RETURN` to `handle_nav`. My handler only
+lived in `handle_key`.
+
+The lesson: every mode that takes text-input or navigation MUST be
+registered in *all* event paths that can toggle it. One grep on the
+mode flag should match in both handlers — if one path is missing the
+mode is operable from only one input method.
+
+### 37. Ask the hardware, not your intuition
+
+First pick for the emoji shortcut: `BSP_INPUT_NAVIGATION_KEY_GAMEPAD_A`.
+Build passed, nothing happened on the badge. Turns out the Tanmatsu
+BSP doesn't map the coloured buttons to GAMEPAD_* at all — they're
+`F1..F6`. Launcher `home.c` line 355 confirms: F4 is the green circle.
+
+The lesson: BSP key-mappings differ per badge target. Look at a
+shipping app (the launcher) to learn the real mapping, not the generic
+enum names.
+
+### 38. App-icon: AppFS has no icon slot
+
+The custom tile icon doesn't work via `badgelink appfs upload` — that
+protocol only carries slug/title/version/size. The launcher's
+`app_metadata_parser` reads icon + metadata from `<slug>/metadata.json`
+on SD. So the path is a SD bundle (binary + metadata.json + icon32.png
+under a per-slug folder) — and that's also exactly the bundle a future
+appstore would distribute.
+
+The lesson: having a second install route alongside the fast-dev AppFS
+upload doesn't just enable the tile icon, it lays the foundation for
+later distribution. Not duplication — evolution.
+
 ### 33. ACK matching via CRC binding to the sender
 
 For the "ack" indicator on outgoing DMs: at send_dm_message I compute the ACK CRC the receiver will echo back (`SHA256(plaintext[0..5] || dm_text || OUR_pubkey)[0..4]`), store it on the chat_msg, and add a PATH_RETURN inbound handler that decrypts the inner block with the sender's shared secret and matches on that CRC. Two things I learned: (1) MeshCore's inner ACK is derived from the plaintext + receiver's pubkey, so we can compute it deterministically in advance. (2) Building a sender that *transmits* PATH_RETURN is not the same as a sender that *receives* PATH_RETURN — they're separate paths, and I only had the TX side. Adding the RX side was a separate ~80 lines.
