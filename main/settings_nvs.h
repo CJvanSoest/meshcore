@@ -50,6 +50,13 @@ extern uint16_t                      advert_interval_s;
 extern meshcore_device_role_t        lora_role;
 extern uint8_t                       path_hash_size;         // 1/2/3 bytes per hop
 
+// Manual GPS coords (degrees × 1e6 — MeshCore upstream scale, see
+// AdvertDataHelpers.h::getLat which divides by 1000000.0).
+// Both must be valid to be embedded in adverts; invalid = field absent.
+extern bool                          gps_position_valid;
+extern int32_t                       gps_lat_e6;
+extern int32_t                       gps_lon_e6;
+
 // ── Load/save ────────────────────────────────────────────────────────────────
 void load_owner_name(void);
 void save_owner_name(void);
@@ -57,6 +64,8 @@ void load_lora_advert_name(void);
 void save_lora_advert_name(void);
 void load_region_scope(void);
 void save_region_scope(void);
+void load_gps_coords(void);
+void save_gps_coords(void);
 
 void load_lora_from_nvs(void);
 void save_lora_to_nvs(void);

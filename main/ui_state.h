@@ -24,6 +24,8 @@ typedef enum {
     FIELD_ROLE,
     FIELD_PATH_HASH_SIZE,
     FIELD_REGION_SCOPE,
+    FIELD_GPS_LAT,
+    FIELD_GPS_LON,
     FIELD_COUNT,
 } field_t;
 

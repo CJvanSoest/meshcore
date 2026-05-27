@@ -51,3 +51,11 @@ int channels_find_by_hash(uint8_t hash);
 // Persist channels[1..channel_count-1] (skip hardcoded Public) to NVS blob
 // "mc.channels". Called automatically by channels_add_*/channels_remove.
 void channels_save_nvs(void);
+
+// ── Channel-tab UI state ─────────────────────────────────────────────────────
+// channel_list_mode  — true: show channel picker; false: show chat for active
+// channel_list_cursor — selection in the picker
+// channel_adding     — text-input flow active (sharing field_edit_buf)
+extern bool channel_list_mode;
+extern int  channel_list_cursor;
+extern bool channel_adding;

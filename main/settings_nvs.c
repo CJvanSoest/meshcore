@@ -22,6 +22,13 @@
 #define NVS_LORA_ROLE       "lora.role"
 #define NVS_LORA_PATHHASH   "lora.pathhash"
 #define NVS_LORA_REGION     "lora.region"
+#define NVS_GPS_LAT         "lora.gps.lat"
+#define NVS_GPS_LON         "lora.gps.lon"
+// Sentinel marking that GPS NVS values are stored in the current ×1e6 scale.
+// Absent OR <2 = legacy / possibly half-migrated state — wipe and require
+// user to re-enter once. save_gps_coords always writes this to current value.
+#define NVS_GPS_SCALE_VER   "lora.gps.sv"
+#define GPS_SCALE_VER_CUR   2
 
 static const char *TAG = "settings";
 
@@ -51,6 +58,9 @@ lora_protocol_config_params_t lora_cfg             = {0};
 uint16_t                      advert_interval_s    = LORA_DEF_ADVERT_INT;
 meshcore_device_role_t        lora_role            = MESHCORE_DEVICE_ROLE_CHAT_NODE;
 uint8_t                       path_hash_size       = LORA_DEF_PATHHASH;
+bool                          gps_position_valid   = false;
+int32_t                       gps_lat_e6           = 0;
+int32_t                       gps_lon_e6           = 0;
 
 int lora_preset_match(void) {
     for (int i = 0; i < LORA_PRESET_COUNT; i++) {
@@ -146,6 +156,65 @@ void save_region_scope(void) {
     nvs_close(handle);
     ESP_LOGI(TAG, "Region scope saved: %s",
              region_scope[0] ? region_scope : "(cleared)");
+}
+
+// ── Manual GPS coords ────────────────────────────────────────────────────────
+// gps_position_valid follows "both keys present in NVS". Missing either key
+// (or both) leaves the advert without a position field. UI clears the position
+// by writing zeroed coords + setting valid=false, which deletes the NVS keys.
+void load_gps_coords(void) {
+    gps_position_valid = false;
+    gps_lat_e6         = 0;
+    gps_lon_e6         = 0;
+
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
+    int32_t lat = 0, lon = 0;
+    bool have_lat = (nvs_get_i32(handle, NVS_GPS_LAT, &lat) == ESP_OK);
+    bool have_lon = (nvs_get_i32(handle, NVS_GPS_LON, &lon) == ESP_OK);
+    uint8_t scale_ver = 0;
+    nvs_get_u8(handle, NVS_GPS_SCALE_VER, &scale_ver);
+    nvs_close(handle);
+
+    if (!have_lat || !have_lon) return;
+
+    if (scale_ver < GPS_SCALE_VER_CUR) {
+        // Legacy state or half-migrated (lat fixed, lon left in ×1e7) — both
+        // look "valid ×1e6" but value can't be trusted. Wipe and force re-entry.
+        ESP_LOGW(TAG, "GPS NVS scale_ver=%u < %u — clearing for re-entry",
+                 (unsigned)scale_ver, (unsigned)GPS_SCALE_VER_CUR);
+        nvs_handle_t rw;
+        if (nvs_open("system", NVS_READWRITE, &rw) == ESP_OK) {
+            nvs_erase_key(rw, NVS_GPS_LAT);
+            nvs_erase_key(rw, NVS_GPS_LON);
+            nvs_set_u8(rw, NVS_GPS_SCALE_VER, GPS_SCALE_VER_CUR);
+            nvs_commit(rw);
+            nvs_close(rw);
+        }
+        return;
+    }
+
+    gps_lat_e6         = lat;
+    gps_lon_e6         = lon;
+    gps_position_valid = true;
+}
+
+void save_gps_coords(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    if (gps_position_valid) {
+        nvs_set_i32(handle, NVS_GPS_LAT, gps_lat_e6);
+        nvs_set_i32(handle, NVS_GPS_LON, gps_lon_e6);
+    } else {
+        nvs_erase_key(handle, NVS_GPS_LAT);
+        nvs_erase_key(handle, NVS_GPS_LON);
+    }
+    nvs_set_u8(handle, NVS_GPS_SCALE_VER, GPS_SCALE_VER_CUR);
+    nvs_commit(handle);
+    nvs_close(handle);
+    ESP_LOGI(TAG, "GPS coords saved: %s (lat=%ld lon=%ld)",
+             gps_position_valid ? "valid" : "(cleared)",
+             (long)gps_lat_e6, (long)gps_lon_e6);
 }
 
 // ── LoRa config ──────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@
 #include "chat.h"
 
 #include <string.h>
+#include <time.h>
 
 #include "freertos/task.h"
 
@@ -45,6 +46,9 @@ char    dm_target_name[MESHCORE_MAX_NAME_SIZE + 1]      = {0};
 bool led_dm_pending      = false;
 bool led_channel_pending = false;
 
+int dm_unread_count      = 0;
+int channel_unread_count = 0;
+
 const uint8_t PUBLIC_CHANNEL_KEY[16] = {
     0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a,
     0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72
@@ -77,14 +81,26 @@ void chat_init(void) {
     ESP_LOGI(TAG, "Channel hash: 0x%02X", channel_hash);
 }
 
+// Fill metadata fields that every fresh-add path wants. Lives separately so
+// neither the disk-replay nor the system-message path need to repeat it.
+static void msg_init_meta(chat_msg_t *m, bool is_mine) {
+    m->timestamp_ms   = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    time_t now        = time(NULL);
+    m->timestamp_unix = (now > 1000000000) ? (uint32_t)now : 0;
+    m->hops           = is_mine ? 0 : 0xFF;  // theirs: filled in by chat_set_meta_*
+    m->ack_state      = 0;
+    memset(m->ack_crc, 0, sizeof(m->ack_crc));
+}
+
 // RAM-only: for system/error messages without peer context.
 // NOT persisted (would otherwise pollute every peer's chat).
 void chat_add_message(const char *text, bool is_mine) {
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     chat_msg_t *m   = &chat_msgs[chat_head];
+    memset(m, 0, sizeof(*m));
     m->active       = true;
     m->is_mine      = is_mine;
-    m->timestamp_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    msg_init_meta(m, is_mine);
     utf8_sanitize(m->text, MAX_MSG_TEXT, text);
     chat_head = (chat_head + 1) % MAX_CHAT_MSGS;
     if (chat_count < MAX_CHAT_MSGS) chat_count++;
@@ -121,9 +137,10 @@ void dm_select_target(const uint8_t pub[32], const char *name) {
 void ch_add_message(const char *text, bool is_mine) {
     if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     chat_msg_t *m   = &ch_msgs[ch_head];
+    memset(m, 0, sizeof(*m));
     m->active       = true;
     m->is_mine      = is_mine;
-    m->timestamp_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    msg_init_meta(m, is_mine);
     utf8_sanitize(m->text, MAX_MSG_TEXT, text);
     ch_head = (ch_head + 1) % MAX_CHAT_MSGS;
     if (ch_count < MAX_CHAT_MSGS) ch_count++;
@@ -148,9 +165,11 @@ void update_notification_led(void) {
 void chat_ring_add_from_disk(const char *text, bool is_mine) {
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     chat_msg_t *m   = &chat_msgs[chat_head];
+    memset(m, 0, sizeof(*m));
     m->active       = true;
     m->is_mine      = is_mine;
     m->timestamp_ms = 0;
+    m->hops         = 0xFF;  // unknown — history records pre-date this field
     utf8_sanitize(m->text, MAX_MSG_TEXT, text);
     chat_head = (chat_head + 1) % MAX_CHAT_MSGS;
     if (chat_count < MAX_CHAT_MSGS) chat_count++;
@@ -161,12 +180,56 @@ void chat_ring_add_from_disk(const char *text, bool is_mine) {
 void ch_ring_add_from_disk(const char *text, bool is_mine) {
     if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     chat_msg_t *m   = &ch_msgs[ch_head];
+    memset(m, 0, sizeof(*m));
     m->active       = true;
     m->is_mine      = is_mine;
     m->timestamp_ms = 0;
+    m->hops         = 0xFF;
     utf8_sanitize(m->text, MAX_MSG_TEXT, text);
     ch_head = (ch_head + 1) % MAX_CHAT_MSGS;
     if (ch_count < MAX_CHAT_MSGS) ch_count++;
     ch_scroll = ch_count;
     xSemaphoreGive(ch_mutex);
+}
+
+// "most recent" = the entry just appended, i.e. (head-1) wrapping. We do not
+// take the mutex here on the assumption that the caller is on the same task
+// path that just appended and the lock has been released — the small race
+// window of another writer racing in between add() and set_meta() is acceptable
+// (metadata might land on the next entry, which is cosmetic only).
+static int last_idx(int head) { return (head - 1 + MAX_CHAT_MSGS) % MAX_CHAT_MSGS; }
+
+void chat_set_meta_dm(uint8_t hops) {
+    if (chat_count == 0) return;
+    chat_msgs[last_idx(chat_head)].hops = hops;
+}
+
+void chat_set_meta_channel(uint8_t hops) {
+    if (ch_count == 0) return;
+    ch_msgs[last_idx(ch_head)].hops = hops;
+}
+
+void chat_arm_ack_dm(const uint8_t ack_crc[4]) {
+    if (chat_count == 0) return;
+    chat_msg_t *m = &chat_msgs[last_idx(chat_head)];
+    if (!m->is_mine) return;
+    m->ack_state = 1;
+    memcpy(m->ack_crc, ack_crc, 4);
+}
+
+bool chat_mark_ack_by_crc(const uint8_t ack_crc[4]) {
+    if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return false;
+    bool hit = false;
+    for (int i = 0; i < chat_count; i++) {
+        int idx = (chat_head - 1 - i + MAX_CHAT_MSGS * 2) % MAX_CHAT_MSGS;
+        chat_msg_t *m = &chat_msgs[idx];
+        if (m->is_mine && m->ack_state == 1 &&
+            memcmp(m->ack_crc, ack_crc, 4) == 0) {
+            m->ack_state = 2;
+            hit = true;
+            break;
+        }
+    }
+    xSemaphoreGive(chat_mutex);
+    return hit;
 }

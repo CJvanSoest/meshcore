@@ -60,7 +60,9 @@ void radio_start_tasks(void);
 void send_advert(void);
 
 // Send an encrypted DM (TXT_MSG) to a specific node by pub_key.
-bool send_dm_message(const char *text, const uint8_t *target_pub);
+// If ack_crc_out != NULL, returns the 4-byte CRC the receiver will echo back
+// inside their PATH_RETURN — caller can store it on the chat_msg to track ACK.
+bool send_dm_message(const char *text, const uint8_t *target_pub, uint8_t ack_crc_out[4]);
 
 // Send an encrypted public-channel message (GRP_TXT, FLOOD).
 bool send_chat_message(const char *text);

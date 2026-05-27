@@ -3,6 +3,8 @@
 
 #include "input.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
@@ -132,9 +134,17 @@ void field_adjust(int field, int delta) {
 // ── Settings: text-field edit helpers (shared between handle_nav & handle_key)
 static void settings_begin_text_edit(field_t f) {
     const char *src = "";
+    char numbuf[24] = {0};
     if (f == FIELD_OWNER && owner_name[0] && owner_name[0] != '(') src = owner_name;
     else if (f == FIELD_ADV_NAME && lora_advert_name[0])           src = lora_advert_name;
     else if (f == FIELD_REGION_SCOPE && region_scope[0])           src = region_scope;
+    else if (f == FIELD_GPS_LAT) {
+        if (gps_position_valid) snprintf(numbuf, sizeof(numbuf), "%.6f", (double)gps_lat_e6 / 1e6);
+        src = numbuf;
+    } else if (f == FIELD_GPS_LON) {
+        if (gps_position_valid) snprintf(numbuf, sizeof(numbuf), "%.6f", (double)gps_lon_e6 / 1e6);
+        src = numbuf;
+    }
     strncpy(field_edit_buf, src, sizeof(field_edit_buf) - 1);
     field_edit_buf[sizeof(field_edit_buf) - 1] = '\0';
     field_edit_len     = (int)strlen(field_edit_buf);
@@ -153,6 +163,28 @@ static void settings_commit_text_edit(field_t f) {
         strncpy(region_scope, field_edit_buf, sizeof(region_scope) - 1);
         region_scope[sizeof(region_scope) - 1] = '\0';
         save_region_scope();
+    } else if (f == FIELD_GPS_LAT || f == FIELD_GPS_LON) {
+        // Empty (or whitespace) clears both coords; otherwise parse as decimal
+        // degrees. We don't want a half-set position so both keys live or die
+        // together — a single-axis edit re-saves the other from current state.
+        char *trim = field_edit_buf;
+        while (*trim == ' ') trim++;
+        if (*trim == '\0') {
+            gps_position_valid = false;
+            gps_lat_e6         = 0;
+            gps_lon_e6         = 0;
+        } else {
+            // Accept comma as decimal separator too (Dutch keyboard habit).
+            for (char *p = field_edit_buf; *p; p++) if (*p == ',') *p = '.';
+            double  v    = atof(field_edit_buf);
+            int32_t v_e6 = (int32_t)(v * 1e6);
+            if (f == FIELD_GPS_LAT) gps_lat_e6 = v_e6;
+            else                    gps_lon_e6 = v_e6;
+            // Mark valid once at least one axis has been set non-zero, OR if
+            // both keys already had values (allowing fine-tune of one axis).
+            if (gps_lat_e6 != 0 || gps_lon_e6 != 0) gps_position_valid = true;
+        }
+        save_gps_coords();
     }
     field_editing_text = false;
 }
@@ -179,11 +211,19 @@ void handle_nav(uint32_t key) {
             load_owner_name();
             load_lora_advert_name();
             load_region_scope();
+            load_gps_coords();
             load_lora_config();
         } else if (chat_typing) {
             // ESC during typing is cancelled by handle_key; don't fall through.
         } else if (current_view == VIEW_CHAT && !dm_inbox_mode) {
             dm_inbox_mode = true;
+        } else if (current_view == VIEW_CHANNEL && channel_adding) {
+            channel_adding     = false;
+            field_editing_text = false;
+            field_edit_len     = 0;
+            field_edit_buf[0]  = '\0';
+        } else if (current_view == VIEW_CHANNEL && !channel_list_mode) {
+            channel_list_mode = true;
         } else {
             bsp_led_set_mode(true);
             bsp_device_restart_to_launcher();
@@ -196,6 +236,8 @@ void handle_nav(uint32_t key) {
             if (node_cursor > 0) node_cursor--;
         } else if (current_view == VIEW_CHAT && dm_inbox_mode) {
             if (dm_inbox_cursor > 0) dm_inbox_cursor--;
+        } else if (current_view == VIEW_CHANNEL && channel_list_mode && !channel_adding) {
+            if (channel_list_cursor > 0) channel_list_cursor--;
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
         if (current_view == VIEW_SETTINGS) {
@@ -209,12 +251,39 @@ void handle_nav(uint32_t key) {
             int upper = (dm_target_set ? 1 : 0) + contact_count - 1;
             if (upper < 0) upper = 0;
             if (dm_inbox_cursor < upper) dm_inbox_cursor++;
+        } else if (current_view == VIEW_CHANNEL && channel_list_mode && !channel_adding) {
+            if (channel_list_cursor < channel_count - 1) channel_list_cursor++;
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_LEFT) {
         if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, -1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT) {
         if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, +1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
+        if (current_view == VIEW_CHANNEL && channel_adding) {
+            if (field_edit_len > 0) {
+                char name[CHANNEL_NAME_MAX_LEN + 1];
+                name[0] = '\0';
+                bool needs_hash = (field_edit_buf[0] != '#');
+                int  cap        = CHANNEL_NAME_MAX_LEN - (needs_hash ? 1 : 0);
+                if (needs_hash) { name[0] = '#'; name[1] = '\0'; }
+                strncat(name, field_edit_buf, cap);
+                int slot = channels_add_by_name(name);
+                if (slot > 0) channel_list_cursor = slot;
+            }
+            channel_adding     = false;
+            field_editing_text = false;
+            field_edit_len     = 0;
+            field_edit_buf[0]  = '\0';
+            return;
+        }
+        if (current_view == VIEW_CHANNEL && channel_list_mode && !channel_adding) {
+            if (channel_list_cursor >= 0 && channel_list_cursor < channel_count &&
+                channels[channel_list_cursor].active) {
+                active_channel_idx = channel_list_cursor;
+                channel_list_mode  = false;
+            }
+            return;
+        }
         if (current_view == VIEW_CHAT && dm_inbox_mode && !chat_typing) {
             int idx_map[MAX_CONTACTS + 1];
             int idx_count = 0;
@@ -240,16 +309,14 @@ void handle_nav(uint32_t key) {
             if (chat_input_len > 0) {
                 if (current_view == VIEW_CHANNEL) {
                     send_chat_message(chat_input);
-                    char prefixed[MAX_MSG_TEXT];
-                    const char *ch_name =
-                        (active_channel_idx >= 0 && active_channel_idx < channel_count &&
-                         channels[active_channel_idx].active)
-                        ? channels[active_channel_idx].name : "Public";
-                    snprintf(prefixed, sizeof(prefixed), "[%s] %s", ch_name, chat_input);
-                    ch_add_message(prefixed, true);
+                    // Channel context lives in the chat header (active channel
+                    // name + region) — no need for an inline [#name] prefix.
+                    ch_add_message(chat_input, true);
                 } else if (dm_target_set) {
-                    send_dm_message(chat_input, dm_target_pub);
+                    uint8_t ack_crc[4] = {0};
+                    send_dm_message(chat_input, dm_target_pub, ack_crc);
                     chat_add_dm(chat_input, true, dm_target_pub);
+                    chat_arm_ack_dm(ack_crc);
                     meshcore_device_role_t r = MESHCORE_DEVICE_ROLE_CHAT_NODE;
                     if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
                         for (int ni = 0; ni < MAX_NODES; ni++) {
@@ -286,9 +353,10 @@ void handle_nav(uint32_t key) {
                 xSemaphoreGive(node_mutex);
             }
             if (dm_target_set) {
-                current_view   = VIEW_CHAT;
-                dm_inbox_mode  = false;
-                led_dm_pending = false;
+                current_view    = VIEW_CHAT;
+                dm_inbox_mode   = false;
+                led_dm_pending  = false;
+                dm_unread_count = 0;
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {
@@ -298,7 +366,8 @@ void handle_nav(uint32_t key) {
             } else if (!edit_mode) {
                 edit_mode = true;
                 if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME ||
-                    selected == FIELD_REGION_SCOPE) {
+                    selected == FIELD_REGION_SCOPE ||
+                    selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
                     settings_begin_text_edit(selected);
                 }
             } else {
@@ -368,6 +437,91 @@ void handle_key(char c) {
         // Tab and ESC fall through.
     }
 
+    // Channel list-mode: own keymap (W/S nav, Enter open, A add, D delete) plus
+    // text-input intercept when channel_adding is active. Must come before the
+    // chat-typing branch so chat_typing keys don't fire here.
+    if (current_view == VIEW_CHANNEL && channel_list_mode) {
+        if (channel_adding) {
+            if (c == 27) {
+                channel_adding     = false;
+                field_editing_text = false;
+                field_edit_len     = 0;
+                field_edit_buf[0]  = '\0';
+                return;
+            }
+            if (c == '\r' || c == '\n') {
+                if (field_edit_len > 0) {
+                    // Auto-prefix with '#' if user typed plain text — non-Public
+                    // channels always start with '#' in MeshCore name convention.
+                    // Buf is sizeof(field_edit_buf)=33; cap input slice at
+                    // CHANNEL_NAME_MAX_LEN-1 so even after prefix we fit.
+                    char name[CHANNEL_NAME_MAX_LEN + 1];
+                    name[0] = '\0';
+                    bool needs_hash = (field_edit_buf[0] != '#');
+                    int  cap        = CHANNEL_NAME_MAX_LEN - (needs_hash ? 1 : 0);
+                    if (needs_hash) { name[0] = '#'; name[1] = '\0'; }
+                    strncat(name, field_edit_buf, cap);
+                    int slot = channels_add_by_name(name);
+                    if (slot > 0) {
+                        channel_list_cursor = slot;
+                    }
+                }
+                channel_adding     = false;
+                field_editing_text = false;
+                field_edit_len     = 0;
+                field_edit_buf[0]  = '\0';
+                return;
+            }
+            if (c == 127 || c == 8) {
+                if (field_edit_len > 0) {
+                    field_edit_buf[--field_edit_len] = '\0';
+                }
+                return;
+            }
+            if (c >= 32 && c < 127 && field_edit_len < (int)sizeof(field_edit_buf) - 1) {
+                field_edit_buf[field_edit_len++] = c;
+                field_edit_buf[field_edit_len]   = '\0';
+                return;
+            }
+            return;  // swallow other keys while editing
+        }
+
+        if (c == 'w' || c == 'W') {
+            if (channel_list_cursor > 0) channel_list_cursor--;
+            return;
+        }
+        if (c == 's' || c == 'S') {
+            if (channel_list_cursor < channel_count - 1) channel_list_cursor++;
+            return;
+        }
+        if (c == 'a' || c == 'A') {
+            channel_adding     = true;
+            field_editing_text = true;
+            field_edit_len     = 0;
+            field_edit_buf[0]  = '\0';
+            return;
+        }
+        if (c == 'd' || c == 'D') {
+            // Public (idx 0) cannot be removed.
+            if (channel_list_cursor > 0 && channel_list_cursor < channel_count) {
+                int removed = channel_list_cursor;
+                channels_remove(removed);
+                if (channel_list_cursor >= channel_count) channel_list_cursor = channel_count - 1;
+                if (channel_list_cursor < 0)              channel_list_cursor = 0;
+            }
+            return;
+        }
+        if (c == '\r' || c == '\n') {
+            if (channel_list_cursor >= 0 && channel_list_cursor < channel_count &&
+                channels[channel_list_cursor].active) {
+                active_channel_idx = channel_list_cursor;
+                channel_list_mode  = false;
+            }
+            return;
+        }
+        // Tab and ESC fall through.
+    }
+
     // Chat / Channel view input — intercept everything when typing.
     if (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL) {
         if (chat_typing) {
@@ -379,16 +533,12 @@ void handle_key(char c) {
                 if (chat_input_len > 0) {
                     if (current_view == VIEW_CHANNEL) {
                         send_chat_message(chat_input);
-                        char prefixed[MAX_MSG_TEXT];
-                        const char *ch_name =
-                            (active_channel_idx >= 0 && active_channel_idx < channel_count &&
-                             channels[active_channel_idx].active)
-                            ? channels[active_channel_idx].name : "Public";
-                        snprintf(prefixed, sizeof(prefixed), "[%s] %s", ch_name, chat_input);
-                        ch_add_message(prefixed, true);
+                        ch_add_message(chat_input, true);
                     } else if (dm_target_set) {
-                        send_dm_message(chat_input, dm_target_pub);
+                        uint8_t ack_crc[4] = {0};
+                        send_dm_message(chat_input, dm_target_pub, ack_crc);
                         chat_add_dm(chat_input, true, dm_target_pub);
+                        chat_arm_ack_dm(ack_crc);
                     } else {
                         send_chat_message(chat_input);
                         chat_add_message(chat_input, true);
@@ -431,12 +581,16 @@ void handle_key(char c) {
         if (!edit_mode) {
             current_view = (app_view_t)((int)(current_view + 1) % VIEW_COUNT);
             if (current_view == VIEW_CHAT) {
-                dm_inbox_mode  = true;
-                led_dm_pending = false;
+                dm_inbox_mode    = true;
+                led_dm_pending   = false;
+                dm_unread_count  = 0;
                 update_notification_led();
             }
             if (current_view == VIEW_CHANNEL) {
-                led_channel_pending = false;
+                channel_list_mode    = true;
+                channel_adding       = false;
+                led_channel_pending  = false;
+                channel_unread_count = 0;
                 update_notification_led();
             }
         }
@@ -451,9 +605,12 @@ void handle_key(char c) {
             load_owner_name();
             load_lora_advert_name();
             load_region_scope();
+            load_gps_coords();
             load_lora_config();
         } else if (current_view == VIEW_CHAT && !dm_inbox_mode) {
             dm_inbox_mode = true;
+        } else if (current_view == VIEW_CHANNEL && !channel_list_mode) {
+            channel_list_mode = true;
         } else {
             bsp_led_set_mode(true);
             bsp_device_restart_to_launcher();
@@ -531,9 +688,10 @@ void handle_key(char c) {
                 xSemaphoreGive(node_mutex);
             }
             if (dm_target_set) {
-                current_view   = VIEW_CHAT;
-                dm_inbox_mode  = false;
-                led_dm_pending = false;
+                current_view    = VIEW_CHAT;
+                dm_inbox_mode   = false;
+                led_dm_pending  = false;
+                dm_unread_count = 0;
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {
@@ -543,7 +701,8 @@ void handle_key(char c) {
             } else if (!edit_mode) {
                 edit_mode = true;
                 if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME ||
-                    selected == FIELD_REGION_SCOPE) {
+                    selected == FIELD_REGION_SCOPE ||
+                    selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
                     settings_begin_text_edit(selected);
                 }
             } else {
@@ -558,6 +717,7 @@ void handle_key(char c) {
             load_owner_name();
             load_lora_advert_name();
             load_region_scope();
+            load_gps_coords();
             load_lora_config();
             dirty              = false;
             edit_mode          = false;

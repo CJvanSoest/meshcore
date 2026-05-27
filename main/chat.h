@@ -19,7 +19,11 @@ typedef struct {
     bool     active;
     bool     is_mine;
     char     text[MAX_MSG_TEXT];
-    uint32_t timestamp_ms;
+    uint32_t timestamp_ms;     // device-tick — for relative timing, lost on reboot
+    uint32_t timestamp_unix;   // epoch seconds; 0 = unknown (history reload / no SNTP)
+    uint8_t  hops;             // 0 = own / direct; 0xFF = unknown (e.g. SD reload)
+    uint8_t  ack_state;        // 0 = N/A (theirs / channel), 1 = waiting, 2 = acked
+    uint8_t  ack_crc[4];       // for own DMs: matches incoming PATH_RETURN ACK
 } chat_msg_t;
 
 // ── DM ring (per-peer; cleared + reloaded by dm_select_target) ───────────────
@@ -55,6 +59,10 @@ extern char    dm_target_name[MESHCORE_MAX_NAME_SIZE + 1];
 extern bool led_dm_pending;
 extern bool led_channel_pending;
 
+// ── Per-tab unread counters (rendered as badges on the tab bar) ──────────────
+extern int dm_unread_count;
+extern int channel_unread_count;
+
 // ── Public channel ───────────────────────────────────────────────────────────
 extern const uint8_t PUBLIC_CHANNEL_KEY[16];
 extern uint8_t       channel_hash;  // first byte of SHA256(PUBLIC_CHANNEL_KEY)
@@ -70,6 +78,15 @@ void chat_add_message(const char *text, bool is_mine);
 // Persist a DM to the peer's on-disk history; if that peer is the active DM
 // target, also push it onto the visible ring.
 void chat_add_dm(const char *text, bool is_mine, const uint8_t peer_pub[32]);
+
+// Per-message metadata helpers (call right after add; the most-recent ring
+// entry — the one just appended — gets the fields). Safe to call from RX path.
+void chat_set_meta_dm(uint8_t hops);
+void chat_set_meta_channel(uint8_t hops);
+void chat_arm_ack_dm(const uint8_t ack_crc[4]);
+
+// Look up an own outgoing DM by ACK CRC and mark it acked. Returns true on hit.
+bool chat_mark_ack_by_crc(const uint8_t ack_crc[4]);
 
 // Switch the active DM peer, clear the visible ring, and reload from SD.
 void dm_select_target(const uint8_t pub[32], const char *name);

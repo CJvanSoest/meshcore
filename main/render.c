@@ -4,6 +4,7 @@
 #include "render.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -24,6 +25,7 @@
 #endif
 
 #include "app_config.h"
+#include "channels.h"
 #include "chat.h"
 #include "contacts.h"
 #include "identity.h"
@@ -64,8 +66,31 @@ static void render_tab_bar(void) {
         }
         pax_col_t col = active ? COL_HEADER : COL_GRAY;
         pax_vec2f sz  = pax_text_size(FONT, TXT_TAB, tab_labels[i]);
-        int       tx  = i * tab_w + (tab_w - (int)sz.x) / 2;
+
+        // Unread badge: red pill with count, drawn right of the label.
+        int unread = (i == VIEW_CHAT) ? dm_unread_count
+                   : (i == VIEW_CHANNEL) ? channel_unread_count : 0;
+        int badge_w = 0;
+        char badge_txt[8] = {0};
+        if (unread > 0) {
+            snprintf(badge_txt, sizeof(badge_txt), "%d", unread > 99 ? 99 : unread);
+            pax_vec2f bsz = pax_text_size(FONT, TXT_SMALL, badge_txt);
+            badge_w = (int)bsz.x + 12;  // 6px padding each side
+        }
+
+        int total_w = (int)sz.x + (badge_w ? badge_w + 6 : 0);
+        int tx      = i * tab_w + (tab_w - total_w) / 2;
         pax_draw_text(&fb, col, FONT, TXT_TAB, tx, label_y, tab_labels[i]);
+
+        if (badge_w) {
+            int bx = tx + (int)sz.x + 6;
+            int by = (TAB_BAR_H - TXT_SMALL) / 2 - 2;
+            int bh = TXT_SMALL + 4;
+            pax_simple_rect(&fb, COL_RED, bx, by, badge_w, bh);
+            pax_vec2f tsz = pax_text_size(FONT, TXT_SMALL, badge_txt);
+            int label_tx = bx + (badge_w - (int)tsz.x) / 2;
+            pax_draw_text(&fb, COL_HEADER, FONT, TXT_SMALL, label_tx, by + 2, badge_txt);
+        }
     }
     pax_simple_rect(&fb, COL_PANEL, 0, TAB_BAR_H - 1, w, 1);
 
@@ -242,6 +267,21 @@ static void render_settings(void) {
     snprintf(rows[FIELD_REGION_SCOPE].value, sizeof(rows[FIELD_REGION_SCOPE].value),
              "%s", region_scope[0] ? region_scope : "(not set)");
 
+    rows[FIELD_GPS_LAT].label = "GPS latitude";
+    if (gps_position_valid) {
+        snprintf(rows[FIELD_GPS_LAT].value, sizeof(rows[FIELD_GPS_LAT].value),
+                 "%.6f", (double)gps_lat_e6 / 1e6);
+    } else {
+        snprintf(rows[FIELD_GPS_LAT].value, sizeof(rows[FIELD_GPS_LAT].value), "(not set)");
+    }
+    rows[FIELD_GPS_LON].label = "GPS longitude";
+    if (gps_position_valid) {
+        snprintf(rows[FIELD_GPS_LON].value, sizeof(rows[FIELD_GPS_LON].value),
+                 "%.6f", (double)gps_lon_e6 / 1e6);
+    } else {
+        snprintf(rows[FIELD_GPS_LON].value, sizeof(rows[FIELD_GPS_LON].value), "(not set)");
+    }
+
     const int row_h        = 44;
     const int footer_h     = 60;
     const int y0           = TAB_BAR_H + 6;
@@ -288,7 +328,9 @@ static void render_settings(void) {
         }
 
         char val_disp[80];
-        bool is_text_field = (i == FIELD_OWNER || i == FIELD_ADV_NAME || i == FIELD_REGION_SCOPE);
+        bool is_text_field = (i == FIELD_OWNER || i == FIELD_ADV_NAME ||
+                              i == FIELD_REGION_SCOPE ||
+                              i == FIELD_GPS_LAT || i == FIELD_GPS_LON);
         if (is_sel && edit_mode && field_editing_text && is_text_field) {
             snprintf(val_disp, sizeof(val_disp), "%s_", field_edit_buf);
         } else if (is_sel && edit_mode && !is_text_field) {
@@ -334,6 +376,8 @@ static void render_settings(void) {
         hint = "Preset overwrites SF/BW/CR. MeshCore = default net.";
     } else if (selected == FIELD_ROLE) {
         hint = "Role: advertised only. Does NOT enable repeater behavior.";
+    } else if (selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
+        hint = "Decimal degrees (e.g. 52.123456). Empty clears both axes.";
     } else {
         hint = "W/S: navigate   Enter: edit   R: reload   Tab: next   U: flash";
     }
@@ -561,7 +605,30 @@ static void render_nodes(void) {
                 }
                 pax_draw_text(&fb, COL_GRAY, FONT, TXT_BODY, age_x, y + row_text_y, age_buf);
 
-                pax_draw_text(&fb, COL_GRAY, FONT, TXT_BODY, dist_x, y + row_text_y, "--");
+                char dist_buf[12];
+                if (n && n->position_valid && gps_position_valid) {
+                    // Equirectangular approximation — accurate enough for
+                    // mesh-LoRa ranges (< few hundred km) and avoids the cost
+                    // of haversine's sin/asin/sqrt chain per node per frame.
+                    // R_earth = 6371 km. e6 -> radians: deg * 1e-6 * pi/180.
+                    const double k = 1e-6 * (M_PI / 180.0);
+                    double lat1 = (double)gps_lat_e6 * k;
+                    double lon1 = (double)gps_lon_e6 * k;
+                    double lat2 = (double)n->lat     * k;
+                    double lon2 = (double)n->lon     * k;
+                    double x = (lon2 - lon1) * cos((lat1 + lat2) * 0.5);
+                    double y_ = (lat2 - lat1);
+                    double d_km = 6371.0 * sqrt(x * x + y_ * y_);
+                    if (d_km < 1.0)
+                        snprintf(dist_buf, sizeof(dist_buf), "%dm", (int)(d_km * 1000.0));
+                    else if (d_km < 10.0)
+                        snprintf(dist_buf, sizeof(dist_buf), "%.1fkm", d_km);
+                    else
+                        snprintf(dist_buf, sizeof(dist_buf), "%dkm", (int)d_km);
+                } else {
+                    snprintf(dist_buf, sizeof(dist_buf), "--");
+                }
+                pax_draw_text(&fb, COL_GRAY, FONT, TXT_BODY, dist_x, y + row_text_y, dist_buf);
 
                 char pkts_buf[8];
                 if (n) snprintf(pkts_buf, sizeof(pkts_buf), "#%d", n->packet_count);
@@ -814,15 +881,50 @@ static void render_chat(void) {
                 if (!m->active) continue;
 
                 int y = list_y0 + row * CHAT_ROW_H;
+
+                // Footer metadata line: HH:MM · Nh · ack
+                char meta[64] = {0};
+                {
+                    char tbuf[12] = {0};
+                    if (m->timestamp_unix > 0) {
+                        time_t t = (time_t)m->timestamp_unix;
+                        struct tm lt;
+                        localtime_r(&t, &lt);
+                        snprintf(tbuf, sizeof(tbuf), "%02d:%02d", lt.tm_hour, lt.tm_min);
+                    }
+                    char hbuf[16] = {0};
+                    if (!m->is_mine && m->hops != 0xFF) {
+                        snprintf(hbuf, sizeof(hbuf), "%uh", (unsigned)m->hops);
+                    }
+                    const char *ack = NULL;
+                    if (m->is_mine && m->ack_state == 1)      ack = "...";
+                    else if (m->is_mine && m->ack_state == 2) ack = "ack";
+                    int o = 0;
+                    if (tbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s", tbuf);
+                    if (hbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", hbuf);
+                    if (ack)     o += snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", ack);
+                }
+
                 if (m->is_mine) {
                     pax_vec2f sz = pax_text_size(FONT, TXT_BODY, m->text);
                     int tx = w - (int)sz.x - 16;
                     if (tx < 16) tx = 16;
                     pax_simple_rect(&fb, COL_PANEL, tx - 6, y + 2, (int)sz.x + 12, CHAT_ROW_H - 8);
                     pax_draw_text(&fb, COL_BLUE, FONT, TXT_BODY, tx, y + 6, m->text);
-                    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, tx, y + CHAT_ROW_H - TXT_TINY - 4, "You");
+                    if (meta[0]) {
+                        pax_vec2f msz = pax_text_size(FONT, TXT_TINY, meta);
+                        pax_col_t mc  = (m->ack_state == 2) ? COL_GREEN : COL_GRAY;
+                        pax_draw_text(&fb, mc, FONT, TXT_TINY,
+                                      w - (int)msz.x - 16, y + CHAT_ROW_H - TXT_TINY - 4, meta);
+                    } else {
+                        pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, tx, y + CHAT_ROW_H - TXT_TINY - 4, "You");
+                    }
                 } else {
                     pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 14, y + 6, m->text);
+                    if (meta[0]) {
+                        pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, 14,
+                                      y + CHAT_ROW_H - TXT_TINY - 4, meta);
+                    }
                 }
             }
         }
@@ -860,6 +962,74 @@ static void render_chat(void) {
     blit();
 }
 
+static void render_channel_list(int w, int h) {
+    const int row_h    = 38;
+    const int footer_h = FOOTER_H;
+
+    pax_simple_rect(&fb, COL_PANEL, 0, CHAT_Y0, w, 28);
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 10, CHAT_Y0 + 4, "Channels");
+
+    int rows_y0 = CHAT_Y0 + 32;
+    int rows_h  = h - rows_y0 - footer_h;
+    int rows_vis = rows_h / row_h;
+    if (rows_vis < 1) rows_vis = 1;
+
+    if (channel_list_cursor < 0)                  channel_list_cursor = 0;
+    if (channel_list_cursor >= channel_count)     channel_list_cursor = channel_count - 1;
+
+    int scroll = 0;
+    if (channel_list_cursor >= rows_vis) scroll = channel_list_cursor - rows_vis + 1;
+
+    for (int row = 0; row < rows_vis && (row + scroll) < channel_count; row++) {
+        int i = row + scroll;
+        int y = rows_y0 + row * row_h;
+        bool is_sel    = (i == channel_list_cursor);
+        bool is_active = (i == active_channel_idx);
+
+        if (is_sel) {
+            pax_simple_rect(&fb, COL_PANEL, 0, y, w, row_h - 1);
+            pax_simple_rect(&fb, COL_ACCENT, 0, y, 5, row_h - 1);
+        }
+        pax_col_t name_col = is_sel ? COL_WHITE : COL_GRAY;
+        int text_y = y + (row_h - TXT_BODY) / 2;
+
+        // Active marker (filled circle, green) on the left.
+        if (is_active) {
+            pax_draw_text(&fb, COL_GREEN, FONT, TXT_BODY, 18, text_y, ">");
+        }
+        pax_draw_text(&fb, name_col, FONT, TXT_BODY, 40, text_y, channels[i].name);
+
+        char meta[24];
+        snprintf(meta, sizeof(meta), "0x%02X", channels[i].hash);
+        pax_vec2f msz = pax_text_size(FONT, TXT_TINY, meta);
+        pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, w - (int)msz.x - 14,
+                      y + (row_h - TXT_TINY) / 2, meta);
+    }
+
+    // Add-channel text-input row (when active, shown below the list).
+    if (channel_adding) {
+        int iy = h - CHAT_INPUT_H - footer_h;
+        pax_simple_rect(&fb, COL_PANEL, 0, iy, w, CHAT_INPUT_H);
+        pax_simple_rect(&fb, COL_ACCENT, 0, iy, w, 2);
+        char disp[40];
+        snprintf(disp, sizeof(disp), "add: %s_", field_edit_buf);
+        pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 10,
+                      iy + (CHAT_INPUT_H - TXT_BODY) / 2, disp);
+    }
+
+    int fy = h - footer_h;
+    pax_simple_rect(&fb, COL_HEADER, 0, fy, w, footer_h);
+    pax_simple_rect(&fb, COL_PANEL, 0, fy, w, 1);
+    const char *hint =
+        channel_adding
+            ? "Type name (e.g. #nl)   Enter: save   ESC: cancel"
+            : (channel_list_cursor == 0
+                   ? "W/S: nav   Enter: open   A: add   Tab: next"
+                   : "W/S: nav   Enter: open   A: add   D: delete   Tab: next");
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10,
+                  fy + (footer_h - TXT_SMALL) / 2, hint);
+}
+
 static void render_channel(void) {
     int w  = (int)pax_buf_get_width(&fb);
     int h  = (int)pax_buf_get_height(&fb);
@@ -867,11 +1037,34 @@ static void render_channel(void) {
     pax_background(&fb, COL_BG);
     render_tab_bar();
 
-    pax_simple_rect(&fb, COL_PANEL, 0, CHAT_Y0, w, 28);
-    pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 10, CHAT_Y0 + 4, "Public channel");
+    if (channel_list_mode) {
+        render_channel_list(w, h);
+        blit();
+        return;
+    }
+
+    // Two-row header: channel name on top, "Region: xx" below (mirrors iPhone
+    // MeshCore chat header). Height = 50 to fit TXT_BODY + TXT_SMALL with gap.
+    const int hdr_h  = 50;
+    pax_simple_rect(&fb, COL_PANEL, 0, CHAT_Y0, w, hdr_h);
+    {
+        const char *nm = (active_channel_idx >= 0 && active_channel_idx < channel_count)
+                             ? channels[active_channel_idx].name : "(no channel)";
+        pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 12, CHAT_Y0 + 4, nm);
+
+        char sub[48];
+        if (region_scope[0]) {
+            snprintf(sub, sizeof(sub), "  Region: %s", region_scope);
+        } else {
+            snprintf(sub, sizeof(sub), "  Region: (set in Settings)");
+        }
+        pax_col_t sub_col = region_scope[0] ? COL_GRAY : COL_AMBER;
+        pax_draw_text(&fb, sub_col, FONT, TXT_SMALL, 12,
+                      CHAT_Y0 + 4 + TXT_BODY + 2, sub);
+    }
 
     int input_y = h - CHAT_INPUT_H - FOOTER_H;
-    int list_y0 = CHAT_Y0 + 32;
+    int list_y0 = CHAT_Y0 + hdr_h + 4;
     int list_h  = input_y - list_y0;
     int rows_vis = list_h / CHAT_ROW_H;
 
@@ -892,15 +1085,44 @@ static void render_channel(void) {
                 if (!m->active) continue;
 
                 int y = list_y0 + row * CHAT_ROW_H;
+
+                char meta[64] = {0};
+                {
+                    char tbuf[12] = {0};
+                    if (m->timestamp_unix > 0) {
+                        time_t t = (time_t)m->timestamp_unix;
+                        struct tm lt;
+                        localtime_r(&t, &lt);
+                        snprintf(tbuf, sizeof(tbuf), "%02d:%02d", lt.tm_hour, lt.tm_min);
+                    }
+                    char hbuf[16] = {0};
+                    if (!m->is_mine && m->hops != 0xFF) {
+                        snprintf(hbuf, sizeof(hbuf), "%uh", (unsigned)m->hops);
+                    }
+                    int o = 0;
+                    if (tbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s", tbuf);
+                    if (hbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", hbuf);
+                }
+
                 if (m->is_mine) {
                     pax_vec2f sz = pax_text_size(FONT, TXT_BODY, m->text);
                     int tx = w - (int)sz.x - 16;
                     if (tx < 16) tx = 16;
                     pax_simple_rect(&fb, COL_PANEL, tx - 6, y + 2, (int)sz.x + 12, CHAT_ROW_H - 8);
                     pax_draw_text(&fb, COL_BLUE, FONT, TXT_BODY, tx, y + 6, m->text);
-                    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, tx, y + CHAT_ROW_H - TXT_TINY - 4, "You");
+                    if (meta[0]) {
+                        pax_vec2f msz = pax_text_size(FONT, TXT_TINY, meta);
+                        pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY,
+                                      w - (int)msz.x - 16, y + CHAT_ROW_H - TXT_TINY - 4, meta);
+                    } else {
+                        pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, tx, y + CHAT_ROW_H - TXT_TINY - 4, "You");
+                    }
                 } else {
                     pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 14, y + 6, m->text);
+                    if (meta[0]) {
+                        pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, 14,
+                                      y + CHAT_ROW_H - TXT_TINY - 4, meta);
+                    }
                 }
             }
         }
@@ -931,7 +1153,7 @@ static void render_channel(void) {
                       "Enter: send   ESC: cancel   Backspace: delete");
     } else {
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (FOOTER_H - TXT_SMALL) / 2,
-                      "T: type   W/S: scroll   R: clear history   Tab: next");
+                      "T: type   W/S: scroll   R: clear   ESC: list   Tab: next");
     }
     blit();
 }
