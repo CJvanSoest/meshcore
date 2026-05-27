@@ -133,7 +133,7 @@ void update_node(const meshcore_advert_t *advert, uint32_t now_ms,
                      advert->pub_key[2], advert->pub_key[3]);
         }
 
-        if (stats != NULL && stats->valid) {
+        if (stats != NULL) {
             int rssi_dbm = -(int)stats->rssi_pkt_raw / 2;
             if (rssi_dbm < -127) rssi_dbm = -127;
             n->last_rssi_dbm  = (int8_t)rssi_dbm;

@@ -273,6 +273,14 @@ void app_main(void) {
             memcpy(radio_fw_version, status.version_string, n);
             radio_fw_version[n] = '\0';
         }
+        // Query app firmware version via GET_FW_VERSION. On C6 firmware that
+        // lacks the cmd this returns ESP_ERR_NOT_SUPPORTED; we leave
+        // radio_fw_app_version empty so render.c falls back to the static label.
+        esp_err_t fw_res = lora_get_fw_version(&lora_handle, radio_fw_app_version,
+                                               sizeof(radio_fw_app_version));
+        if (fw_res != ESP_OK) {
+            radio_fw_app_version[0] = '\0';
+        }
         DIAG(COL_GRAY, "lora_get_config from C6...");
         lora_protocol_config_params_t c6_cfg = {0};
         esp_err_t cfg_res = lora_get_config(&lora_handle, &c6_cfg);

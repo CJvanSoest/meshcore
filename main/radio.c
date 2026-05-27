@@ -75,6 +75,11 @@ lora_handle_t lora_handle = {0};
 // Filled in main.c after lora_init_remote() + lora_get_status() succeeds.
 char radio_fw_version[RADIO_FW_VERSION_LEN] = "?";
 
+// Filled in main.c via lora_get_fw_version() after lora_get_status(); stays
+// empty if C6 firmware lacks GET_FW_VERSION (0x0B) — render.c then falls
+// back to the hand-maintained TANMATSU_RADIO_FW_LABEL define.
+char radio_fw_app_version[RADIO_FW_APP_VERSION_LEN] = "";
+
 // c6_available lives in main.c (set during boot once the C6 responds).
 extern bool c6_available;
 
@@ -422,27 +427,24 @@ static void lora_rx_task(void *arg) {
         if (res == ESP_OK && pkt.length > 0) {
             uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
-            if (pkt.stats.valid) {
-                int rssi_dbm        = -(int)pkt.stats.rssi_pkt_raw / 2;
-                int signal_rssi_dbm = -(int)pkt.stats.signal_rssi_pkt_raw / 2;
-                if (rssi_dbm < -127)        rssi_dbm = -127;
-                if (signal_rssi_dbm < -127) signal_rssi_dbm = -127;
-                last_rx_rssi_dbm        = (int8_t)rssi_dbm;
-                last_rx_snr_db_x4       = pkt.stats.snr_pkt_raw;
-                last_rx_signal_rssi_dbm = (int8_t)signal_rssi_dbm;
-                last_rx_stats_ms        = now_ms;
-                last_rx_stats_valid     = true;
-            }
+            int rssi_dbm        = -(int)pkt.stats.rssi_pkt_raw / 2;
+            int signal_rssi_dbm = -(int)pkt.stats.signal_rssi_pkt_raw / 2;
+            if (rssi_dbm < -127)        rssi_dbm = -127;
+            if (signal_rssi_dbm < -127) signal_rssi_dbm = -127;
+            last_rx_rssi_dbm        = (int8_t)rssi_dbm;
+            last_rx_snr_db_x4       = pkt.stats.snr_pkt_raw;
+            last_rx_signal_rssi_dbm = (int8_t)signal_rssi_dbm;
+            last_rx_stats_ms        = now_ms;
+            last_rx_stats_valid     = true;
 
-            ESP_LOGI(TAG, "RX %d bytes: %02X %02X %02X %02X (stats: %s rssi=%d snr=%d/4)",
+            ESP_LOGI(TAG, "RX %d bytes: %02X %02X %02X %02X (rssi=%d snr=%d/4)",
                      pkt.length,
                      pkt.length > 0 ? pkt.data[0] : 0,
                      pkt.length > 1 ? pkt.data[1] : 0,
                      pkt.length > 2 ? pkt.data[2] : 0,
                      pkt.length > 3 ? pkt.data[3] : 0,
-                     pkt.stats.valid ? "y" : "n",
-                     pkt.stats.valid ? -(int)pkt.stats.rssi_pkt_raw / 2 : 0,
-                     pkt.stats.valid ? (int)pkt.stats.snr_pkt_raw : 0);
+                     -(int)pkt.stats.rssi_pkt_raw / 2,
+                     (int)pkt.stats.snr_pkt_raw);
 
             if (xSemaphoreTake(rx_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
                 rx_buf[rx_head].pkt          = pkt;
@@ -461,7 +463,7 @@ static void lora_rx_task(void *arg) {
                 if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_ADVERT) {
                     meshcore_advert_t advert;
                     if (meshcore_advert_deserialize(mc_msg.payload, mc_msg.payload_length, &advert) >= 0) {
-                        update_node(&advert, now_ms, pkt.stats.valid ? &pkt.stats : NULL);
+                        update_node(&advert, now_ms, &pkt.stats);
                     }
                 } else if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_GRP_TXT) {
                     meshcore_grp_txt_t grp = {0};
