@@ -36,3 +36,11 @@ ed25519.c / ed25519.h
 meshcore/ (packet.h/c, payload/advert.h/c, payload/grp_txt.h/c)
   Copyright (c) 2025 Scott Powell / rippleradios.com
   Copyright (c) 2025 Nicolai Electronics — MIT License
+
+main/emoji_bitmaps.c
+  Embedded 32×32 bitmaps derived from Twemoji
+  Copyright (c) Twitter, Inc. and other contributors
+  Graphics licensed under CC-BY 4.0
+  https://github.com/jdecked/twemoji
+  Source URL: https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/72x72/
+  Attribution: see assets/README.md and the file header.

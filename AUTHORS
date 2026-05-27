@@ -1,0 +1,32 @@
+MeshCore for Tanmatsu — Authors and Contributors
+==================================================
+
+Lead author
+-----------
+CJ van Soest <CJvanSoest@users.noreply.github.com>
+  Project conception, BadgeVMS/Tanmatsu integration, protocol RE work,
+  UI/UX, NVS / SD storage, multi-channel + region-scope, ACK tracking,
+  emoji rendering, app icon.
+
+AI co-author
+------------
+Claude (Anthropic)
+  Pair-programming partner for design discussions, code generation,
+  reverse-engineering of MeshCore protocol details, devlog entries.
+
+Upstream MeshCore protocol
+--------------------------
+Scott Powell / rippleradios.com — original MeshCore C++ implementation
+Nicolai Electronics — Tanmatsu adaptation + companion_radio firmware
+Renze (MeshCore Discord) — protocol Q&A: channel key derivation,
+                            transport_codes / region scope confirmations.
+
+Third-party assets
+------------------
+Project Nayuki — qrcodegen library (MIT)
+Daniel J. Bernstein et al. — ed25519 reference code (public domain)
+Twitter / jdecked — Twemoji emoji bitmaps (CC-BY 4.0)
+robotman2412 / Badge.Team — pax-gfx graphics library (MIT)
+
+If you contributed code, art, ideas, field testing, or bug reports and
+want to be listed here, open an issue or PR with your preferred attribution.
