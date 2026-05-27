@@ -45,6 +45,10 @@ extern char chat_input[MAX_INPUT_LEN + 1];
 extern int  chat_input_len;
 extern bool chat_typing;
 
+// ── Emoji picker overlay state (active during chat_typing) ───────────────────
+extern bool emoji_picker_active;
+extern int  emoji_picker_cursor;  // index into EMOJI_SET (0..EMOJI_COUNT-1)
+
 // ── DM tab inbox-view state ──────────────────────────────────────────────────
 extern bool dm_inbox_mode;
 extern int  dm_inbox_cursor;

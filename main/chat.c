@@ -14,6 +14,7 @@
 #include "bsp/tanmatsu.h"
 #include "tanmatsu_coprocessor.h"
 
+#include "emoji.h"
 #include "history.h"
 
 static const char *TAG = "chat";
@@ -35,6 +36,9 @@ char chat_input[MAX_INPUT_LEN + 1] = {0};
 int  chat_input_len                = 0;
 bool chat_typing                   = false;
 
+bool emoji_picker_active = false;
+int  emoji_picker_cursor = 0;
+
 bool dm_inbox_mode   = true;
 int  dm_inbox_cursor = 0;
 int  dm_inbox_scroll = 0;
@@ -55,18 +59,33 @@ const uint8_t PUBLIC_CHANNEL_KEY[16] = {
 };
 uint8_t channel_hash = 0;
 
-// Replace UTF-8 multi-byte sequences (e.g. emoji) with '?' so the ASCII-only
-// font renders something visible. Continuation bytes are silently skipped — the
-// lead byte emits one placeholder per sequence.
+// Preserve UTF-8 sequences that decode to a codepoint we have an inline emoji
+// glyph for. Unknown multi-byte sequences collapse to a single '?' so the
+// ASCII-only Saira font still renders them as something.
 static void utf8_sanitize(char *dst, size_t dst_sz, const char *src) {
     size_t di = 0;
-    for (size_t si = 0; src[si] && di + 1 < dst_sz; si++) {
+    size_t si = 0;
+    while (src[si] && di + 1 < dst_sz) {
         unsigned char c = (unsigned char)src[si];
         if (c < 0x80) {
             dst[di++] = (char)c;
-        } else if ((c & 0xC0) == 0xC0) {
-            dst[di++] = '?';
+            si++;
+            continue;
         }
+        uint32_t cp = 0;
+        int adv = utf8_decode(&src[si], &cp);
+        if (adv > 0 && emoji_lookup_by_codepoint(cp) >= 0 &&
+            di + adv + 1 < dst_sz) {
+            // Recognised emoji: copy the full UTF-8 sequence through.
+            memcpy(&dst[di], &src[si], (size_t)adv);
+            di += (size_t)adv;
+            si += (size_t)adv;
+            continue;
+        }
+        // Unknown / malformed multi-byte: emit one '?', skip the lead byte and
+        // any continuation bytes that follow.
+        dst[di++] = '?';
+        si += (adv > 0) ? (size_t)adv : 1;
     }
     dst[di] = '\0';
 }
