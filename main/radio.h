@@ -15,10 +15,17 @@
 // Defined in radio.c; used by main.c and settings_nvs.c too.
 extern lora_handle_t lora_handle;
 
-// tanmatsu-radio firmware version string reported by C6 via lora_get_status().
-// Populated once after lora_init_remote() in main.c boot path; "?" until then.
+// SX126x silicon version string reported by C6 via lora_get_status()
+// (e.g. "sx1262 V20 2002"). Populated once after lora_init_remote() in main.c
+// boot path; "?" until then.
 #define RADIO_FW_VERSION_LEN 17
 extern char radio_fw_version[RADIO_FW_VERSION_LEN];
+
+// tanmatsu-radio app firmware version (esp_app_desc->version), queried via
+// GET_FW_VERSION. Empty string if C6 firmware lacks the cmd — in that case
+// render.c falls back to TANMATSU_RADIO_FW_LABEL.
+#define RADIO_FW_APP_VERSION_LEN 33
+extern char radio_fw_app_version[RADIO_FW_APP_VERSION_LEN];
 
 // ── RX ring buffer (raw packets, for debug display) ──────────────────────────
 #define RX_BUF_SIZE 32
