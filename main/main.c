@@ -63,6 +63,7 @@
 #endif
 
 #include "app_config.h"
+#include "emoji.h"
 #include "history.h"
 #include "input.h"
 #include "settings_nvs.h"
@@ -185,6 +186,7 @@ void app_main(void) {
     chat_init();
     channels_init();
     identity_init();
+    emoji_init();
 
     int  diag_y    = 50;
     int  diag_line = 22;

@@ -28,6 +28,7 @@
 #include "channels.h"
 #include "chat.h"
 #include "contacts.h"
+#include "emoji.h"
 #include "identity.h"
 #include "nodes.h"
 #include "qrcodegen.h"
@@ -906,11 +907,11 @@ static void render_chat(void) {
                 }
 
                 if (m->is_mine) {
-                    pax_vec2f sz = pax_text_size(FONT, TXT_BODY, m->text);
-                    int tx = w - (int)sz.x - 16;
+                    int text_w = emoji_measure_text(FONT, TXT_BODY, m->text);
+                    int tx = w - text_w - 16;
                     if (tx < 16) tx = 16;
-                    pax_simple_rect(&fb, COL_PANEL, tx - 6, y + 2, (int)sz.x + 12, CHAT_ROW_H - 8);
-                    pax_draw_text(&fb, COL_BLUE, FONT, TXT_BODY, tx, y + 6, m->text);
+                    pax_simple_rect(&fb, COL_PANEL, tx - 6, y + 2, text_w + 12, CHAT_ROW_H - 8);
+                    emoji_draw_text(&fb, COL_BLUE, FONT, TXT_BODY, tx, y + 6, m->text);
                     if (meta[0]) {
                         pax_vec2f msz = pax_text_size(FONT, TXT_TINY, meta);
                         pax_col_t mc  = (m->ack_state == 2) ? COL_GREEN : COL_GRAY;
@@ -920,7 +921,7 @@ static void render_chat(void) {
                         pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, tx, y + CHAT_ROW_H - TXT_TINY - 4, "You");
                     }
                 } else {
-                    pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 14, y + 6, m->text);
+                    emoji_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 14, y + 6, m->text);
                     if (meta[0]) {
                         pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, 14,
                                       y + CHAT_ROW_H - TXT_TINY - 4, meta);
@@ -935,11 +936,15 @@ static void render_chat(void) {
     pax_simple_rect(&fb, COL_PANEL, 0, iy, w, CHAT_INPUT_H);
     pax_simple_rect(&fb, chat_typing ? COL_ACCENT : COL_AMBER, 0, iy, w, 2);
     if (chat_typing) {
+        // Render prefix + input via emoji_draw_text so staged emoji glyphs are
+        // visible BEFORE Enter (the input is the staging area for the message).
         char prefix[MESHCORE_MAX_NAME_SIZE + 8];
         snprintf(prefix, sizeof(prefix), "DM %s> ", dm_target_name);
-        char disp[MAX_INPUT_LEN + sizeof(prefix) + 2];
-        snprintf(disp, sizeof(disp), "%s%s_", prefix, chat_input);
-        pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 10, iy + (CHAT_INPUT_H - TXT_BODY) / 2, disp);
+        int ty = iy + (CHAT_INPUT_H - TXT_BODY) / 2;
+        int pw = emoji_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 10, ty, prefix);
+        int bw = emoji_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 10 + pw, ty, chat_input);
+        pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 10 + pw + bw, ty, "_");
+
         char ctr[12];
         snprintf(ctr, sizeof(ctr), "%d/%d", chat_input_len, MAX_INPUT_LEN);
         pax_vec2f csz = pax_text_size(FONT, TXT_SMALL, ctr);
@@ -953,8 +958,15 @@ static void render_chat(void) {
     pax_simple_rect(&fb, COL_HEADER, 0, fy, w, FOOTER_H);
     pax_simple_rect(&fb, COL_PANEL, 0, fy, w, 1);
     if (chat_typing) {
-        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (FOOTER_H - TXT_SMALL) / 2,
-                      "Enter: send   ESC: cancel   Backspace: delete");
+        const char *hint = "Enter: send   ESC: cancel   Backspace: delete   ";
+        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (FOOTER_H - TXT_SMALL) / 2, hint);
+        pax_vec2f hsz = pax_text_size(FONT, TXT_SMALL, hint);
+        int icon_x = 10 + (int)hsz.x;
+        int icon_y = fy + FOOTER_H / 2;
+        // Green circle icon matching the physical button.
+        pax_outline_circle(&fb, COL_GREEN, icon_x + 6, icon_y, 6);
+        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL,
+                      icon_x + 18, fy + (FOOTER_H - TXT_SMALL) / 2, ": emoji");
     } else {
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (FOOTER_H - TXT_SMALL) / 2,
                       "T: type   W/S: scroll   ESC: back to inbox   Tab: next tab");
@@ -1105,11 +1117,11 @@ static void render_channel(void) {
                 }
 
                 if (m->is_mine) {
-                    pax_vec2f sz = pax_text_size(FONT, TXT_BODY, m->text);
-                    int tx = w - (int)sz.x - 16;
+                    int text_w = emoji_measure_text(FONT, TXT_BODY, m->text);
+                    int tx = w - text_w - 16;
                     if (tx < 16) tx = 16;
-                    pax_simple_rect(&fb, COL_PANEL, tx - 6, y + 2, (int)sz.x + 12, CHAT_ROW_H - 8);
-                    pax_draw_text(&fb, COL_BLUE, FONT, TXT_BODY, tx, y + 6, m->text);
+                    pax_simple_rect(&fb, COL_PANEL, tx - 6, y + 2, text_w + 12, CHAT_ROW_H - 8);
+                    emoji_draw_text(&fb, COL_BLUE, FONT, TXT_BODY, tx, y + 6, m->text);
                     if (meta[0]) {
                         pax_vec2f msz = pax_text_size(FONT, TXT_TINY, meta);
                         pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY,
@@ -1118,7 +1130,7 @@ static void render_channel(void) {
                         pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, tx, y + CHAT_ROW_H - TXT_TINY - 4, "You");
                     }
                 } else {
-                    pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 14, y + 6, m->text);
+                    emoji_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 14, y + 6, m->text);
                     if (meta[0]) {
                         pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, 14,
                                       y + CHAT_ROW_H - TXT_TINY - 4, meta);
@@ -1133,9 +1145,11 @@ static void render_channel(void) {
     pax_simple_rect(&fb, COL_PANEL, 0, iy, w, CHAT_INPUT_H);
     pax_simple_rect(&fb, chat_typing ? COL_ACCENT : COL_GREEN, 0, iy, w, 2);
     if (chat_typing) {
-        char disp[MAX_INPUT_LEN + 4];
-        snprintf(disp, sizeof(disp), "> %s_", chat_input);
-        pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 10, iy + (CHAT_INPUT_H - TXT_BODY) / 2, disp);
+        int ty = iy + (CHAT_INPUT_H - TXT_BODY) / 2;
+        int pw = emoji_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 10, ty, "> ");
+        int bw = emoji_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 10 + pw, ty, chat_input);
+        pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 10 + pw + bw, ty, "_");
+
         char ctr[12];
         snprintf(ctr, sizeof(ctr), "%d/%d", chat_input_len, MAX_INPUT_LEN);
         pax_vec2f csz = pax_text_size(FONT, TXT_SMALL, ctr);
@@ -1149,13 +1163,60 @@ static void render_channel(void) {
     pax_simple_rect(&fb, COL_HEADER, 0, fy, w, FOOTER_H);
     pax_simple_rect(&fb, COL_PANEL, 0, fy, w, 1);
     if (chat_typing) {
-        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (FOOTER_H - TXT_SMALL) / 2,
-                      "Enter: send   ESC: cancel   Backspace: delete");
+        const char *hint = "Enter: send   ESC: cancel   Backspace: delete   ";
+        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (FOOTER_H - TXT_SMALL) / 2, hint);
+        pax_vec2f hsz = pax_text_size(FONT, TXT_SMALL, hint);
+        int icon_x = 10 + (int)hsz.x;
+        int icon_y = fy + FOOTER_H / 2;
+        // Green circle icon matching the physical button.
+        pax_outline_circle(&fb, COL_GREEN, icon_x + 6, icon_y, 6);
+        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL,
+                      icon_x + 18, fy + (FOOTER_H - TXT_SMALL) / 2, ": emoji");
     } else {
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (FOOTER_H - TXT_SMALL) / 2,
                       "T: type   W/S: scroll   R: clear   ESC: list   Tab: next");
     }
     blit();
+}
+
+// 2x4 emoji picker overlay. Drawn on top of an already-rendered chat view —
+// caller must call blit() afterward. Active state owned by chat module.
+static void render_emoji_picker_overlay(void) {
+    int w = (int)pax_buf_get_width(&fb);
+    int h = (int)pax_buf_get_height(&fb);
+
+    // Panel: bottom strip above the existing chat input/footer.
+    const int rows    = 2;
+    const int cols    = 4;
+    const int cell    = 52;
+    const int pad     = 14;
+    const int panel_w = cols * cell + 2 * pad;
+    const int panel_h = rows * cell + 2 * pad + TXT_SMALL + 6;
+    int       panel_x = (w - panel_w) / 2;
+    int       panel_y = h - CHAT_INPUT_H - FOOTER_H - panel_h - 4;
+    if (panel_y < TAB_BAR_H + 4) panel_y = TAB_BAR_H + 4;
+
+    pax_simple_rect(&fb, COL_HEADER, panel_x, panel_y, panel_w, panel_h);
+    pax_simple_rect(&fb, COL_ACCENT, panel_x, panel_y, panel_w, 2);
+    pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL,
+                  panel_x + pad, panel_y + 4, "Pick emoji");
+
+    int grid_x = panel_x + pad;
+    int grid_y = panel_y + 6 + TXT_SMALL;
+
+    for (int i = 0; i < EMOJI_COUNT; i++) {
+        int r  = i / cols;
+        int c  = i % cols;
+        int cx = grid_x + c * cell + cell / 2;
+        int cy = grid_y + r * cell + cell / 2;
+        bool sel = (i == emoji_picker_cursor);
+        if (sel) {
+            pax_simple_rect(&fb, COL_PANEL,
+                            cx - cell / 2 + 2, cy - cell / 2 + 2,
+                            cell - 4, cell - 4);
+        }
+        emoji_draw(i, cx, cy, cell / 2 - 6, &fb);
+    }
 }
 
 void render(void) {
@@ -1172,5 +1233,10 @@ void render(void) {
         case VIEW_CHANNEL: render_channel(); break;
         case VIEW_SETTINGS:
         default:           render_settings(); break;
+    }
+    if (emoji_picker_active && chat_typing &&
+        (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL)) {
+        render_emoji_picker_overlay();
+        blit();
     }
 }

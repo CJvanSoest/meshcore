@@ -17,6 +17,8 @@ idf_component_register(
 		"radio.c"
 		"input.c"
 		"render.c"
+		"emoji.c"
+		"emoji_bitmaps.c"
 		"ed25519.c"
 		"qrcodegen.c"
 		"meshcore/packet.c"

@@ -18,6 +18,7 @@
 #include "chat.h"
 #include "channels.h"
 #include "contacts.h"
+#include "emoji.h"
 #include "history.h"
 #include "identity.h"
 #include "nodes.h"
@@ -201,6 +202,57 @@ void handle_nav(uint32_t key) {
     if (qr_overlay_active) {
         qr_overlay_active = false;
         return;
+    }
+
+    // Emoji picker (F4 button = green circle on Tanmatsu) opens during chat typing.
+    if (key == BSP_INPUT_NAVIGATION_KEY_F4 && chat_typing &&
+        (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL) &&
+        !emoji_picker_active) {
+        emoji_picker_active = true;
+        emoji_picker_cursor = 0;
+        return;
+    }
+
+    // Emoji picker navigation via D-pad / RETURN / ESC. Without this branch
+    // selecting on Tanmatsu's D-pad (which fires RETURN as nav-event, not as
+    // '\r' in handle_key) wouldn't close the picker — leaving it hanging open
+    // for the next chat-typing session.
+    if (emoji_picker_active && chat_typing &&
+        (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL)) {
+        const int cols = 4;
+        if (key == BSP_INPUT_NAVIGATION_KEY_ESC || key == BSP_INPUT_NAVIGATION_KEY_F1) {
+            emoji_picker_active = false;
+            return;
+        }
+        if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
+            int idx = emoji_picker_cursor;
+            if (idx >= 0 && idx < EMOJI_COUNT) {
+                const emoji_entry_t *e = &EMOJI_SET[idx];
+                if (chat_input_len + e->utf8_len <= MAX_INPUT_LEN) {
+                    memcpy(&chat_input[chat_input_len], e->utf8, e->utf8_len);
+                    chat_input_len           += e->utf8_len;
+                    chat_input[chat_input_len] = '\0';
+                }
+            }
+            emoji_picker_active = false;
+            return;
+        }
+        if (key == BSP_INPUT_NAVIGATION_KEY_LEFT) {
+            if (emoji_picker_cursor > 0) emoji_picker_cursor--;
+            return;
+        }
+        if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT) {
+            if (emoji_picker_cursor < EMOJI_COUNT - 1) emoji_picker_cursor++;
+            return;
+        }
+        if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
+            if (emoji_picker_cursor - cols >= 0) emoji_picker_cursor -= cols;
+            return;
+        }
+        if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
+            if (emoji_picker_cursor + cols < EMOJI_COUNT) emoji_picker_cursor += cols;
+            return;
+        }
     }
 
     if (key == BSP_INPUT_NAVIGATION_KEY_F1 || key == BSP_INPUT_NAVIGATION_KEY_ESC) {
@@ -524,6 +576,32 @@ void handle_key(char c) {
 
     // Chat / Channel view input — intercept everything when typing.
     if (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL) {
+        // Emoji picker overlay swallows all keys when active.
+        if (chat_typing && emoji_picker_active) {
+            const int cols = 4;
+            if (c == 27) {
+                emoji_picker_active = false;
+                return;
+            }
+            if (c == '\r' || c == '\n') {
+                int idx = emoji_picker_cursor;
+                if (idx >= 0 && idx < EMOJI_COUNT) {
+                    const emoji_entry_t *e = &EMOJI_SET[idx];
+                    if (chat_input_len + e->utf8_len <= MAX_INPUT_LEN) {
+                        memcpy(&chat_input[chat_input_len], e->utf8, e->utf8_len);
+                        chat_input_len           += e->utf8_len;
+                        chat_input[chat_input_len] = '\0';
+                    }
+                }
+                emoji_picker_active = false;
+                return;
+            }
+            if (c == 'a' || c == 'A') { if (emoji_picker_cursor > 0)                  emoji_picker_cursor--;       return; }
+            if (c == 'd' || c == 'D') { if (emoji_picker_cursor < EMOJI_COUNT - 1)    emoji_picker_cursor++;       return; }
+            if (c == 'w' || c == 'W') { if (emoji_picker_cursor - cols >= 0)          emoji_picker_cursor -= cols; return; }
+            if (c == 's' || c == 'S') { if (emoji_picker_cursor + cols < EMOJI_COUNT) emoji_picker_cursor += cols; return; }
+            return;  // swallow the rest
+        }
         if (chat_typing) {
             if (c == 27) {
                 chat_typing    = false;
