@@ -38,13 +38,41 @@ idf.py -B build/tanmatsu build \
 
 | Method | When | Side-effects |
 |---|---|---|
-| `make upload` (badgelink) | Normal dev loop | **Preserves launcher**, writes to `appfs` partition |
+| `make upload` (badgelink) | Normal dev loop | **Preserves launcher**, writes to `appfs` partition. Launcher tile shows the generic `ICON_APP` (no custom icon for AppFS-only apps). |
+| SD-card bundle (see below) | Release / appstore artifact | Custom tile icon, full metadata.json, executable in `/sd/apps/<slug>/`. |
 | `idf.py flash` | First-time provisioning | **Overwrites launcher**, full chip flash |
 | `idf.py monitor` | Reading logs | Read-only |
 
 For day-to-day work always use `make upload`. After the upload the badge
 auto-launches the new MeshCore build because the launcher's last-run
 preference points to it.
+
+### SD-card bundle (custom icon, appstore-ready)
+
+The launcher's `app_metadata_parser` reads `<slug>/metadata.json` from
+`/sd/apps/` and loads the icon referenced under `icon.32x32`. Bundle
+contents shipped from `assets/`:
+
+| File | Purpose |
+|---|---|
+| `metadata.json` | name, version, author, license, executable map, `icon.32x32` |
+| `icon-32.png` (uploaded as `icon32.png`) | 32×32 RGBA, launcher tile graphic |
+| `icon-256.png` | hi-res asset for store listings / marketing |
+| `generate_icon.py` | reproducible Python source for both PNGs |
+
+Upload procedure:
+
+```sh
+BL=path/to/badgelink.sh
+$BL fs mkdir   /sd/apps/nl.cj.meshcore
+$BL fs upload  /sd/apps/nl.cj.meshcore/metadata.json  assets/metadata.json
+$BL fs upload  /sd/apps/nl.cj.meshcore/icon32.png     assets/icon-32.png
+$BL fs upload  /sd/apps/nl.cj.meshcore/meshcore.bin   build/tanmatsu/application.bin
+```
+
+After upload reboot the launcher (ESC from MeshCore) — the tile picks up
+the new icon. Same bundle layout is what an appstore client would
+distribute.
 
 ## Partition layout (16M.csv)
 

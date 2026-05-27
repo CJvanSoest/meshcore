@@ -110,3 +110,40 @@ Always painted at the top-right of the tab bar by `render_tab_bar`:
 | Off | The relevant tab is open or no pending message |
 
 `update_notification_led` is called from chat add helpers and tab switch.
+
+## Channel list mode (`channel_list_mode`)
+
+The Channel tab opens in list mode by default — a scrollable list of
+joined channels (Public is always slot 0, hardcoded `PUBLIC_GROUP_PSK`).
+
+| Key | Action |
+|---|---|
+| `W` / `S` / D-pad UP/DOWN | Cursor up / down |
+| Enter / RETURN | Select the channel (switches `active_channel_idx`) + flip to chat view |
+| `A` | Begin add-channel text input (auto-prefix `#`) |
+| `D` | Delete the cursor's channel (Public protected) |
+| `ESC` from chat | Back to list |
+
+The chat-view header shows the active channel name on the first line and
+`Region: <scope>` on the second (amber `(set in Settings)` placeholder if
+`region_scope` NVS is empty). On the wire region scope is encoded as
+`transport_codes` on `ROUTE_TYPE_TRANSPORT_FLOOD` packets (see the
+MeshCore-Protocol wiki page).
+
+## Emoji picker (`emoji_picker_active`)
+
+Triggered with the **green ◯ button (F4)** while `chat_typing == true`
+in either DM or Channel chat. Renders a 2×4 grid of Twemoji bitmaps on
+top of the chat input.
+
+| Key | Action |
+|---|---|
+| D-pad LEFT/RIGHT/UP/DOWN, `A`/`D`/`W`/`S` | Cursor across the grid |
+| Enter / RETURN | Insert the UTF-8 bytes into `chat_input`; close picker |
+| `ESC` / `F1` | Close without inserting |
+
+The MVP set is 8 codepoints in U+1F60x (`grin`, `smile`, `wink`, `blush`,
+`cool`, `tongue`, `cry`, `angry`). Bitmaps are 32×32 ARGB embedded as
+const arrays in `main/emoji_bitmaps.c` (CC-BY 4.0 Twemoji). The chat
+input bar renders through `emoji_draw_text` so staged emoji are visible
+inline before Enter sends the message.
