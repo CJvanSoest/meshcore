@@ -242,6 +242,7 @@ void app_main(void) {
     load_owner_name();
     load_lora_advert_name();
     load_region_scope();
+    load_gps_coords();
     contacts_load();
 
     DIAG(COL_GRAY, "SD mount...");

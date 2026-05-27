@@ -24,7 +24,7 @@ typedef struct {
     uint32_t               last_seen_ms;
     uint16_t               packet_count;
     bool                   position_valid;
-    int32_t                lat;   // degrees × 1e7
+    int32_t                lat;   // degrees × 1e6 (MeshCore upstream scale)
     int32_t                lon;
     bool                   stats_valid;
     int8_t                 last_rssi_dbm;

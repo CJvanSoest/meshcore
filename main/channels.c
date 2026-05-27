@@ -25,6 +25,10 @@ channel_t channels[CHANNELS_MAX] = {0};
 int       channel_count          = 0;
 int       active_channel_idx     = 0;
 
+bool channel_list_mode    = true;
+int  channel_list_cursor  = 0;
+bool channel_adding       = false;
+
 static void compute_hash(channel_t *ch) {
     uint8_t digest[32];
     mbedtls_sha256(ch->secret, CHANNEL_SECRET_LEN, digest, 0);
@@ -120,23 +124,9 @@ void channels_init(void) {
     bootstrap_public();
     load_from_nvs();
 
-    // DEBUG (will move to UI later): auto-add #test channel on first run so we
-    // can verify the brute-force RX path with T-Beam's #test channel.
-    bool have_test = false;
-    for (int i = 0; i < channel_count; i++) {
-        if (channels[i].active && strcmp(channels[i].name, "#test") == 0) {
-            have_test = true;
-            break;
-        }
-    }
-    if (!have_test) {
-        int added = channels_add_by_name("#test");
-        ESP_LOGW(TAG, "Bootstrap #test channel result=%d", added);
-    }
-
     for (int i = 0; i < channel_count; i++) {
         if (!channels[i].active) continue;
-        ESP_LOGW(TAG, "channel[%d] %-12s hash=0x%02x", i, channels[i].name, channels[i].hash);
+        ESP_LOGI(TAG, "channel[%d] %-12s hash=0x%02x", i, channels[i].name, channels[i].hash);
     }
 }
 
