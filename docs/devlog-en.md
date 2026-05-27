@@ -218,6 +218,72 @@ The lesson: documentation doesn't keep itself current. After a big refactor, blo
 
 ---
 
+## What I Learned About Scale-Factor Archaeology and Half-Migrated State
+
+A distance column for the Nodes tab seemed like a small addition — we have our own GPS coords + per-node positions from adverts. First test: a T-Beam in the same room, same coordinates as the Tanmatsu → distance reading: 5211 km.
+
+### 25. Comments lie, source code doesn't
+
+My `nodes.h` had `// degrees × 1e7` as a comment next to the int32 lat/lon fields. I built the entire input/output pipeline on that assumption. One `grep "/1000000" upstream/` later: MeshCore upstream uses ×1e6 (`AdvertDataHelpers.h::getLat() = _lat / 1000000.0`). The comment was wrong at some point in the past and everyone — including me — trusted it.
+
+The lesson: for protocol fields, don't build on a comment in your own header. Verify in the upstream source or in a sniffer dump. A wrongly assumed scale doesn't show up as decimal formatting weirdness; it cascades through every calculation downstream.
+
+### 26. Renaming by sed is cheap, scale mismatches expensive
+
+When I rolled out the fix, the change touched 6 spots: text-edit parse + display, settings row display, advert TX, and the Nodes-Dist haversine. `sed`-rename `gps_lat_e7` → `gps_lat_e6` was trivial; the actual mental load was finding every numeric literal `1e7` / `1e-7`. The compiler can't catch that — the type is still int32.
+
+The lesson: when you rename a scale, also rename the constants right away, not just the symbol. Otherwise the bug stays in numeric form, invisible to the type checker.
+
+### 27. Half-migrated NVS is worse than frozen-wrong NVS
+
+My first migration code said: "if lat > 90M, divide lat by 10." But the user sat at (51.87°N, 5.29°E). In ×1e7 that's lat=518718190 (triggers!) but lon=52919140 (< 180M lon threshold, does NOT trigger). Result: lat correctly migrated to 51.87°, lon stayed at 52.92° = somewhere in Central Asia → 3269 km.
+
+Second attempt "if lat > 90M, divide BOTH axes by 10" fixed *new* half-migrations, but the user's NVS was already corrupted into a visually valid state (both < 180M). No heuristic could detect that anymore.
+
+Final fix: an NVS sentinel key `lora.gps.sv` (u8 scale version). On boot, if the key is missing or below the current version → wipe the GPS keys and force the user to re-enter once. `save_gps_coords` always writes the current version. Future scale changes: bump the version.
+
+The lesson: scale migrations with per-field trigger conditions can produce half-migrations; use a sentinel-version key instead of value heuristics. Frozen-wrong is recoverable through a manual reset; half-migrated looks valid and can't be detected after the fact.
+
+### 28. A user typo under a scale bug compounds the confusion
+
+After the migration bug looked "solved", the user still reported 3269 km. My reflex: add more migration code. Only after a fresh screenshot did it turn out that the longitude Settings value had been entered as 52.919140 (typo: 52.9 instead of 5.29). The value I'd diagnosed as "half-migration corruption" was actually a manual typo from after the migration.
+
+The lesson: before launching a second round of correction code, actively ask for the current state — Settings screenshot, NVS dump, whatever's concrete. Otherwise you're building solutions for a problem that no longer exists.
+
+---
+
+## What I Learned About Inspecting Upstream Before Reverse-Engineering
+
+Same long session: unread counters, GPS coords, ACK-tracking, channel-list UI, and wire-side region scope. The themes that stuck:
+
+### 29. A screenshot is a better spec than a description
+
+The user shared photos of their own backlog list AND of the iPhone MeshCore app's channel-chat header. Without those references I'd either have guessed the UI hierarchy wrong or spent hours doing protocol RE to build "something like that". For next sessions: actively ask for visual references when the user describes a target look. It's far less work than reverse-engineering, and it locks expectations in advance.
+
+### 30. Always read upstream source before planning RE
+
+For the region-scope wire format I was planning a sniffer setup with the T-Beam — until one `grep -rn "RegionMap"` in the upstream MeshCore repo revealed the entire mechanism: `helpers/RegionMap.h` + `TransportKeyStore.cpp::calcTransportCode` + `companion_radio/MyMesh.cpp::sendFloodScoped`. The wire layout was `ROUTE_TYPE_TRANSPORT_FLOOD + transport_codes[2]` with `code = HMAC-SHA256(SHA256(region_name)[0..15], type || payload)[0..1]`. Implementation: one helper call before serialize.
+
+The lesson: "I don't know how this works" usually means "I haven't read the source yet."
+
+### 31. Every input-event route must support text-input modes
+
+The user reported "Enter does nothing on Add channel". My handler worked for `\r/\n` via the keyboard route, but `BSP_INPUT_NAVIGATION_KEY_RETURN` (D-pad center) went through a separate handler that had `!channel_adding` as a guard, skipping the save path.
+
+The lesson: every mode that does text input MUST be registered in *all* event paths (keyboard + nav). One grep on your mode flag should match in both handlers — if the flag exists on one path and not the other, something's off.
+
+### 32. Header context beats inline text prefix
+
+In the previous session I added `[#test] name: text` prefixes to disambiguate channels in the chat ring. Once the chat header gained real channel context (channel name + `Region: nl` stacked, modeled after the iPhone screenshot), the inline prefix became redundant and visually noisy. Removed from 4 places (TX×2, RX×2).
+
+The lesson: redundant visualizations pile up during iteration — periodic cleanup is part of the work. Or better: every time you add a new display affordance, ask "which old one does this obsolete?"
+
+### 33. ACK matching via CRC binding to the sender
+
+For the "ack" indicator on outgoing DMs: at send_dm_message I compute the ACK CRC the receiver will echo back (`SHA256(plaintext[0..5] || dm_text || OUR_pubkey)[0..4]`), store it on the chat_msg, and add a PATH_RETURN inbound handler that decrypts the inner block with the sender's shared secret and matches on that CRC. Two things I learned: (1) MeshCore's inner ACK is derived from the plaintext + receiver's pubkey, so we can compute it deterministically in advance. (2) Building a sender that *transmits* PATH_RETURN is not the same as a sender that *receives* PATH_RETURN — they're separate paths, and I only had the TX side. Adding the RX side was a separate ~80 lines.
+
+---
+
 ## Links
 
 - Source: [github.com/CJvanSoest/meshcore](https://github.com/CJvanSoest/meshcore)

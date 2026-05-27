@@ -128,3 +128,33 @@ Eerste iteratie van #channels: data-storage + RX brute-force + TX active-channel
 
 🏷️ **Visuele disambiguatie zonder data-schema-change.** Met één gedeelde `ch_msgs` ring zou je niet kunnen zien of een bericht uit `Public` of `#test` kwam. Snelste fix: prepend `[name]` aan de tekst voordat-ie de ring in gaat. Vijf minuten code, geen struct-changes, geen render-changes. Volledige per-channel ring + cursor + filter komt later — als deze inline prefix te druk wordt. Les: een struct uitbreiden is werk; een tekstprefix toevoegen is een commit. Kies welke pijn je vandaag wil dragen.
 
+---
+
+## Update — Schaal-factor-archeologie + NVS-migratie valkuil (mei 2026)
+
+Een afstand-kolom toegevoegd voor de Nodes-tab, want we hebben nu eigen GPS-coords + per-node positie uit adverts. Eerste test: T-Beam op zelfde locatie als Tanmatsu → 5211 km. Wat ging er mis?
+
+📏 **Comments liegen, broncode niet.** Mijn `nodes.h` had `// degrees × 1e7` als comment naast de int32 lat/lon field. Daar bouwde ik de hele input/output-pipeline op. Eén `grep "/1000000" upstream/` later: MeshCore upstream gebruikt `× 1e6` (`AdvertDataHelpers.h::getLat() = _lat / 1000000.0`). De comment was ooit fout gezet en daarna door iedereen — inclusief mijzelf — vertrouwd. Les: bij protocol-velden NIET op een comment in je eigen header bouwen — verifieer in upstream src of in een sniffer-dump. Een fout aangenomen schaal blijft niet bij decimal-formatting; het cascadert door alle calculaties.
+
+🔧 **Hernoem-by-sed is goedkoop, scale-mismatches duur.** Toen ik de fix doorvoerde, ging het in 6 plekken om: text-edit parse + display, settings-row display, advert TX, en de Nodes-Dist haversine. Sed-rename `gps_lat_e7` → `gps_lat_e6` was triviaal; de échte mentale belasting was elke literal `1e7` / `1e-7` opzoeken. Les: als je een schaal hernoemt, hernoem dan ook de constanten meteen, niet alleen het symbool. Anders blijft de fout in numerieke vorm staan, onzichtbaar voor compiler.
+
+💀 **Half-gemigreerde NVS is erger dan fout-bevroren NVS.** Mijn eerste migratiecode deed: "als lat > 90M, deel lat door 10". Maar de gebruiker zat op (51.87°N, 5.29°E). In ×1e7 was lat = 518718190 (triggert!) maar lon = 52919140 (< 180M lon-grens, triggert NIET). Resultaat: lat correct gemigreerd naar 51.87°, lon bleef op 52.92° = ergens in Centraal-Azië → 3269 km. Tweede poging "als lat > 90M, deel BEIDE door 10" loste *nieuwe* halve-migraties op, maar de NVS was al gecorrumpeerd in een visueel valide staat (beide < 180M). Geen heuristiek kon dat nog detecteren. Eindoplossing: sentinel NVS-key `lora.gps.sv` (u8 versie). Bij boot zonder of < huidige versie → wipe en force re-entry. save_gps_coords schrijft altijd huidige versie. Les: schaal-migraties die per-veld trigger-condities hebben kunnen halve-migraties veroorzaken; gebruik een sentinel-versie i.p.v. waarde-heuristiek.
+
+🎯 **Een user-typo onder een schaal-bug versterkt verwarring.** Nadat de migratie-bug "opgelost" leek, zag de gebruiker nog steeds 3269km. Mijn reflex: nog meer migratiecode toevoegen. Pas na een nieuwe screenshot bleek dat de Settings-waarde van longitude per ongeluk 52.919140 was ingevoerd (typo: 52.9 ipv 5.29). De waarde die ik had gediagnosticeerd als "halve-migratie corruption" was eigenlijk een handmatige typo achteraf. Les: voordat je doorgaat met een tweede ronde correctie-code, vraag actief om de huidige waarde (Settings-tab screenshot) — anders bouw je oplossingen voor een probleem dat niet meer bestaat.
+
+---
+
+## Update — v2.1 sprint: unread, GPS, ACK-tracking, channel-UI, region-scope (mei 2026)
+
+Eén lange sessie met een serie kleine features en één pijnlijke schaal-bug. Geleerd:
+
+📸 **Een screenshot is een betere spec dan een tekstuele beschrijving.** De gebruiker (= ik) deelde foto's van zijn eigen backlog-lijst plus van de iPhone MeshCore-app chat-header. Zonder die referenties had ik ofwel verkeerd geraden over UI-hiërarchie, ofwel uren in protocol-RE gestoken om "iets dergelijks" te bouwen. Bij volgende sessies: vraag actief om visuele referenties als de gebruiker een doel-look beschrijft. Het is veel minder werk dan reverse-engineering en het bevriest het verwachtingsmanagement vooraf.
+
+🔍 **Bekijk altijd de upstream-broncode vóórdat je "reverse engineering" plant.** Voor de region-scope wire-format dacht ik aan een sniffer-setup met de T-Beam — totdat één `grep -rn "RegionMap"` in de upstream MeshCore-repo het complete mechanisme onthulde: `helpers/RegionMap.h` + `TransportKeyStore.cpp::calcTransportCode` + `companion_radio/MyMesh.cpp::sendFloodScoped`. De wire-layout was `ROUTE_TYPE_TRANSPORT_FLOOD + transport_codes[2]` met `code = HMAC-SHA256(SHA256(region_name)[0..15], type || payload)[0..1]`. Implementatie was één helper aanroepen vóór serialize. Les: "ik weet niet hoe dit werkt" is meestal "ik heb de bron niet gelezen".
+
+⌨️ **Elke input-event-route moet text-input-modes ondersteunen.** Een gebruiker meldde "Enter doet niks bij Add channel". Mijn handler werkte voor `\r/\n` via de keyboard-route, maar `BSP_INPUT_NAVIGATION_KEY_RETURN` (D-pad center) ging een aparte handler in die met `!channel_adding` als guard de save-pad oversloeg. Les: elke modus die tekstinvoer doet, MOET worden geregistreerd in álle event-paden (keyboard + nav). Eén grep op je modus-flag zou hierop moeten matchen — als de flag op één plek staat en niet op de ander, dan klopt iets niet.
+
+🪞 **Header-context > inline tekstprefix.** Vorige sessie had ik `[#test] name: text` prefixen toegevoegd om channels te disambiguëren in de chat-ring. Zodra de chat-header echte channel-context kreeg (channel-naam + `Region: nl` onder elkaar — gemodelleerd naar iPhone-screenshot), werd de inline prefix overbodig en visueel rommelig. Verwijderd uit 4 plekken (TX×2, RX×2). Les: redundante visualisaties stapelen zich op tijdens iteratie — periodiek schoonmaken hoort erbij. Of beter: stel jezelf bij iedere nieuwe display-affordance de vraag "welke oude is hierdoor overbodig?".
+
+🤝 **ACK-matching via CRC-binding aan de sender.** Voor de "ack" indicator op eigen DMs: bij send_dm_message bereken ik de ACK-CRC die de receiver straks zal teruggeven (`SHA256(plaintext[0..5] || dm_text || OUR_pubkey)[0..4]`), bewaar die op de chat_msg, en voeg een PATH_RETURN inbound handler toe die de inner-block ontsleutelt met de sender's shared secret en matched op die CRC. Twee dingen geleerd: (1) het binnenste ACK-mechanisme van MeshCore is afgeleid uit de plaintext + ontvanger's pubkey, dus we kunnen het deterministisch vooraf berekenen. (2) Een sender bouwen die PATH_RETURN STUURT is niet hetzelfde als een sender die PATH_RETURN ONTVANGT — die paden zijn gescheiden, en ik had alleen de TX-kant.
+
