@@ -344,6 +344,36 @@ later distribution. Not duplication — evolution.
 
 For the "ack" indicator on outgoing DMs: at send_dm_message I compute the ACK CRC the receiver will echo back (`SHA256(plaintext[0..5] || dm_text || OUR_pubkey)[0..4]`), store it on the chat_msg, and add a PATH_RETURN inbound handler that decrypts the inner block with the sender's shared secret and matches on that CRC. Two things I learned: (1) MeshCore's inner ACK is derived from the plaintext + receiver's pubkey, so we can compute it deterministically in advance. (2) Building a sender that *transmits* PATH_RETURN is not the same as a sender that *receives* PATH_RETURN — they're separate paths, and I only had the TX side. Adding the RX side was a separate ~80 lines.
 
+## What I Learned About Regulatory Compliance and Upstreaming
+
+### 39. Regulation is a layer, not a checkbox
+
+A community user pointed out that transmitting outside the permitted band or above the power cap carries real fines — tens of thousands of euros in some countries. The fix was a `Country` field that loads the right limits. The key detail: the EU 863–870 MHz band is not a single limit but **six sub-bands** (g/g1/g1'/g2/g3/g4), each with its own power and duty-cycle ceiling. Meshtastic collapses each region to one sub-band; I keep the full granularity so the check is correct for the frequency you actually use. The lesson: regulation in software is a data layer at the granularity of the real rules — not a single "max power" constant.
+
+### 40. Soft-warn where it's the operator's call; hard-block where it harms the mesh
+
+Frequency off-band or a few dB over the limit → red row + warning, but allowed (you might have a licence or a directional antenna). Duty cycle → hard enforced: a rolling 1-hour airtime budget (Semtech time-on-air formula, 60 one-minute buckets), and TX is **blocked** once the budget is spent. The difference is that airtime hogging actively degrades the shared mesh, so that limit isn't the operator's to bend.
+
+### 41. A metric doesn't always measure what you think
+
+Enabling RxBoost (`0x96` to RxGain register `0x08AC`) noticeably improved reception in the field — but the noise floor stayed identical. Why? The SX1262 reports calibrated/absolute RSSI referenced to the antenna input, so the extra LNA gain is compensated out by the chip. The win is in weak-signal decode (packets over time), not the noise-floor number. The lesson: verify a feature with the metric that actually moves, not the first one that seems plausible — otherwise you conclude "doesn't work" when it does.
+
+### 42. A fork is a delta, not a destination
+
+My RSSI/SNR contribution merged upstream at Nicolai Electronics. Rather than let my Gitea forks drift, I rebased them onto the merged upstream so only **two** commits of delta remain (rx_boost + a firmware-version query) — features not yet upstream. The thinner the delta, the more trivial the next upstream bump. Treat a fork as a temporary overlay on upstream, not a parallel universe.
+
+### 43. Keep display order == enum order to avoid a navigation refactor
+
+Section headings in a 22-field settings list sounded like a cursor-logic refactor. The trick: keep the enum order equal to the display order and keep `selected` a field index. Headings then become pure render artifacts (non-selectable) — the input code doesn't change. Only scrolling had to move to pixel-based (with clipping) so the shorter heading rows scroll with the list. Decouple presentation from navigation by keeping the order aligned, not by adding state.
+
+### 44. Ephemeral UI state shouldn't force a persistence migration
+
+Per-conversation unread counters and scroll position live in RAM-only parallel arrays, not in the contacts/channels NVS blobs. Adding a struct field there would have corrupted old data — that code derives the item count from the blob size. Not everything per-item needs to persist; weigh a format migration against simply resetting on reboot.
+
+### 45. Put help where the doubt is
+
+The footer now shows a short explanation per selected field — Sync word and Preamble explain themselves, and Country/Frequency/TX power/Duty cycle surface the active sub-band's limits (range, max dBm ERP/EIRP, % duty). Contextual micro-help on the field itself beats a separate manual nobody opens.
+
 ---
 
 ## Links

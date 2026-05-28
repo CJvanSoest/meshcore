@@ -172,3 +172,25 @@ Eén lange sessie met een serie kleine features en één pijnlijke schaal-bug. G
 
 🏷️ **App-icon: AppFS heeft geen icon-slot.** Custom tile-icoon werkt niet via `badgelink appfs upload` — dat protocol heeft alleen slug/title/version/size. De launcher's `app_metadata_parser` leest icoon en metadata vanuit `<slug>/metadata.json` op SD. Pad: een SD-bundle (binary + metadata.json + icon32.png in een map per slug). Tegelijk is dat ook precies de bundle die een toekomstige appstore-distributie nodig heeft. Les: een tweede install-route hebben (naast snelle-dev AppFS) opent niet alleen het tile-icoon, maar legt ook de fundering voor latere distributie. Niet duplicatie, maar evolutie.
 
+---
+
+## Update — Regelgeving aan boord + radio-gevoeligheid (mei 2026)
+
+📡 **Regelgeving is geen vinkje, maar een laag.** Een gebruiker uit de community wees op boetes voor zenden buiten de toegestane band/power — in sommige landen tot in de tienduizenden euro's. Oplossing: een `Country`-veld dat de juiste limieten oplaadt. Cruciaal detail: de EU 863-870 MHz-band is geen één-regel-limiet maar **zes sub-banden** (g/g1/g1'/g2/g3/g4), elk met eigen power- en duty-cycle-grenzen. Meshtastic plet elke regio tot één sub-band; ik hou de volle granulariteit aan zodat de check klopt op de frequentie die je écht gebruikt. Les: regelgeving in software is een datalaag met de granulariteit van de echte regels — niet één enkele "max power"-constante.
+
+⚖️ **Soft waarschuwen waar het jouw keuze is, hard blokkeren waar het de mesh schaadt.** Frequentie buiten band of een paar dB te veel → rood kader + waarschuwing, maar je mag het (je hebt misschien een vergunning of richtantenne). Duty cycle → hard afgedwongen: een rollend 1-uurs airtime-budget (Semtech time-on-air formule, 60 minuut-buckets), en TX wordt **geblokkeerd** als het budget op is. Het verschil: airtime-vreten degradeert actief de gedeelde mesh, dus dáár ligt de grens niet bij de operator.
+
+🔆 **Een meetwaarde meet niet altijd wat je denkt.** RxBoost aanzetten (`0x96` naar RxGain-register `0x08AC`) gaf "stukken betere" ontvangst in het veld — maar de noise floor bleef exact gelijk. Waarom? De SX1262 rapporteert RSSI gekalibreerd/absoluut, gerefereerd aan de antenne-ingang, dus de extra LNA-gain wordt door de chip weggecompenseerd. De winst zit in zwak-signaal-decodering (pakketten over tijd), niet in de noise floor. Les: verifieer een feature met de metric die 'm écht meet, niet de eerste die plausibel lijkt — anders concludeer je "werkt niet" terwijl het wél werkt.
+
+---
+
+## Update — Upstream merge + Settings-opschoning (mei 2026)
+
+🔀 **Een fork is een delta, geen eindbestemming.** Mijn RSSI/SNR-bijdrage is gemerged bij Nicolai Electronics (upstream). In plaats van mijn Gitea-forks te laten divergeren heb ik ze ge-rebased op de gemergede upstream, zodat er nog maar **twee** commits delta overblijven (rx_boost + firmware-versie-query) — features die nog niet upstream zijn. Hoe dunner de delta, hoe triviaal de volgende upstream-bump. Les: behandel een fork als tijdelijke overlay op upstream, niet als een parallel universum.
+
+🗂️ **Volgorde is gratis structuur.** Settings was naar 22 velden gegroeid en werd onoverzichtelijk. Ik vreesde een navigatie-refactor voor sectie-headings, maar de truc bleek: houd **enum-volgorde gelijk aan display-volgorde** en laat de cursor een veld-index blijven. Headings worden dan puur render-artefacten (niet-selecteerbaar) — de input-code hoeft niet te veranderen. Alleen de scroll moest naar pixel-based (met clipping) zodat de kortere heading-rijen meescrollen. Les: koppel weergave los van navigatie door de volgorde gelijk te houden, niet door extra state toe te voegen.
+
+💾 **Efemere UI-state hoort geen formaat-migratie te forceren.** Per-gesprek ongelezen-tellers en scroll-positie: ik bewaar ze in RAM-only parallelle arrays i.p.v. in de NVS-blobs van contacts/channels. Anders had het toevoegen van één veld de oude opslag gecorrumpeerd — die code leidt het aantal items af uit de blob-grootte. Les: niet alles wat per-item is hoeft persistent; weeg een formaat-migratie af tegen simpelweg "opnieuw beginnen bij reboot".
+
+💬 **Zet hulp op de plek van de twijfel.** De footer toont nu per geselecteerd veld een korte uitleg — Sync word en Preamble leggen zichzelf uit, en op Country/Frequentie/TX power/Duty cycle verschijnen de limieten van de actieve sub-band (range, max dBm ERP/EIRP, % duty). Les: contextuele micro-uitleg op het veld zelf is effectiever dan een losse handleiding die niemand opzoekt.
+
