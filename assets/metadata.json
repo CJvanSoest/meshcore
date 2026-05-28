@@ -1,6 +1,6 @@
 {
     "name": "MeshCore",
-    "description": "MeshCore LoRa-mesh client voor Tanmatsu: DM, group chat, node discovery, region-scope, GPS, QR-codes en encrypted history.",
+    "description": "LoRa-mesh chat: DM, channels, nodes, GPS, QR.",
     "version": "2.1.0",
     "author": "CJ van Soest",
     "license_type": "MIT",

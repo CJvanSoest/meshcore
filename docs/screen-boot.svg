@@ -17,8 +17,8 @@
   <rect width="400" height="640" fill="#1A1B26" rx="4"/>
   <rect x="0.5" y="0.5" width="399" height="639" fill="none" stroke="#24283B" stroke-width="1" rx="4"/>
 
-  <!-- Title: "MeshCore v4" — amber, TXT_TITLE -->
-  <text x="14" y="28" fill="#E0AF68" font-size="14" font-weight="500">MeshCore v4</text>
+  <!-- Title: "MeshCore <version>" — amber, TXT_TITLE (version from esp_app_get_description, git-describe) -->
+  <text x="14" y="28" fill="#E0AF68" font-size="14" font-weight="500">MeshCore v2.1.0</text>
 
   <!-- DIAG lines (y0=50 in real coords, line=22 → half = y0=25, line=11) -->
   <text x="14" y="50"  fill="#565F89" font-family="'Saira',sans-serif" font-size="9">wifi_connection_init_stack...</text>
