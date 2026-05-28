@@ -7,13 +7,21 @@
 #include <stdint.h>
 
 // ── Settings tab: field identifiers (also drives FIELD_COUNT for nav wrap) ───
+// Enum order == display order in the Settings tab (render walks it top to bottom
+// and inserts section headings at the boundaries below). Everything from
+// FIELD_FREQ onward is a radio-config field that needs the C6 — render greys
+// those out when the radio is unavailable, so FIELD_FREQ must stay that boundary.
 typedef enum {
+    // ── Device & identity ──
     FIELD_RADIO_FW = 0,      // read-only — SX126x silicon version reported by C6
     FIELD_RADIO_FW_APP,      // read-only — hand-maintained tanmatsu-radio app fw label
     FIELD_OWNER,
     FIELD_ADV_NAME,
+    // ── Regulatory ──
     FIELD_COUNTRY,           // regulatory country — gates freq/power warnings + DC enforcement
     FIELD_ANTENNA_GAIN,      // dBi — only editable once country is set
+    FIELD_DUTY_CYCLE,        // read-only: rolling 1h airtime vs sub-band budget
+    // ── Radio (FIELD_FREQ down = needs C6) ──
     FIELD_FREQ,
     FIELD_SF,
     FIELD_BW,
@@ -21,15 +29,16 @@ typedef enum {
     FIELD_POWER,
     FIELD_SYNC,
     FIELD_PREAMBLE,
-    FIELD_ADVERT_INT,
     FIELD_PRESET,
+    FIELD_SENSITIVITY,       // RX boost on/off (radio gain vs power-save)
+    // ── Network & behavior ──
+    FIELD_ADVERT_INT,
     FIELD_ROLE,
     FIELD_PATH_HASH_SIZE,
-    FIELD_SENSITIVITY,       // RX boost on/off (radio gain vs power-save)
+    // ── Region & location ──
     FIELD_REGION_SCOPE,
     FIELD_GPS_LAT,
     FIELD_GPS_LON,
-    FIELD_DUTY_CYCLE,        // read-only: rolling 1h airtime vs sub-band budget
     FIELD_COUNT,
 } field_t;
 

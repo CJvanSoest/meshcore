@@ -333,27 +333,73 @@ static void render_settings(void) {
                  dc_last_tx_blocked ? " BLOCKED" : "");
     }
 
-    const int row_h        = 44;
-    const int footer_h     = 60;
-    const int y0           = TAB_BAR_H + 6;
-    const int list_h       = h - y0 - footer_h;
-    int rows_vis           = list_h / row_h;
-    if (rows_vis < 1)            rows_vis = 1;
-    if (rows_vis > FIELD_COUNT)  rows_vis = FIELD_COUNT;
+    // ── Layout + section headings ────────────────────────────────────────────
+    // Enum order == display order; a heading is inserted before its first field
+    // and scrolls with the list. Pixel-based scroll so headings can be shorter
+    // than field rows.
+    static const struct { field_t first; const char *title; } sections[] = {
+        { FIELD_RADIO_FW,     "DEVICE & IDENTITY" },
+        { FIELD_COUNTRY,      "REGULATORY" },
+        { FIELD_FREQ,         "RADIO" },
+        { FIELD_ADVERT_INT,   "NETWORK & BEHAVIOR" },
+        { FIELD_REGION_SCOPE, "REGION & LOCATION" },
+    };
+    const int n_sections = (int)(sizeof(sections) / sizeof(sections[0]));
 
-    if (selected < settings_scroll)             settings_scroll = selected;
-    if (selected >= settings_scroll + rows_vis) settings_scroll = selected - rows_vis + 1;
-    int max_scroll = FIELD_COUNT - rows_vis;
-    if (max_scroll < 0)              max_scroll = 0;
-    if (settings_scroll > max_scroll) settings_scroll = max_scroll;
-    if (settings_scroll < 0)         settings_scroll = 0;
+    const int row_h    = 44;
+    const int head_h   = 32;
+    const int footer_h = 60;
+    const int y0       = TAB_BAR_H + 6;
+    const int list_h   = h - y0 - footer_h;
+
+    typedef struct { bool heading; const char *title; int field; int y; int hgt; } disp_t;
+    disp_t disp[FIELD_COUNT + 8];
+    int n_disp = 0, content_h = 0, sel_disp = 0;
+    for (int f = 0; f < FIELD_COUNT; f++) {
+        for (int s = 0; s < n_sections; s++) {
+            if ((int)sections[s].first == f) {
+                disp[n_disp] = (disp_t){ true, sections[s].title, -1, content_h, head_h };
+                content_h += head_h;
+                n_disp++;
+                break;
+            }
+        }
+        disp[n_disp] = (disp_t){ false, NULL, f, content_h, row_h };
+        if (f == selected) sel_disp = n_disp;
+        content_h += row_h;
+        n_disp++;
+    }
+
+    // Keep the selected field visible; reveal its heading too when it leads a section.
+    int reveal_top = disp[sel_disp].y;
+    if (sel_disp > 0 && disp[sel_disp - 1].heading) reveal_top = disp[sel_disp - 1].y;
+    int reveal_bot = disp[sel_disp].y + disp[sel_disp].hgt;
+    if (reveal_top < settings_scroll)          settings_scroll = reveal_top;
+    if (reveal_bot > settings_scroll + list_h) settings_scroll = reveal_bot - list_h;
+    int max_scroll = content_h - list_h;
+    if (max_scroll < 0)               max_scroll = 0;
+    if (settings_scroll > max_scroll)  settings_scroll = max_scroll;
+    if (settings_scroll < 0)           settings_scroll = 0;
 
     int text_y_off = (row_h - TXT_BODY) / 2;
 
-    for (int row = 0; row < rows_vis; row++) {
-        int  i      = row + settings_scroll;
-        int  y      = y0 + row * row_h;
+    pax_clip(&fb, 0, y0, w, list_h);
+    int first_vis = -1, last_vis = -1;
+    for (int d = 0; d < n_disp; d++) {
+        int y = y0 + disp[d].y - settings_scroll;
+        if (y + disp[d].hgt <= y0 || y >= y0 + list_h) continue;  // fully off-screen
+
+        if (disp[d].heading) {
+            pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL, 18,
+                          y + head_h - TXT_SMALL - 5, disp[d].title);
+            pax_simple_rect(&fb, COL_AMBER, 18, y + head_h - 3, w - 36, 1);
+            continue;
+        }
+
+        int  i      = disp[d].field;
         bool is_sel = (i == selected);
+        if (first_vis < 0) first_vis = i;
+        last_vis = i;
 
         if (is_sel) {
             pax_col_t bg  = edit_mode ? 0xFF3A2A1A : COL_PANEL;
@@ -408,10 +454,11 @@ static void render_settings(void) {
         pax_vec2f vsz = pax_text_size(FONT, TXT_BODY, val_disp);
         pax_draw_text(&fb, val_col, FONT, TXT_BODY, w - (int)vsz.x - 18, y + text_y_off, val_disp);
     }
+    pax_noclip(&fb);
 
-    if (FIELD_COUNT > rows_vis) {
+    if (content_h > list_h && first_vis >= 0) {
         char sc[40];
-        snprintf(sc, sizeof(sc), "%d-%d/%d", settings_scroll + 1, settings_scroll + rows_vis, FIELD_COUNT);
+        snprintf(sc, sizeof(sc), "%d-%d/%d", first_vis + 1, last_vis + 1, FIELD_COUNT);
         pax_vec2f sz = pax_text_size(FONT, TXT_BODY, sc);
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_BODY, w - (int)sz.x - 10, h - footer_h - TXT_BODY - 2, sc);
     }
@@ -421,6 +468,7 @@ static void render_settings(void) {
     pax_simple_rect(&fb, COL_PANEL, 0, fy, w, 1);
 
     const char *hint = NULL;
+    char        hintbuf[128];
     pax_col_t   hint_col = COL_GRAY;
     if (edit_mode && field_editing_text) {
         hint = "Type to edit   Backspace: del   Enter: save   ESC: cancel";
@@ -429,14 +477,39 @@ static void render_settings(void) {
     } else if (!c6_available) {
         hint = "NVS only — C6 unavailable   U: flash radio";
         hint_col = COL_AMBER;
+    } else if (selected == FIELD_ANTENNA_GAIN) {
+        hint = "Antenna gain raises ERP; editable once Country is set.";
+    } else if (selected == FIELD_COUNTRY || selected == FIELD_FREQ ||
+               selected == FIELD_POWER   || selected == FIELD_DUTY_CYCLE) {
+        const regulatory_country_t *rc = region_get_country(country_code);
+        if (!rc || rc->n_subbands == 0) {
+            hint = "Set Country to see allowed band / power / duty-cycle limits.";
+        } else {
+            const regulatory_subband_t *sb =
+                region_match_subband(rc, (float)lora_cfg.frequency / 1000000.0f);
+            const char *unit = (rc->power_unit == POWER_UNIT_EIRP) ? "EIRP" : "ERP";
+            if (!sb) {
+                snprintf(hintbuf, sizeof(hintbuf),
+                         "%s: %.3f MHz off-band — pick a frequency in an allowed sub-band.",
+                         rc->display_name, (double)lora_cfg.frequency / 1e6);
+            } else {
+                snprintf(hintbuf, sizeof(hintbuf),
+                         "%s %s: %.2f-%.2f MHz, max %d dBm %s, %u.%u%% duty cycle.",
+                         rc->display_name, sb->label,
+                         (double)sb->freq_min_mhz, (double)sb->freq_max_mhz,
+                         (int)sb->max_power_dbm, unit,
+                         sb->duty_cycle_permille / 10u, sb->duty_cycle_permille % 10u);
+            }
+            hint = hintbuf;
+        }
     } else if (selected == FIELD_OWNER) {
         hint = "Owner name is shared with launcher (Enter to edit)";
     } else if (selected == FIELD_ADV_NAME) {
         hint = "Advert name overrides owner in LoRa adverts (empty=use owner)";
     } else if (selected == FIELD_SYNC) {
-        hint = "Sync word: 0x12 = public LoRa. Isolates networks.";
+        hint = "Sync word: 0x12 = public MeshCore. A different value = separate net.";
     } else if (selected == FIELD_PREAMBLE) {
-        hint = "Preamble: longer = detects weak signal, more airtime";
+        hint = "Preamble (default 8): longer = better weak-signal detect, +airtime.";
     } else if (selected == FIELD_ADVERT_INT) {
         hint = "Advert interval: longer = lower duty cycle, saves battery";
     } else if (selected == FIELD_PRESET) {
