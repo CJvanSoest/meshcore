@@ -21,103 +21,107 @@
   <!-- ── Tab bar (h=22) ── -->
   <rect x="0" y="0" width="400" height="22" fill="#16161E" rx="4"/>
   <rect x="0" y="11" width="400" height="11" fill="#16161E"/>
-  <!-- Reserve 100px right for status indicators (200 in real coords) -->
-  <!-- 4 tabs over (400-100)/4 = 75 each -->
-  <!-- Active: Settings -->
   <rect x="0" y="0" width="75" height="22" fill="#7AA2F7" rx="4"/>
   <rect x="0" y="11" width="75" height="11" fill="#7AA2F7"/>
   <text x="37" y="16" fill="#16161E" font-size="11" font-weight="500" text-anchor="middle">Settings</text>
   <text x="112" y="16" fill="#565F89" font-family="'Saira',sans-serif" font-size="11" text-anchor="middle">Nodes</text>
   <text x="187" y="16" fill="#565F89" font-family="'Saira',sans-serif" font-size="11" text-anchor="middle">DM</text>
   <text x="262" y="16" fill="#565F89" font-family="'Saira',sans-serif" font-size="11" text-anchor="middle">Channel</text>
-  <!-- Status: RX:5 | 85% -->
   <text x="394" y="16" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">85%</text>
   <text x="370" y="16" fill="#565F89" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">|</text>
   <text x="360" y="16" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">RX:5</text>
   <rect x="0" y="21" width="400" height="1" fill="#24283B"/>
 
-  <!-- ── Settings rows (row_h=22, y0=25) ── -->
-
-  <!-- Row 0: Owner name -->
-  <text x="9"   y="40" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Owner name</text>
-  <text x="391" y="40" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">TanmatsuUser</text>
-  <rect x="6" y="46" width="388" height="1" fill="#24283B"/>
-
-  <!-- Row 1: Advert name -->
-  <text x="9"   y="62" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Advert name</text>
-  <text x="391" y="62" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">(use owner)</text>
-  <rect x="6" y="68" width="388" height="1" fill="#24283B"/>
-
-  <!-- Row 2: Frequency — SELECTED (panel + accent bar) -->
-  <rect x="0" y="69" width="400" height="22" fill="#24283B"/>
-  <rect x="0" y="69" width="3" height="22" fill="#7AA2F7"/>
-  <text x="9"   y="84" fill="#C0CAF5" font-family="'Saira',sans-serif" font-size="10">Frequency</text>
-  <text x="391" y="84" fill="#C0CAF5" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">869.618 MHz</text>
-  <rect x="6" y="90" width="388" height="1" fill="#24283B"/>
-
-  <!-- Row 3: Spreading factor -->
-  <text x="9"   y="106" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Spreading factor</text>
-  <text x="391" y="106" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">SF8</text>
-  <rect x="6" y="112" width="388" height="1" fill="#24283B"/>
-
-  <!-- Row 4: Bandwidth -->
-  <text x="9"   y="128" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Bandwidth</text>
-  <text x="391" y="128" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">62 kHz</text>
-  <rect x="6" y="134" width="388" height="1" fill="#24283B"/>
-
-  <!-- Row 5: Coding rate -->
-  <text x="9"   y="150" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Coding rate</text>
-  <text x="391" y="150" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">4/6</text>
-  <rect x="6" y="156" width="388" height="1" fill="#24283B"/>
-
-  <!-- Row 6: TX power -->
-  <text x="9"   y="172" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">TX power</text>
-  <text x="391" y="172" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">22 dBm</text>
-  <rect x="6" y="178" width="388" height="1" fill="#24283B"/>
-
-  <!-- Row 7: Sync word -->
-  <text x="9"   y="194" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Sync word</text>
-  <text x="391" y="194" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">0x2B</text>
-  <rect x="6" y="200" width="388" height="1" fill="#24283B"/>
-
-  <!-- Row 8: Preamble length -->
-  <text x="9"   y="216" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Preamble length</text>
-  <text x="391" y="216" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">16</text>
-  <rect x="6" y="222" width="388" height="1" fill="#24283B"/>
-
-  <!-- Row 9: Advert interval -->
-  <text x="9"   y="238" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Advert interval</text>
-  <text x="391" y="238" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">30min</text>
-  <rect x="6" y="244" width="388" height="1" fill="#24283B"/>
-
-  <!-- Row 10: LoRa preset -->
-  <text x="9"   y="260" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">LoRa preset</text>
-  <text x="391" y="260" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">MeshCore</text>
-  <rect x="6" y="266" width="388" height="1" fill="#24283B"/>
-
-  <!-- Row 11: Role -->
-  <text x="9"   y="282" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Role</text>
-  <text x="391" y="282" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">CHAT_NODE</text>
-  <rect x="6" y="288" width="388" height="1" fill="#24283B"/>
-
-  <!-- Row 12: Path hash size -->
-  <text x="9"   y="304" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Path hash size</text>
-  <text x="391" y="304" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">1 byte (64 hops)</text>
-  <rect x="6" y="310" width="388" height="1" fill="#24283B"/>
-
-  <!-- Row 13: Region scope -->
-  <text x="9"   y="326" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Region scope</text>
-  <text x="391" y="326" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">NL</text>
-  <rect x="6" y="332" width="388" height="1" fill="#24283B"/>
-
-  <!-- Scroll counter (bottom-right above footer) -->
-  <text x="391" y="603" fill="#565F89" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">1-14/14</text>
+  <!-- ── Settings rows: section headings (h=16) + fields (h=22) ── -->
+  <!-- DEVICE &amp; IDENTITY -->
+  <text x="9" y="36" fill="#E0AF68" font-family="'Saira',sans-serif" font-size="9" font-weight="500" letter-spacing="0.5">DEVICE &amp; IDENTITY</text>
+  <rect x="9" y="38" width="382" height="1" fill="#E0AF68"/>
+  <text x="9" y="56" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Radio chip</text>
+  <text x="391" y="56" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">sx1262 V20</text>
+  <rect x="6" y="62" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="78" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Radio firmware</text>
+  <text x="391" y="78" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">v3.0.0-2-g6170604</text>
+  <rect x="6" y="84" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="100" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Owner name</text>
+  <text x="391" y="100" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">TanmatsuUser</text>
+  <rect x="6" y="106" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="122" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Advert name</text>
+  <text x="391" y="122" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">NL-MET-TANMATSU</text>
+  <rect x="6" y="128" width="388" height="1" fill="#24283B"/>
+  <!-- REGULATORY -->
+  <text x="9" y="140" fill="#E0AF68" font-family="'Saira',sans-serif" font-size="9" font-weight="500" letter-spacing="0.5">REGULATORY</text>
+  <rect x="9" y="142" width="382" height="1" fill="#E0AF68"/>
+  <rect x="0" y="145" width="400" height="22" fill="#24283B"/>
+  <rect x="0" y="145" width="3" height="22" fill="#7AA2F7"/>
+  <text x="9" y="160" fill="#C0CAF5" font-family="'Saira',sans-serif" font-size="10">Country</text>
+  <text x="391" y="160" fill="#C0CAF5" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">Netherlands [g3]</text>
+  <rect x="6" y="166" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="182" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Antenna gain</text>
+  <text x="391" y="182" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">2 dBi</text>
+  <rect x="6" y="188" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="204" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Duty cycle (1h)</text>
+  <text x="391" y="204" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">0.4% (14s / 360s)</text>
+  <rect x="6" y="210" width="388" height="1" fill="#24283B"/>
+  <!-- RADIO -->
+  <text x="9" y="222" fill="#E0AF68" font-family="'Saira',sans-serif" font-size="9" font-weight="500" letter-spacing="0.5">RADIO</text>
+  <rect x="9" y="224" width="382" height="1" fill="#E0AF68"/>
+  <text x="9" y="242" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Frequency</text>
+  <text x="391" y="242" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">869.618 MHz</text>
+  <rect x="6" y="248" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="264" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Spreading factor</text>
+  <text x="391" y="264" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">SF8</text>
+  <rect x="6" y="270" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="286" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Bandwidth</text>
+  <text x="391" y="286" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">62 kHz</text>
+  <rect x="6" y="292" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="308" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Coding rate</text>
+  <text x="391" y="308" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">4/6</text>
+  <rect x="6" y="314" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="330" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">TX power</text>
+  <text x="391" y="330" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">22 dBm</text>
+  <rect x="6" y="336" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="352" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Sync word</text>
+  <text x="391" y="352" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">0x12</text>
+  <rect x="6" y="358" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="374" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Preamble length</text>
+  <text x="391" y="374" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">16</text>
+  <rect x="6" y="380" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="396" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">LoRa preset</text>
+  <text x="391" y="396" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">MeshCore</text>
+  <rect x="6" y="402" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="418" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">RX sensitivity</text>
+  <text x="391" y="418" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">High (+3dB)</text>
+  <rect x="6" y="424" width="388" height="1" fill="#24283B"/>
+  <!-- NETWORK &amp; BEHAVIOR -->
+  <text x="9" y="436" fill="#E0AF68" font-family="'Saira',sans-serif" font-size="9" font-weight="500" letter-spacing="0.5">NETWORK &amp; BEHAVIOR</text>
+  <rect x="9" y="438" width="382" height="1" fill="#E0AF68"/>
+  <text x="9" y="456" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Advert interval</text>
+  <text x="391" y="456" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">30min</text>
+  <rect x="6" y="462" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="478" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Role</text>
+  <text x="391" y="478" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">CHAT_NODE</text>
+  <rect x="6" y="484" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="500" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Path hash size</text>
+  <text x="391" y="500" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">2 byte (32 hops)</text>
+  <rect x="6" y="506" width="388" height="1" fill="#24283B"/>
+  <!-- REGION &amp; LOCATION -->
+  <text x="9" y="518" fill="#E0AF68" font-family="'Saira',sans-serif" font-size="9" font-weight="500" letter-spacing="0.5">REGION &amp; LOCATION</text>
+  <rect x="9" y="520" width="382" height="1" fill="#E0AF68"/>
+  <text x="9" y="538" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Region scope</text>
+  <text x="391" y="538" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">NL</text>
+  <rect x="6" y="544" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="560" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">GPS latitude</text>
+  <text x="391" y="560" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">51.987654</text>
+  <rect x="6" y="566" width="388" height="1" fill="#24283B"/>
+  <text x="9" y="582" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">GPS longitude</text>
+  <text x="391" y="582" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10" text-anchor="end">5.123456</text>
+  <rect x="6" y="588" width="388" height="1" fill="#24283B"/>
 
   <!-- ── Footer (2 lines, 30 high) ── -->
   <rect x="0" y="610" width="400" height="30" fill="#16161E"/>
   <rect x="0" y="610" width="400" height="1" fill="#24283B"/>
-  <!-- Line 1: controls -->
-  <text x="6" y="622" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">W/S: navigate   Enter: edit   R: reload   Tab: next   U: flash</text>
+  <!-- Line 1: regulatory hint for the selected Country field -->
+  <text x="6" y="622" fill="#565F89" font-family="'Saira',sans-serif" font-size="10">Netherlands g3: 869.40-869.65 MHz, max 27 dBm ERP, 10.0% duty cycle.</text>
   <!-- Line 2: SNTP timestamp (green = synced) -->
-  <text x="6" y="635" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10">SNTP 14:23:07  25-05-2026</text>
+  <text x="6" y="635" fill="#9ECE6A" font-family="'Saira',sans-serif" font-size="10">SNTP 14:23:07  28-05-2026</text>
 </svg>
