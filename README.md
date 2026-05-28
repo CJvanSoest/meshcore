@@ -26,7 +26,7 @@ A [MeshCore](https://meshcore.co.uk) LoRa mesh communication app for the
 
 | Tab | Purpose |
 |---|---|
-| **Settings** | LoRa & identity fields (frequency, SF/BW/CR, power, presets, owner name, advert interval, region scope, …) |
+| **Settings** | Grouped LoRa & identity fields (frequency, SF/BW/CR, power, presets, owner name, advert interval, regulatory country/limits, region scope, …) with contextual hints |
 | **Nodes** | Live list of heard nodes with role, RSSI/SNR, last-seen; favourites starred |
 | **DM** | Inbox + per-contact end-to-end encrypted conversations, persisted to SD |
 | **Channel** | Public channel chat (AES-128-ECB), persisted to SD |
@@ -43,6 +43,10 @@ A [MeshCore](https://meshcore.co.uk) LoRa mesh communication app for the
   with add/delete, brute-force MAC verify on RX, region scope visible in header
 - **Region scope on the wire** — `ROUTE_TYPE_TRANSPORT_FLOOD` with
   HMAC-SHA256 transport codes per upstream MeshCore (mc-radar compatible)
+- **Regulatory compliance helper** — pick your country for per-sub-band
+  frequency / power (ERP/EIRP) limits, off-band & over-power warnings, and
+  **hard duty-cycle enforcement** (TX blocked when the rolling 1-hour airtime
+  budget is spent); 30+ countries across EU 868/433, US/AU/NZ 915, JP, KR, IN, RU
 - **Per-message metadata** — local time, hop count, ACK state inline under
   each chat bubble
 - **Unread badges** on the tab bar for missed DM / channel messages
@@ -58,6 +62,62 @@ A [MeshCore](https://meshcore.co.uk) LoRa mesh communication app for the
 
 For the full feature list, packet protocol, encryption details and key bindings,
 see the [wiki](docs/wiki/Home.md).
+
+---
+
+## Regulatory compliance
+
+LoRa runs in licence-exempt ISM bands whose rules differ per country —
+permitted frequencies, maximum transmit power and (in the EU) a duty-cycle
+ceiling. Set your **Country** in the Settings tab and the app helps you stay
+within them:
+
+- **Frequency & power — soft warnings.** The Frequency, TX power and Country
+  rows turn **red** when the frequency falls outside every allowed sub-band, or
+  when your *effective* radiated power (TX power + antenna gain, as ERP/EIRP)
+  exceeds the sub-band limit. The footer spells out the active sub-band's limits.
+- **Antenna gain** — a dedicated field (editable only once a country is set)
+  feeds the ERP/EIRP calculation so the power check reflects your real antenna.
+- **Duty cycle — hard enforced.** A rolling 1-hour airtime budget is tracked per
+  sub-band (Semtech time-on-air formula). When it is spent, transmits are
+  **blocked** until airtime frees up. The Duty cycle row shows
+  `used% (used s / budget s)` and `BLOCKED` when capped.
+
+> Guidance helper, **not legal advice** — you remain responsible for operating
+> within your local regulations.
+
+### EU 863–870 MHz sub-bands (ERP)
+
+The Netherlands and 18 other EU/EU-aligned countries use the full ETSI
+EN 300 220 sub-band plan:
+
+| Band | Range (MHz) | Max power | Duty cycle |
+|---|---|---|---|
+| g | 863.0–865.0 | 14 dBm ERP | 0.1% |
+| g1 | 865.0–868.0 | 14 dBm ERP | 1% |
+| g1' | 868.0–868.6 | 14 dBm ERP | 1% |
+| g2 | 868.7–869.2 | 14 dBm ERP | 0.1% |
+| **g3** | **869.4–869.65** | **27 dBm ERP** | **10%** |
+| g4 | 869.7–870.0 | 14 dBm ERP | 1% |
+
+> The default **869.618 MHz** sits in **g3** — the high-power, 10%-duty
+> "MeshCore" band. The SX1262's 22 dBm conducted ceiling stays comfortably
+> under the 27 dBm ERP limit.
+
+### Other regions
+
+| Region | Countries | Range (MHz) | Max power | Duty cycle |
+|---|---|---|---|---|
+| EU 433 | 433 SRD | 433.05–434.79 | 10 dBm ERP | 10% |
+| US 915 | US, CA, MX | 902–928 | 30 dBm EIRP | none |
+| AU/NZ 915 | AU, NZ | 915–928 | 30 dBm EIRP | none |
+| JP 920 | JP | 920.5–923.5 | 13 dBm EIRP | 10% + LBT |
+| KR 920 | KR | 920.0–923.0 | 14 dBm EIRP | 10% |
+| IN 865 | IN | 865.0–867.0 | 30 dBm EIRP | none |
+| RU 864/869 | RU | 864–865 / 868.7–869.2 | 14 dBm ERP | 0.1% |
+
+Full per-country table and the data schema live in
+[Settings / NVS → Regulatory compliance](docs/wiki/Settings-NVS.md#regulatory-compliance).
 
 ---
 

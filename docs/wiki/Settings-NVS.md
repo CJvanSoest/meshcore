@@ -20,6 +20,15 @@ shared with the launcher for `owner_name`).
 | `adv_int` | u32 | 1800 s | 30s..24h |
 | `role` | u8 | `CHAT_NODE` | `CHAT_NODE` / `REPEATER` / `ROOM_SERVER` / `SENSOR` |
 | `path_h` | u8 | 1 | 1..3 (see protocol page) |
+| `country` | str(4) | `"--"` | ISO 3166-1 alpha-2; `"--"` = none (no checks) |
+| `antgain` | i8 | 0 dBi | -3..15; editable only once `country` ≠ `"--"` |
+| `rxboost` | u8 | 1 (on) | 1 = boosted RX (+3 dB sensitivity), 0 = power-save |
+| `gps.lat` | i32 | — | Latitude ×1e6 (advert position + Nodes Dist column) |
+| `gps.lon` | i32 | — | Longitude ×1e6 |
+
+> All of the above live in the single `system` NVS namespace under dotted
+> key names (`lora.freq`, `lora.country`, …); the `lora.` prefix is logical,
+> not a separate namespace.
 
 ### `system` namespace (shared with launcher)
 
@@ -77,3 +86,104 @@ Default presets shipped:
 | ShortFast | 7 | 500 | 4/5 | Local, high throughput |
 
 When a custom combination is active the Settings row shows `(custom)`.
+
+## Regulatory compliance
+
+`main/region_limits.{h,c}` carries a per-country table of the licence-exempt
+ISM-band rules. Picking a **Country** in the Settings tab drives three things:
+off-band / over-power warnings, the antenna-gain → ERP/EIRP calculation, and a
+hard duty-cycle budget enforced in `radio.c`.
+
+### Enforcement model
+
+| Limit | Mode | Where |
+|---|---|---|
+| Frequency outside any sub-band | **soft** — Country/Frequency rows turn red, footer hint | `render.c` |
+| Effective power > sub-band max | **soft** — TX power row turns red | `render.c` (`region_effective_power_dbm`) |
+| Duty cycle (rolling 1 h airtime) | **hard** — TX blocked when budget spent | `radio.c` (Semtech time-on-air) |
+
+The split is deliberate: a wrong frequency or a few dB over is the operator's
+call to make (they may have a licence, or a directional antenna), but airtime
+hogging actively degrades the shared mesh, so the duty-cycle cap is enforced.
+
+> The data table is a guidance helper, **not legal advice**. It is also an
+> interim app-side implementation — radio-side enforcement may move into the
+> C6 firmware once upstream `tanmatsu-radio` grows a compliance layer.
+
+### Data schema
+
+```c
+typedef struct {
+    float    freq_min_mhz, freq_max_mhz;
+    int8_t   max_power_dbm;        // unit per containing country (ERP or EIRP)
+    uint16_t duty_cycle_permille;  // 1000 = none, 100 = 10%, 10 = 1%, 1 = 0.1%
+    bool     lbt_alternative;      // LBT may replace duty cycle (informational)
+    uint16_t max_dwell_time_ms;    // 0 = none (FCC FHSS = 400)
+    const char *label;             // e.g. "g3"
+} regulatory_subband_t;
+
+typedef struct {
+    const char *country_code;      // ISO 3166-1 alpha-2
+    const char *display_name;
+    power_unit_t power_unit;       // POWER_UNIT_ERP | POWER_UNIT_EIRP
+    const regulatory_subband_t *subbands;
+    uint8_t n_subbands;
+} regulatory_country_t;
+```
+
+### ERP vs EIRP
+
+The EU regulates in **ERP** (dipole reference); the US/JP/AU/NZ/etc in **EIRP**
+(isotropic). The app converts your conducted TX power to the country's unit
+before comparing against the limit:
+
+```
+ERP  = conducted_dBm + antenna_gain_dBi − 2.15
+EIRP = conducted_dBm + antenna_gain_dBi
+```
+
+So at the SX1262's 22 dBm conducted ceiling with a 0 dBi antenna you radiate
+~19.85 dBm ERP — comfortably under the EU g3 limit of 27 dBm ERP.
+
+### EU 863–870 MHz sub-bands (ERP) — `EU868_SUBBANDS`
+
+| Band | Range (MHz) | Max power | Duty cycle |
+|---|---|---|---|
+| g | 863.0–865.0 | 14 dBm | 0.1% |
+| g1 | 865.0–868.0 | 14 dBm | 1% |
+| g1' | 868.0–868.6 | 14 dBm | 1% |
+| g2 | 868.7–869.2 | 14 dBm | 0.1% |
+| **g3** | **869.4–869.65** | **27 dBm** | **10%** |
+| g4 | 869.7–870.0 | 14 dBm | 1% |
+
+Used by: NL, BE, DE, AT, FR, CH, UK, IT, ES, PT, SE, NO, DK, FI, PL, CZ, IE,
+UA, ZA (19 countries). Default **869.618 MHz → g3**.
+
+### Other regions
+
+| Constant | Countries | Range (MHz) | Max power | Duty / dwell |
+|---|---|---|---|---|
+| `EU433_SUBBANDS` | 433 SRD | 433.05–434.79 | 10 dBm ERP | 10% |
+| `US915_SUBBANDS` | US, CA, MX | 902–928 | 30 dBm EIRP | none (FHSS dwell 400 ms info) |
+| `ANZ915_SUBBANDS` | AU, NZ | 915–928 | 30 dBm EIRP | none |
+| `JP920_SUBBANDS` | JP | 920.5–923.5 | 13 dBm EIRP | 10% + LBT required |
+| `KR920_SUBBANDS` | KR | 920.0–923.0 | 14 dBm EIRP | 10% |
+| `IN865_SUBBANDS` | IN | 865.0–867.0 | 30 dBm EIRP | none |
+| `RU864_SUBBANDS` | RU | 864–865 / 868.7–869.2 | 14 dBm ERP | 0.1% |
+
+### Duty-cycle accounting
+
+`radio.c` keeps 60 one-minute airtime buckets (rolling hour). Every TX path
+estimates on-air time with the Semtech LoRa time-on-air formula (AN1200.13)
+and checks `dc_budget_available()` before sending; `region_dc_budget_ms_per_hour`
+turns the sub-band's permille into the ms/hour budget (10% → 360 000 ms). The
+Settings *Duty cycle (1h)* row surfaces `used.x% (used s / budget s)` and
+appends `BLOCKED` when a send was just refused.
+
+### Sources
+
+- EU 863–870: ETSI EN 300 220 V3.2.1 + ERC-REC-70-03
+- US 902–928: FCC Part 15.247 / 15.249
+- Country→band mapping: Lansitec LoRaWAN frequency-plan reference
+- Cross-check only: Meshtastic `src/mesh/RadioInterface.cpp` (it collapses each
+  region to a single sub-band; we keep full EU sub-band granularity)

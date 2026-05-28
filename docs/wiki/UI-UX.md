@@ -64,6 +64,32 @@ Settings and Nodes tabs use a local `footer_h = 60` for their 2-line footer
 `edit_mode` and `field_editing_text` are the two flags. `field_edit_buf` is
 a shared 33-byte text scratch; `selected` is the current row index.
 
+## Settings sections & contextual hints
+
+`render_settings` walks the `field_t` enum top to bottom (enum order = display
+order) and inserts an amber, underlined **section heading** before the first
+field of each group:
+
+| Section | Fields |
+|---|---|
+| Device & identity | Radio chip, Radio firmware, Owner name, Advert name |
+| Regulatory | Country, Antenna gain, Duty cycle |
+| Radio | Frequency, SF, BW, CR, TX power, Sync word, Preamble, LoRa preset, RX sensitivity |
+| Network & behavior | Advert interval, Role, Path hash size |
+| Region & location | Region scope, GPS latitude, GPS longitude |
+
+Headings are display-only rows (not selectable). Scrolling is **pixel-based**
+(`settings_scroll` is a pixel offset, not a row index) so the shorter heading
+rows scroll with the list; the list region is `pax_clip`-ed so partial rows at
+the edges don't bleed into the tab bar or footer. Everything from `FIELD_FREQ`
+onward is a radio-config field and is greyed amber when the C6 is unavailable.
+
+The first footer line is **contextual** to the selected field — e.g. Sync word
+and Preamble explain themselves, and Country / Frequency / TX power / Duty cycle
+show the active country sub-band's limits (`<country> <band>: <range> MHz,
+max <n> dBm ERP/EIRP, <n>% duty cycle`, or an off-band warning). See the
+[Regulatory compliance](Settings-NVS.md#regulatory-compliance) section.
+
 ## DM inbox mode (`dm_inbox_mode`)
 
 The DM tab has two states:
