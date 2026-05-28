@@ -877,6 +877,130 @@ static void render_nodes(void) {
     blit();
 }
 
+// ── Wrapped chat-message rendering (shared by DM + Channel views) ────────────
+#define MSG_MAX_LINES 8
+
+// Greedy word-wrap of `text` to fit `max_w` px at FONT/TXT_BODY. Fills `out`
+// with NUL-terminated lines and returns the count (>=1). A word longer than a
+// line is left on its own line (clipped). Safe: `p` always advances, bounded
+// by max_lines. Measures with emoji_measure_text so emoji widths count.
+static int msg_wrap(const char *text, int max_w, char out[][MAX_MSG_TEXT], int max_lines) {
+    int  nl = 0;
+    char line[MAX_MSG_TEXT] = {0};
+    int  ll = 0;
+    const char *p = text;
+    while (*p && nl < max_lines) {
+        const char *w0 = p;
+        while (*p && *p != ' ') p++;   // word
+        while (*p == ' ') p++;          // trailing spaces
+        int wlen = (int)(p - w0);
+        if (wlen > MAX_MSG_TEXT - 1) wlen = MAX_MSG_TEXT - 1;
+
+        char cand[MAX_MSG_TEXT];
+        int  copy = wlen;
+        if (ll + copy > MAX_MSG_TEXT - 1) copy = MAX_MSG_TEXT - 1 - ll;
+        if (ll) memcpy(cand, line, ll);
+        memcpy(cand + ll, w0, copy);
+        cand[ll + copy] = 0;
+
+        if (ll == 0 || emoji_measure_text(FONT, TXT_BODY, cand) <= max_w) {
+            memcpy(line, cand, ll + copy + 1);
+            ll += copy;
+        } else {
+            memcpy(out[nl], line, ll + 1);
+            nl++;
+            ll = (wlen < MAX_MSG_TEXT) ? wlen : MAX_MSG_TEXT - 1;
+            memcpy(line, w0, ll);
+            line[ll] = 0;
+        }
+    }
+    if (ll > 0 && nl < max_lines) { memcpy(out[nl], line, ll + 1); nl++; }
+    if (nl == 0) { out[0][0] = 0; nl = 1; }
+    return nl;
+}
+
+// Render a chat ring bottom-up with variable per-message height (wrapped text +
+// a tiny metadata line). `*scroll_p` is the 1-based logical index of the
+// bottom-most message to show (== count means newest pinned to the bottom);
+// it is clamped + written back so the D-pad scroll operates on the real value.
+// Caller must hold the ring's mutex.
+static void render_msg_list(int w, int list_y0, int list_h, chat_msg_t *msgs,
+                            int head, int count, int *scroll_p) {
+    if (count == 0) {
+        pax_draw_text(&fb, COL_GRAY, FONT, TXT_BODY, 14, list_y0 + 10,
+                      "No messages yet. Press T to type.");
+        return;
+    }
+    int sc = *scroll_p;
+    if (sc > count) sc = count;
+    if (sc < 1)     sc = 1;
+    *scroll_p = sc;
+
+    const int line_h  = TXT_BODY + 4;
+    const int avail_w = w - 32;
+    char lines[MSG_MAX_LINES][MAX_MSG_TEXT];
+
+    pax_clip(&fb, 0, list_y0, w, list_h);
+    int y = list_y0 + list_h;
+    for (int li = sc - 1; li >= 0 && y > list_y0; li--) {
+        int ring = (head - count + li + MAX_CHAT_MSGS * 2) % MAX_CHAT_MSGS;
+        chat_msg_t *m = &msgs[ring];
+        if (!m->active) continue;
+
+        int nl = msg_wrap(m->text, avail_w, lines, MSG_MAX_LINES);
+
+        char meta[64] = {0};
+        {
+            char tbuf[12] = {0};
+            if (m->timestamp_unix > 0) {
+                time_t t = (time_t)m->timestamp_unix; struct tm lt; localtime_r(&t, &lt);
+                snprintf(tbuf, sizeof(tbuf), "%02d:%02d", lt.tm_hour, lt.tm_min);
+            }
+            char hbuf[16] = {0};
+            if (!m->is_mine && m->hops != 0xFF) snprintf(hbuf, sizeof(hbuf), "%uh", (unsigned)m->hops);
+            const char *ack = NULL;
+            if (m->is_mine && m->ack_state == 1)      ack = "...";
+            else if (m->is_mine && m->ack_state == 2) ack = "ack";
+            int o = 0;
+            if (tbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s", tbuf);
+            if (hbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", hbuf);
+            if (ack)     o += snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", ack);
+        }
+        int meta_h = TXT_TINY + 2;
+        int mh     = nl * line_h + meta_h + 6;
+
+        y -= mh;
+        if (y + mh <= list_y0) break;  // fully above the list
+
+        if (m->is_mine) {
+            int maxw = 0;
+            for (int k = 0; k < nl; k++) {
+                int lw = emoji_measure_text(FONT, TXT_BODY, lines[k]);
+                if (lw > maxw) maxw = lw;
+            }
+            int bx = w - maxw - 16;
+            if (bx < 16) bx = 16;
+            pax_simple_rect(&fb, COL_PANEL, bx - 6, y + 2, maxw + 12, nl * line_h + meta_h + 2);
+            for (int k = 0; k < nl; k++) {
+                int lw = emoji_measure_text(FONT, TXT_BODY, lines[k]);
+                emoji_draw_text(&fb, COL_BLUE, FONT, TXT_BODY, w - lw - 16, y + 4 + k * line_h, lines[k]);
+            }
+            pax_col_t mc = (m->ack_state == 2) ? COL_GREEN : COL_GRAY;
+            const char *ml = meta[0] ? meta : "You";
+            pax_vec2f msz = pax_text_size(FONT, TXT_TINY, ml);
+            pax_draw_text(&fb, mc, FONT, TXT_TINY, w - (int)msz.x - 16, y + 4 + nl * line_h, ml);
+        } else {
+            for (int k = 0; k < nl; k++) {
+                emoji_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 14, y + 4 + k * line_h, lines[k]);
+            }
+            if (meta[0]) {
+                pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, 14, y + 4 + nl * line_h, meta);
+            }
+        }
+    }
+    pax_noclip(&fb);
+}
+
 static void render_chat(void) {
     int w  = (int)pax_buf_get_width(&fb);
     int h  = (int)pax_buf_get_height(&fb);
@@ -1012,8 +1136,6 @@ static void render_chat(void) {
     int input_y = h - CHAT_INPUT_H - FOOTER_H;
     int list_y0 = CHAT_Y0 + 32;
     int list_h  = input_y - list_y0;
-    int rows_vis = list_h / CHAT_ROW_H;
-
     pax_simple_rect(&fb, COL_PANEL, 0, CHAT_Y0, w, 28);
     {
         char hdr[MESHCORE_MAX_NAME_SIZE + 24];
@@ -1022,69 +1144,7 @@ static void render_chat(void) {
     }
 
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        if (chat_count == 0) {
-            pax_draw_text(&fb, COL_GRAY, FONT, TXT_BODY, 14, list_y0 + 10,
-                          "No messages yet. Press T to type.");
-        } else {
-            int max_scroll = chat_count;
-            if (chat_scroll > max_scroll) chat_scroll = max_scroll;
-            if (chat_scroll < rows_vis)   chat_scroll = rows_vis;
-
-            for (int row = 0; row < rows_vis; row++) {
-                int msg_idx_in_list = chat_scroll - rows_vis + row;
-                if (msg_idx_in_list < 0) continue;
-                int ring_idx = (chat_head - chat_count + msg_idx_in_list + MAX_CHAT_MSGS * 2) % MAX_CHAT_MSGS;
-                chat_msg_t *m = &chat_msgs[ring_idx];
-                if (!m->active) continue;
-
-                int y = list_y0 + row * CHAT_ROW_H;
-
-                // Footer metadata line: HH:MM · Nh · ack
-                char meta[64] = {0};
-                {
-                    char tbuf[12] = {0};
-                    if (m->timestamp_unix > 0) {
-                        time_t t = (time_t)m->timestamp_unix;
-                        struct tm lt;
-                        localtime_r(&t, &lt);
-                        snprintf(tbuf, sizeof(tbuf), "%02d:%02d", lt.tm_hour, lt.tm_min);
-                    }
-                    char hbuf[16] = {0};
-                    if (!m->is_mine && m->hops != 0xFF) {
-                        snprintf(hbuf, sizeof(hbuf), "%uh", (unsigned)m->hops);
-                    }
-                    const char *ack = NULL;
-                    if (m->is_mine && m->ack_state == 1)      ack = "...";
-                    else if (m->is_mine && m->ack_state == 2) ack = "ack";
-                    int o = 0;
-                    if (tbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s", tbuf);
-                    if (hbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", hbuf);
-                    if (ack)     o += snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", ack);
-                }
-
-                if (m->is_mine) {
-                    int text_w = emoji_measure_text(FONT, TXT_BODY, m->text);
-                    int tx = w - text_w - 16;
-                    if (tx < 16) tx = 16;
-                    pax_simple_rect(&fb, COL_PANEL, tx - 6, y + 2, text_w + 12, CHAT_ROW_H - 8);
-                    emoji_draw_text(&fb, COL_BLUE, FONT, TXT_BODY, tx, y + 6, m->text);
-                    if (meta[0]) {
-                        pax_vec2f msz = pax_text_size(FONT, TXT_TINY, meta);
-                        pax_col_t mc  = (m->ack_state == 2) ? COL_GREEN : COL_GRAY;
-                        pax_draw_text(&fb, mc, FONT, TXT_TINY,
-                                      w - (int)msz.x - 16, y + CHAT_ROW_H - TXT_TINY - 4, meta);
-                    } else {
-                        pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, tx, y + CHAT_ROW_H - TXT_TINY - 4, "You");
-                    }
-                } else {
-                    emoji_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 14, y + 6, m->text);
-                    if (meta[0]) {
-                        pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, 14,
-                                      y + CHAT_ROW_H - TXT_TINY - 4, meta);
-                    }
-                }
-            }
-        }
+        render_msg_list(w, list_y0, list_h, chat_msgs, chat_head, chat_count, &chat_scroll);
         xSemaphoreGive(chat_mutex);
     }
 
@@ -1247,66 +1307,8 @@ static void render_channel(void) {
     int input_y = h - CHAT_INPUT_H - FOOTER_H;
     int list_y0 = CHAT_Y0 + hdr_h + 4;
     int list_h  = input_y - list_y0;
-    int rows_vis = list_h / CHAT_ROW_H;
-
     if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        if (ch_count == 0) {
-            pax_draw_text(&fb, COL_GRAY, FONT, TXT_BODY, 14, list_y0 + 10,
-                          "No channel messages yet. Press T to send.");
-        } else {
-            int max_scroll = ch_count;
-            if (ch_scroll > max_scroll) ch_scroll = max_scroll;
-            if (ch_scroll < rows_vis)   ch_scroll = rows_vis;
-
-            for (int row = 0; row < rows_vis; row++) {
-                int msg_idx = ch_scroll - rows_vis + row;
-                if (msg_idx < 0) continue;
-                int ring_idx = (ch_head - ch_count + msg_idx + MAX_CHAT_MSGS * 2) % MAX_CHAT_MSGS;
-                chat_msg_t *m = &ch_msgs[ring_idx];
-                if (!m->active) continue;
-
-                int y = list_y0 + row * CHAT_ROW_H;
-
-                char meta[64] = {0};
-                {
-                    char tbuf[12] = {0};
-                    if (m->timestamp_unix > 0) {
-                        time_t t = (time_t)m->timestamp_unix;
-                        struct tm lt;
-                        localtime_r(&t, &lt);
-                        snprintf(tbuf, sizeof(tbuf), "%02d:%02d", lt.tm_hour, lt.tm_min);
-                    }
-                    char hbuf[16] = {0};
-                    if (!m->is_mine && m->hops != 0xFF) {
-                        snprintf(hbuf, sizeof(hbuf), "%uh", (unsigned)m->hops);
-                    }
-                    int o = 0;
-                    if (tbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s", tbuf);
-                    if (hbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", hbuf);
-                }
-
-                if (m->is_mine) {
-                    int text_w = emoji_measure_text(FONT, TXT_BODY, m->text);
-                    int tx = w - text_w - 16;
-                    if (tx < 16) tx = 16;
-                    pax_simple_rect(&fb, COL_PANEL, tx - 6, y + 2, text_w + 12, CHAT_ROW_H - 8);
-                    emoji_draw_text(&fb, COL_BLUE, FONT, TXT_BODY, tx, y + 6, m->text);
-                    if (meta[0]) {
-                        pax_vec2f msz = pax_text_size(FONT, TXT_TINY, meta);
-                        pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY,
-                                      w - (int)msz.x - 16, y + CHAT_ROW_H - TXT_TINY - 4, meta);
-                    } else {
-                        pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, tx, y + CHAT_ROW_H - TXT_TINY - 4, "You");
-                    }
-                } else {
-                    emoji_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 14, y + 6, m->text);
-                    if (meta[0]) {
-                        pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, 14,
-                                      y + CHAT_ROW_H - TXT_TINY - 4, meta);
-                    }
-                }
-            }
-        }
+        render_msg_list(w, list_y0, list_h, ch_msgs, ch_head, ch_count, &ch_scroll);
         xSemaphoreGive(ch_mutex);
     }
 
