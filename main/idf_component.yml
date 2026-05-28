@@ -6,8 +6,10 @@ dependencies:
   nicolaielectronics/tanmatsu-lora:
     git: http://192.168.2.25:3000/CJ/tanmatsu-lora.git
     version: main
-    # Gitea fork of upstream HEAD (handle-based API) + local patches:
-    #   - per-packet RSSI/SNR stats on PACKET_RX + GET_RSSI_INST (noise floor)
+    # Gitea fork of upstream main. RSSI/SNR + GET_RSSI_INST are now MERGED
+    # upstream (PR #3). Fork retained only for two not-yet-upstream patches:
+    #   - rx_boost field (sensitivity toggle)
     #   - GET_FW_VERSION query (radio app version string)
-    # Pairs with tanmatsu-radio Gitea fork. Upstream PR for RSSI/SNR in
-    # review; FW-version is waiting on Renze's system-protocol refactor.
+    # Both wait on Renze's system-protocol/radio-side work; drop this fork
+    # and switch to nicolaielectronics/tanmatsu-lora once they land upstream.
+    # Pairs with tanmatsu-radio Gitea fork (same two extra commits).
