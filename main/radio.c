@@ -523,10 +523,10 @@ static void noise_floor_task(void *arg) {
         // 60s — 5s caused RX-decode failures (see 2026-05-23 diagnosis).
         vTaskDelay(pdMS_TO_TICKS(60000));
         if (!noise_floor_supported) continue;
-        uint8_t   raw = 0;
-        esp_err_t r   = lora_get_rssi_inst(&lora_handle, &raw);
+        float     rssi = 0.0f;
+        esp_err_t r    = lora_get_rssi_inst(&lora_handle, &rssi);  // v0.2.1: dBm as float
         if (r == ESP_OK) {
-            int dbm = -(int)raw / 2;
+            int dbm = (int)rssi;
             if (dbm < -127) dbm = -127;
             noise_floor_dbm   = (int8_t)dbm;
             noise_floor_valid = true;

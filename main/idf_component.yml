@@ -6,10 +6,11 @@ dependencies:
   nicolaielectronics/tanmatsu-lora:
     git: http://192.168.2.25:3000/CJ/tanmatsu-lora.git
     version: main
-    # Gitea fork of upstream main. RSSI/SNR + GET_RSSI_INST are now MERGED
-    # upstream (PR #3). Fork retained only for two not-yet-upstream patches:
-    #   - rx_boost field (sensitivity toggle)
-    #   - GET_FW_VERSION query (radio app version string)
-    # Both wait on Renze's system-protocol/radio-side work; drop this fork
-    # and switch to nicolaielectronics/tanmatsu-lora once they land upstream.
-    # Pairs with tanmatsu-radio Gitea fork (same two extra commits).
+    # Gitea fork of upstream v0.2.1 + one commit: rx_boost (RX-sensitivity
+    # toggle). Everything else — RSSI/SNR, GET_RSSI_INST (now float dBm) — is
+    # upstream. Pairs with the tanmatsu-radio Gitea fork, which carries two
+    # firmware fixes still pending upstream (see issue #18): the esp-hosted
+    # custom-handler limit (3->8 so LoRa registers) and an inverted RX-forward
+    # check. Drop this fork for nicolaielectronics/tanmatsu-lora once rx_boost
+    # lands upstream. (GET_FW_VERSION was dropped; re-add via the upstream
+    #  system protocol's get-information command when wired up.)
