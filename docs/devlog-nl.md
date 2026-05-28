@@ -194,3 +194,17 @@ Eén lange sessie met een serie kleine features en één pijnlijke schaal-bug. G
 
 💬 **Zet hulp op de plek van de twijfel.** De footer toont nu per geselecteerd veld een korte uitleg — Sync word en Preamble leggen zichzelf uit, en op Country/Frequentie/TX power/Duty cycle verschijnen de limieten van de actieve sub-band (range, max dBm ERP/EIRP, % duty). Les: contextuele micro-uitleg op het veld zelf is effectiever dan een losse handleiding die niemand opzoekt.
 
+---
+
+## Update — Upstream-firmware sync: twee één-regel-bugs gejaagd (mei 2026)
+
+De upstream-maintainer refactorde de radio-firmware ingrijpend (de lora-driver werd een component, nieuwe protocol-servers). Meegaan kostte twee dagen jagen op twee één-regel-firmwarebugs.
+
+🔌 **`esp_err_t` kaal in een `if` is een omgekeerde-logica-val.** Na de overstap kwam er niks meer binnen. De C6 ontving wél (console: "preamble → header → Data available!"), maar de host kreeg geen pakket. De dader: `if (lora_receive_packet(...))`, terwijl die functie `esp_err_t` teruggeeft — en `ESP_OK` is `0`. Dus bij een geslaagde ontvangst was de conditie `if(0)` → onwaar → nooit doorsturen. Eén `== ESP_OK` en RX werkte. Les: een functie met een "0 = succes"-conventie hoort niet kaal in een `if` — het leest als "if success" maar betekent "if failure".
+
+🪡 **Capture op de juiste laag wijst de bug aan.** Ik wist alleen "geen RX" — dat kon overal zitten (radio, transport, host-parsing). Door de C6-console mee te lezen terwijl een buurnode zond, zag ik dat de radio + interrupt + read-queue prima werkten. Dat sneed de zoekruimte in één klap weg: alles vóór de forward klopte, dus de bug zat ín de forward. Les: meet zo dicht mogelijk bij je vermoeden, en bevestig wat wél werkt — dat is net zo informatief als wat niet werkt.
+
+📇 **`ESP_ERR_NO_MEM` is niet altijd de heap.** De eerste blokkade was subtieler: de esp-hosted-slave heeft een vaste callback-tabel (`MAX_CUSTOM_MSG_HANDLERS=3`), maar de nieuwe firmware registreert er 6 (echo/ir/badgelink/system/ieee802154/lora). De eerste 3 pasten; de rest — incl. LoRa, als laatste geregistreerd — viel eraf met `ESP_ERR_NO_MEM`. De bootlog las als "geen geheugen", maar het was een volle vaste array. Les: lees de regel erboven (`No space for callback (max 3)`) vóór je heap gaat debuggen.
+
+🤝 **Synchroniseren met een bewegend doel.** De maintainer was diezelfde dag volop aan het refactoren (v3.1.0, system-protocol, launcher-updates). Onze fixes zijn één-regelaars: lokaal in onze fork toegepast om door te kunnen, én meteen als issue + reproductie + bootlog teruggemeld zodat het upstream gefixt wordt i.p.v. permanent in onze fork te leven. Les: bij een actief-bewegende upstream — fix lokaal om verder te komen, maar rapporteer direct met genoeg detail dat de maintainer het kan overnemen.
+

@@ -374,6 +374,24 @@ Per-conversation unread counters and scroll position live in RAM-only parallel a
 
 The footer now shows a short explanation per selected field — Sync word and Preamble explain themselves, and Country/Frequency/TX power/Duty cycle surface the active sub-band's limits (range, max dBm ERP/EIRP, % duty). Contextual micro-help on the field itself beats a separate manual nobody opens.
 
+## What I Learned Syncing to a Refactored Upstream
+
+### 46. `esp_err_t` in a bare `if` is an inverted-logic trap
+
+After switching to the refactored radio firmware, nothing was received. The C6 *was* receiving (its console showed `preamble → header → Data available!`), but the host got no packets. The culprit: `if (lora_receive_packet(...))`, where that function returns `esp_err_t` — and `ESP_OK == 0`. So on a successful receive the condition was `if (0)` → false → never forwarded. One `== ESP_OK` and RX worked. A function with a "0 = success" convention does not belong bare in an `if`: it reads as "if success" but means "if failure".
+
+### 47. Capture at the layer where you suspect the bug
+
+All I knew was "no RX" — which could live anywhere (radio, transport, host parsing). Reading the C6 console while a neighbour node transmitted showed the radio + interrupt + read-queue all working. That collapsed the search space instantly: everything before the forward was fine, so the bug was *in* the forward. Measure as close to the suspicion as you can, and confirm what *does* work — that's as informative as what doesn't.
+
+### 48. `ESP_ERR_NO_MEM` isn't always the heap
+
+The first blocker was subtler: the esp-hosted slave has a fixed custom-callback table (`MAX_CUSTOM_MSG_HANDLERS = 3`), but the new firmware registers six protocol servers. The first three fit; the rest — including LoRa, registered last — fell off with `ESP_ERR_NO_MEM`. The boot log read like "out of memory", but it was a full fixed array. Read the line above (`No space for callback (max 3)`) before you start chasing the heap.
+
+### 49. Syncing against a moving upstream: fix locally, report precisely
+
+The maintainer was actively refactoring that same day (v3.1.0, a system protocol, launcher updates). Both of our fixes are one-liners: applied locally in our fork to keep moving, and reported immediately as an issue with reproduction + boot log so they get fixed upstream instead of living forever in our fork. With a fast-moving upstream, patch locally to unblock, but report right away with enough detail that the maintainer can take it over.
+
 ---
 
 ## Links
