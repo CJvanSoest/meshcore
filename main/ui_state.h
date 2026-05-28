@@ -12,6 +12,8 @@ typedef enum {
     FIELD_RADIO_FW_APP,      // read-only — hand-maintained tanmatsu-radio app fw label
     FIELD_OWNER,
     FIELD_ADV_NAME,
+    FIELD_COUNTRY,           // regulatory country — gates freq/power warnings + DC enforcement
+    FIELD_ANTENNA_GAIN,      // dBi — only editable once country is set
     FIELD_FREQ,
     FIELD_SF,
     FIELD_BW,
@@ -23,9 +25,11 @@ typedef enum {
     FIELD_PRESET,
     FIELD_ROLE,
     FIELD_PATH_HASH_SIZE,
+    FIELD_SENSITIVITY,       // RX boost on/off (radio gain vs power-save)
     FIELD_REGION_SCOPE,
     FIELD_GPS_LAT,
     FIELD_GPS_LON,
+    FIELD_DUTY_CYCLE,        // read-only: rolling 1h airtime vs sub-band budget
     FIELD_COUNT,
 } field_t;
 

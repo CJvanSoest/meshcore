@@ -33,6 +33,7 @@
 #include "nodes.h"
 #include "qrcodegen.h"
 #include "radio.h"
+#include "region_limits.h"
 #include "settings_nvs.h"
 #include "ui_state.h"
 
@@ -214,6 +215,34 @@ static void render_settings(void) {
     snprintf(rows[FIELD_ADV_NAME].value, sizeof(rows[FIELD_ADV_NAME].value), "%s",
              lora_advert_name[0] ? lora_advert_name : "(use owner)");
 
+    rows[FIELD_COUNTRY].label = "Country";
+    {
+        const regulatory_country_t *rc = region_get_country(country_code);
+        if (!rc || rc->n_subbands == 0) {
+            snprintf(rows[FIELD_COUNTRY].value, sizeof(rows[FIELD_COUNTRY].value),
+                     "(not set)");
+        } else {
+            const regulatory_subband_t *sb = region_match_subband(
+                rc, (float)lora_cfg.frequency / 1000000.0f);
+            if (sb) {
+                snprintf(rows[FIELD_COUNTRY].value, sizeof(rows[FIELD_COUNTRY].value),
+                         "%s [%s]", rc->display_name, sb->label);
+            } else {
+                snprintf(rows[FIELD_COUNTRY].value, sizeof(rows[FIELD_COUNTRY].value),
+                         "%s [!off-band]", rc->display_name);
+            }
+        }
+    }
+
+    rows[FIELD_ANTENNA_GAIN].label = "Antenna gain";
+    if (country_code[0] == '-' || country_code[0] == '\0') {
+        snprintf(rows[FIELD_ANTENNA_GAIN].value, sizeof(rows[FIELD_ANTENNA_GAIN].value),
+                 "(set country)");
+    } else {
+        snprintf(rows[FIELD_ANTENNA_GAIN].value, sizeof(rows[FIELD_ANTENNA_GAIN].value),
+                 "%d dBi", (int)antenna_gain_dbi);
+    }
+
     rows[FIELD_FREQ].label = "Frequency";
     snprintf(rows[FIELD_FREQ].value, sizeof(rows[FIELD_FREQ].value),
              "%.3f MHz", (double)lora_cfg.frequency / 1000000.0);
@@ -264,6 +293,10 @@ static void render_settings(void) {
                  "%u byte (%s)", path_hash_size, hops[hi]);
     }
 
+    rows[FIELD_SENSITIVITY].label = "RX sensitivity";
+    snprintf(rows[FIELD_SENSITIVITY].value, sizeof(rows[FIELD_SENSITIVITY].value),
+             "%s", lora_cfg.rx_boost ? "High (+3dB)" : "Power save");
+
     rows[FIELD_REGION_SCOPE].label = "Region scope";
     snprintf(rows[FIELD_REGION_SCOPE].value, sizeof(rows[FIELD_REGION_SCOPE].value),
              "%s", region_scope[0] ? region_scope : "(not set)");
@@ -281,6 +314,22 @@ static void render_settings(void) {
                  "%.6f", (double)gps_lon_e6 / 1e6);
     } else {
         snprintf(rows[FIELD_GPS_LON].value, sizeof(rows[FIELD_GPS_LON].value), "(not set)");
+    }
+
+    rows[FIELD_DUTY_CYCLE].label = "Duty cycle (1h)";
+    if (dc_budget_ms == 0 || dc_budget_ms >= 3600000u) {
+        snprintf(rows[FIELD_DUTY_CYCLE].value, sizeof(rows[FIELD_DUTY_CYCLE].value),
+                 "%lus used (no limit)", (unsigned long)(dc_used_ms / 1000u));
+    } else {
+        // x10 fixed-point: pct_x10 = used * 1000 / budget. 360s budget,
+        // 36 ms airtime → 36*1000/360000 = 0.1%.
+        unsigned pct_x10 = (unsigned)(((uint64_t)dc_used_ms * 1000u) / dc_budget_ms);
+        snprintf(rows[FIELD_DUTY_CYCLE].value, sizeof(rows[FIELD_DUTY_CYCLE].value),
+                 "%u.%u%% (%lus / %lus)%s",
+                 pct_x10 / 10u, pct_x10 % 10u,
+                 (unsigned long)(dc_used_ms / 1000u),
+                 (unsigned long)(dc_budget_ms / 1000u),
+                 dc_last_tx_blocked ? " BLOCKED" : "");
     }
 
     const int row_h        = 44;
@@ -318,8 +367,24 @@ static void render_settings(void) {
         pax_draw_text(&fb, lbl_col, FONT, TXT_BODY, 18, y + text_y_off, rows[i].label);
 
         pax_col_t val_col;
+        bool regulatory_violation = false;
+        if (i == FIELD_FREQ || i == FIELD_POWER || i == FIELD_COUNTRY) {
+            const regulatory_country_t *rc = region_get_country(country_code);
+            if (rc && rc->n_subbands > 0) {
+                const regulatory_subband_t *sb = region_match_subband(
+                    rc, (float)lora_cfg.frequency / 1000000.0f);
+                if (!sb) {
+                    regulatory_violation = true;  // freq outside any sub-band
+                } else if (i == FIELD_POWER) {
+                    int8_t eff = region_effective_power_dbm(rc, (int8_t)lora_cfg.power, antenna_gain_dbi);
+                    if (eff > sb->max_power_dbm) regulatory_violation = true;
+                }
+            }
+        }
         if (i >= FIELD_FREQ && !c6_available) {
             val_col = COL_AMBER;
+        } else if (regulatory_violation) {
+            val_col = COL_RED;
         } else if (is_sel && edit_mode) {
             val_col = COL_AMBER;
         } else if (is_sel) {

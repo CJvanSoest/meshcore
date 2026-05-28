@@ -22,6 +22,9 @@
 #define NVS_LORA_ROLE       "lora.role"
 #define NVS_LORA_PATHHASH   "lora.pathhash"
 #define NVS_LORA_REGION     "lora.region"
+#define NVS_LORA_COUNTRY    "lora.country"
+#define NVS_LORA_ANT_GAIN   "lora.antgain"
+#define NVS_LORA_RX_BOOST   "lora.rxboost"
 #define NVS_GPS_LAT         "lora.gps.lat"
 #define NVS_GPS_LON         "lora.gps.lon"
 // Sentinel marking that GPS NVS values are stored in the current ×1e6 scale.
@@ -61,6 +64,8 @@ uint8_t                       path_hash_size       = LORA_DEF_PATHHASH;
 bool                          gps_position_valid   = false;
 int32_t                       gps_lat_e6           = 0;
 int32_t                       gps_lon_e6           = 0;
+char                          country_code[4]      = "--";
+int8_t                        antenna_gain_dbi     = 0;
 
 int lora_preset_match(void) {
     for (int i = 0; i < LORA_PRESET_COUNT; i++) {
@@ -128,6 +133,55 @@ void save_lora_advert_name(void) {
     nvs_close(handle);
     ESP_LOGI(TAG, "LoRa advert name saved: %s",
              lora_advert_name[0] ? lora_advert_name : "(cleared)");
+}
+
+// ── Regulatory country (ISO 3166-1 alpha-2) ──────────────────────────────────
+void load_country_code(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) {
+        strcpy(country_code, "--");
+        return;
+    }
+    size_t len = sizeof(country_code);
+    if (nvs_get_str(handle, NVS_LORA_COUNTRY, country_code, &len) != ESP_OK) {
+        strcpy(country_code, "--");
+    }
+    nvs_close(handle);
+}
+
+void save_country_code(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    if (country_code[0] == '\0' || strcmp(country_code, "--") == 0) {
+        nvs_erase_key(handle, NVS_LORA_COUNTRY);
+    } else {
+        nvs_set_str(handle, NVS_LORA_COUNTRY, country_code);
+    }
+    nvs_commit(handle);
+    nvs_close(handle);
+    ESP_LOGI(TAG, "Country code saved: %s", country_code);
+}
+
+// ── Antenna gain (dBi) ───────────────────────────────────────────────────────
+void load_antenna_gain(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
+    int8_t v = 0;
+    if (nvs_get_i8(handle, NVS_LORA_ANT_GAIN, &v) == ESP_OK) {
+        if (v < -3) v = -3;
+        if (v > 15) v = 15;
+        antenna_gain_dbi = v;
+    }
+    nvs_close(handle);
+}
+
+void save_antenna_gain(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    nvs_set_i8(handle, NVS_LORA_ANT_GAIN, antenna_gain_dbi);
+    nvs_commit(handle);
+    nvs_close(handle);
+    ESP_LOGI(TAG, "Antenna gain saved: %d dBi", (int)antenna_gain_dbi);
 }
 
 // ── Region scope ─────────────────────────────────────────────────────────────
@@ -230,6 +284,7 @@ void load_lora_from_nvs(void) {
     lora_cfg.crc_enabled                = true;
     lora_cfg.invert_iq                  = false;
     lora_cfg.low_data_rate_optimization = false;
+    lora_cfg.rx_boost                   = true;  // boosted RX by default (+3 dB)
 
     nvs_handle_t handle;
     if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
@@ -251,6 +306,10 @@ void load_lora_from_nvs(void) {
     if (nvs_get_u8(handle, NVS_LORA_PATHHASH, &phs) == ESP_OK && phs >= 1 && phs <= 3) {
         path_hash_size = phs;
     }
+    uint8_t rxb = 0;
+    if (nvs_get_u8(handle, NVS_LORA_RX_BOOST, &rxb) == ESP_OK) {
+        lora_cfg.rx_boost = (rxb != 0);
+    }
     nvs_close(handle);
 }
 
@@ -265,6 +324,7 @@ void save_lora_to_nvs(void) {
     nvs_set_u16(handle, NVS_LORA_ADVERT_INT, advert_interval_s);
     nvs_set_u8 (handle, NVS_LORA_ROLE,  (uint8_t)lora_role);
     nvs_set_u8 (handle, NVS_LORA_PATHHASH, path_hash_size);
+    nvs_set_u8 (handle, NVS_LORA_RX_BOOST, lora_cfg.rx_boost ? 1 : 0);
     nvs_commit(handle);
     nvs_close(handle);
     ESP_LOGI(TAG, "LoRa config saved to NVS");
