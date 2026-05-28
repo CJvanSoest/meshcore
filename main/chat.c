@@ -14,6 +14,7 @@
 #include "bsp/tanmatsu.h"
 #include "tanmatsu_coprocessor.h"
 
+#include "channels.h"
 #include "emoji.h"
 #include "history.h"
 
@@ -153,20 +154,54 @@ void dm_select_target(const uint8_t pub[32], const char *name) {
     history_load_dm(pub, chat_ring_add_from_disk);
 }
 
-void ch_add_message(const char *text, bool is_mine) {
-    if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+// Channel message with explicit channel context: always persist to that
+// channel's own history file; only push onto the visible ring if that channel
+// is the active one. Returns true if it was added to the visible ring (so the
+// RX path knows whether per-message meta applies). ch_idx out of range is
+// treated as "persist nowhere, ring only" — shouldn't happen in practice.
+bool ch_add_message_for(int ch_idx, const char *text, bool is_mine) {
+    char sanitized[MAX_MSG_TEXT];
+    utf8_sanitize(sanitized, MAX_MSG_TEXT, text);
+
+    if (ch_idx >= 0 && ch_idx < CHANNELS_MAX && channels[ch_idx].active) {
+        history_append_channel(channels[ch_idx].secret, sanitized, is_mine);
+    }
+
+    bool to_ring = (ch_idx == active_channel_idx);
+    if (!to_ring) return false;
+
+    if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return false;
     chat_msg_t *m   = &ch_msgs[ch_head];
     memset(m, 0, sizeof(*m));
     m->active       = true;
     m->is_mine      = is_mine;
     msg_init_meta(m, is_mine);
-    utf8_sanitize(m->text, MAX_MSG_TEXT, text);
+    strncpy(m->text, sanitized, MAX_MSG_TEXT - 1);
+    m->text[MAX_MSG_TEXT - 1] = '\0';
     ch_head = (ch_head + 1) % MAX_CHAT_MSGS;
     if (ch_count < MAX_CHAT_MSGS) ch_count++;
     ch_scroll = ch_count;
     xSemaphoreGive(ch_mutex);
+    return true;
+}
 
-    history_append_channel(m->text, is_mine);
+// Convenience for own outgoing messages — always target the active channel.
+void ch_add_message(const char *text, bool is_mine) {
+    ch_add_message_for(active_channel_idx, text, is_mine);
+}
+
+// Switch the active channel + reload its history from SD into the visible ring.
+void ch_select_channel(int idx) {
+    if (idx < 0 || idx >= CHANNELS_MAX || !channels[idx].active) return;
+    active_channel_idx = idx;
+    if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+        memset(ch_msgs, 0, sizeof(ch_msgs));
+        ch_head   = 0;
+        ch_count  = 0;
+        ch_scroll = 0;
+        xSemaphoreGive(ch_mutex);
+    }
+    history_load_channel(channels[idx].secret, ch_ring_add_from_disk);
 }
 
 void update_notification_led(void) {

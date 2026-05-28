@@ -19,12 +19,15 @@ void history_init(const uint8_t prv_key[32]);
 const char *history_status(void);
 bool        history_is_ready(void);
 
-void history_append_channel(const char *text, bool is_mine);
-void history_load_channel(history_ring_add_fn add);
+// Per-channel history keyed by the 16-byte channel secret (file name uses an
+// 8-byte secret prefix as hex, mirroring the per-DM scheme). Each channel keeps
+// its own log so messages don't bleed across channels.
+void history_append_channel(const uint8_t secret[16], const char *text, bool is_mine);
+void history_load_channel(const uint8_t secret[16], history_ring_add_fn add);
+void history_delete_channel(const uint8_t secret[16]);
 
 void history_append_dm(const uint8_t peer_pub[32], const char *text, bool is_mine);
 void history_load_dm  (const uint8_t peer_pub[32], history_ring_add_fn add);
 
-// Remove on-disk history files. No-ops if SD is not mounted.
-void history_delete_channel(void);
+// Remove on-disk DM history file. No-op if SD is not mounted.
 void history_delete_dm(const uint8_t peer_pub[32]);

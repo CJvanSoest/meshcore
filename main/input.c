@@ -356,7 +356,7 @@ void handle_nav(uint32_t key) {
         if (current_view == VIEW_CHANNEL && channel_list_mode && !channel_adding) {
             if (channel_list_cursor >= 0 && channel_list_cursor < channel_count &&
                 channels[channel_list_cursor].active) {
-                active_channel_idx = channel_list_cursor;
+                ch_select_channel(channel_list_cursor);  // clears + reloads this channel's history
                 channel_list_mode  = false;
             }
             return;
@@ -597,7 +597,7 @@ void handle_key(char c) {
         if (c == '\r' || c == '\n') {
             if (channel_list_cursor >= 0 && channel_list_cursor < channel_count &&
                 channels[channel_list_cursor].active) {
-                active_channel_idx = channel_list_cursor;
+                ch_select_channel(channel_list_cursor);  // clears + reloads this channel's history
                 channel_list_mode  = false;
             }
             return;
@@ -837,8 +837,8 @@ void handle_key(char c) {
             dirty              = false;
             edit_mode          = false;
             field_editing_text = false;
-        } else if (current_view == VIEW_CHANNEL && !chat_typing) {
-            // Wipe channel history (RAM ring + on-disk file).
+        } else if (current_view == VIEW_CHANNEL && !chat_typing && !channel_list_mode) {
+            // Wipe ONLY the active channel's history (RAM ring + its own file).
             if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
                 memset(ch_msgs, 0, sizeof(ch_msgs));
                 ch_head    = 0;
@@ -846,8 +846,12 @@ void handle_key(char c) {
                 ch_scroll  = 0;
                 xSemaphoreGive(ch_mutex);
             }
-            history_delete_channel();
-            ESP_LOGI(TAG, "Channel history cleared by user (R)");
+            if (active_channel_idx >= 0 && active_channel_idx < channel_count &&
+                channels[active_channel_idx].active) {
+                history_delete_channel(channels[active_channel_idx].secret);
+            }
+            ESP_LOGI(TAG, "Channel history cleared by user (R): %s",
+                     channels[active_channel_idx].name);
         }
     } else if ((c == 'd' || c == 'D') && current_view == VIEW_CHAT && dm_inbox_mode && !chat_typing) {
         // Delete selected DM conversation: history file + contact from NVS.

@@ -605,13 +605,15 @@ static void lora_rx_task(void *arg) {
                                          channels[ci].name, attempt.decrypted.text);
                                 // Channel context lives in the chat header; no
                                 // inline [#name] prefix on the message body.
-                                ch_add_message(attempt.decrypted.text, false);
-                                {
+                                // Routes to channel ci's own history; only hits
+                                // the visible ring if ci is the active channel.
+                                bool added = ch_add_message_for(ci, attempt.decrypted.text, false);
+                                if (added) {
                                     uint8_t bph  = mc_msg.bytes_per_hop ? mc_msg.bytes_per_hop : 1;
                                     uint8_t hops = (uint8_t)(mc_msg.path_length / bph);
                                     chat_set_meta_channel(hops);
                                 }
-                                if (current_view != VIEW_CHANNEL) {
+                                if (!(added && current_view == VIEW_CHANNEL)) {
                                     led_channel_pending = true;
                                     channel_unread_count++;
                                     update_notification_led();
@@ -629,13 +631,13 @@ static void lora_rx_task(void *arg) {
                                 if (decrypt_grp_txt(&attempt, channels[ci].secret)) {
                                     ESP_LOGI(TAG, "Channel RX [%s] (hash mismatch): %s",
                                              channels[ci].name, attempt.decrypted.text);
-                                    ch_add_message(attempt.decrypted.text, false);
-                                    {
+                                    bool added = ch_add_message_for(ci, attempt.decrypted.text, false);
+                                    if (added) {
                                         uint8_t bph  = mc_msg.bytes_per_hop ? mc_msg.bytes_per_hop : 1;
                                         uint8_t hops = (uint8_t)(mc_msg.path_length / bph);
                                         chat_set_meta_channel(hops);
                                     }
-                                    if (current_view != VIEW_CHANNEL) {
+                                    if (!(added && current_view == VIEW_CHANNEL)) {
                                         led_channel_pending = true;
                                         channel_unread_count++;
                                         update_notification_led();
