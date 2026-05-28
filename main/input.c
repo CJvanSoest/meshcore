@@ -245,7 +245,10 @@ void handle_nav(uint32_t key) {
     if (emoji_picker_active && chat_typing &&
         (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL)) {
         const int cols = 4;
-        if (key == BSP_INPUT_NAVIGATION_KEY_ESC || key == BSP_INPUT_NAVIGATION_KEY_F1) {
+        // ESC/F1 close; F4 (the green circle) toggles — pressing it again closes
+        // the picker instead of leaving it stuck open (which blocked leaving chat).
+        if (key == BSP_INPUT_NAVIGATION_KEY_ESC || key == BSP_INPUT_NAVIGATION_KEY_F1 ||
+            key == BSP_INPUT_NAVIGATION_KEY_F4) {
             emoji_picker_active = false;
             return;
         }
