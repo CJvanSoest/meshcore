@@ -315,6 +315,10 @@ void handle_nav(uint32_t key) {
             if (dm_inbox_cursor > 0) dm_inbox_cursor--;
         } else if (current_view == VIEW_CHANNEL && channel_list_mode && !channel_adding) {
             if (channel_list_cursor > 0) channel_list_cursor--;
+        } else if (current_view == VIEW_CHAT && !dm_inbox_mode) {
+            if (chat_scroll > 0) chat_scroll--;          // scroll up through DM history
+        } else if (current_view == VIEW_CHANNEL && !channel_list_mode && !channel_adding) {
+            if (ch_scroll > 0) ch_scroll--;              // scroll up through channel history
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
         if (current_view == VIEW_SETTINGS) {
@@ -330,6 +334,10 @@ void handle_nav(uint32_t key) {
             if (dm_inbox_cursor < upper) dm_inbox_cursor++;
         } else if (current_view == VIEW_CHANNEL && channel_list_mode && !channel_adding) {
             if (channel_list_cursor < channel_count - 1) channel_list_cursor++;
+        } else if (current_view == VIEW_CHAT && !dm_inbox_mode) {
+            chat_scroll++;                                // scroll down (render clamps to newest)
+        } else if (current_view == VIEW_CHANNEL && !channel_list_mode && !channel_adding) {
+            ch_scroll++;                                  // scroll down (render clamps to newest)
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_LEFT) {
         if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, -1);
@@ -433,7 +441,6 @@ void handle_nav(uint32_t key) {
                 current_view    = VIEW_CHAT;
                 dm_inbox_mode   = false;
                 led_dm_pending  = false;
-                dm_unread_count = 0;
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {
@@ -692,14 +699,12 @@ void handle_key(char c) {
             if (current_view == VIEW_CHAT) {
                 dm_inbox_mode    = true;
                 led_dm_pending   = false;
-                dm_unread_count  = 0;
                 update_notification_led();
             }
             if (current_view == VIEW_CHANNEL) {
                 channel_list_mode    = true;
                 channel_adding       = false;
                 led_channel_pending  = false;
-                channel_unread_count = 0;
                 update_notification_led();
             }
         }
@@ -800,7 +805,6 @@ void handle_key(char c) {
                 current_view    = VIEW_CHAT;
                 dm_inbox_mode   = false;
                 led_dm_pending  = false;
-                dm_unread_count = 0;
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {

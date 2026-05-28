@@ -15,6 +15,7 @@ static const char *TAG = "contacts";
 
 contact_t contacts[MAX_CONTACTS];
 int       contact_count = 0;
+int       contact_unread[MAX_CONTACTS] = {0};
 
 void contacts_load(void) {
     contact_count = 0;
@@ -60,12 +61,14 @@ int contact_find(const uint8_t *pub) {
 int contact_ensure(const uint8_t *pub, const char *name, uint8_t role) {
     if (contact_find(pub) >= 0) return 0;
     if (contact_count >= MAX_CONTACTS) return -1;
+    int slot = contact_count;
     contact_t *c = &contacts[contact_count++];
     memcpy(c->pub_key, pub, MESHCORE_PUB_KEY_SIZE);
     strncpy(c->alias, name ? name : "", CONTACT_ALIAS_LEN - 1);
     c->alias[CONTACT_ALIAS_LEN - 1] = '\0';
     c->role  = role;
     c->flags = 0;
+    contact_unread[slot] = 0;
     contacts_save();
     return 1;
 }
@@ -74,19 +77,41 @@ int contact_ensure(const uint8_t *pub, const char *name, uint8_t role) {
 int contact_toggle(const uint8_t *pub, const char *name, uint8_t role) {
     int idx = contact_find(pub);
     if (idx >= 0) {
-        for (int i = idx; i < contact_count - 1; i++) contacts[i] = contacts[i + 1];
+        for (int i = idx; i < contact_count - 1; i++) {
+            contacts[i]       = contacts[i + 1];
+            contact_unread[i] = contact_unread[i + 1];
+        }
         contact_count--;
         memset(&contacts[contact_count], 0, sizeof(contact_t));
+        contact_unread[contact_count] = 0;
         contacts_save();
         return 0;
     }
     if (contact_count >= MAX_CONTACTS) return -1;
+    int slot = contact_count;
     contact_t *c = &contacts[contact_count++];
     memcpy(c->pub_key, pub, MESHCORE_PUB_KEY_SIZE);
     strncpy(c->alias, name ? name : "", CONTACT_ALIAS_LEN - 1);
     c->alias[CONTACT_ALIAS_LEN - 1] = '\0';
     c->role  = role;
     c->flags = 0;
+    contact_unread[slot] = 0;
     contacts_save();
     return 1;
+}
+
+void contact_mark_unread(const uint8_t *pub) {
+    int idx = contact_find(pub);
+    if (idx >= 0) contact_unread[idx]++;
+}
+
+void contact_clear_unread(const uint8_t *pub) {
+    int idx = contact_find(pub);
+    if (idx >= 0) contact_unread[idx] = 0;
+}
+
+int contact_unread_total(void) {
+    int sum = 0;
+    for (int i = 0; i < contact_count; i++) sum += contact_unread[i];
+    return sum;
 }

@@ -615,7 +615,7 @@ static void lora_rx_task(void *arg) {
                                 }
                                 if (!(added && current_view == VIEW_CHANNEL)) {
                                     led_channel_pending = true;
-                                    channel_unread_count++;
+                                    channel_unread[ci]++;
                                     update_notification_led();
                                 }
                                 decrypted = true;
@@ -639,7 +639,7 @@ static void lora_rx_task(void *arg) {
                                     }
                                     if (!(added && current_view == VIEW_CHANNEL)) {
                                         led_channel_pending = true;
-                                        channel_unread_count++;
+                                        channel_unread[ci]++;
                                         update_notification_led();
                                     }
                                     break;
@@ -768,7 +768,7 @@ static void lora_rx_task(void *arg) {
                                                memcmp(sender_pub, dm_target_pub, MESHCORE_PUB_KEY_SIZE) == 0);
                         if (!viewing_sender) {
                             led_dm_pending = true;
-                            dm_unread_count++;
+                            contact_mark_unread(sender_pub);
                             update_notification_led();
                         }
 
