@@ -70,8 +70,9 @@ static void render_tab_bar(void) {
         pax_vec2f sz  = pax_text_size(FONT, TXT_TAB, tab_labels[i]);
 
         // Unread badge: red pill with count, drawn right of the label.
-        int unread = (i == VIEW_CHAT) ? dm_unread_count
-                   : (i == VIEW_CHANNEL) ? channel_unread_count : 0;
+        // Tab total = sum over all conversations; clears as each is opened.
+        int unread = (i == VIEW_CHAT) ? contact_unread_total()
+                   : (i == VIEW_CHANNEL) ? channel_unread_total() : 0;
         int badge_w = 0;
         char badge_txt[8] = {0};
         if (unread > 0) {
@@ -883,7 +884,24 @@ static void render_chat(void) {
                               av_y + (av_d - TXT_TITLE) / 2 - 1, init);
 
                 pax_col_t name_col = is_cursor ? COL_WHITE : COL_WHITE;
-                pax_draw_text(&fb, name_col, FONT, TXT_BODY, av_x + av_d + 12, y + 6, name);
+                int name_x = av_x + av_d + 12;
+                pax_draw_text(&fb, name_col, FONT, TXT_BODY, name_x, y + 6, name);
+
+                // Per-contact unread badge (red pill) just right of the name.
+                int row_slot   = is_active ? contact_find(dm_target_pub) : e;
+                int row_unread = (row_slot >= 0) ? contact_unread[row_slot] : 0;
+                if (row_unread > 0) {
+                    char ub[8];
+                    snprintf(ub, sizeof(ub), "%d", row_unread > 99 ? 99 : row_unread);
+                    pax_vec2f nsz = pax_text_size(FONT, TXT_BODY, name);
+                    pax_vec2f usz = pax_text_size(FONT, TXT_SMALL, ub);
+                    int bw = (int)usz.x + 12;
+                    int bx = name_x + (int)nsz.x + 8;
+                    int by = y + 6;
+                    pax_simple_rect(&fb, COL_RED, bx, by, bw, TXT_SMALL + 4);
+                    pax_draw_text(&fb, COL_HEADER, FONT, TXT_SMALL,
+                                  bx + 6, by + 2, ub);
+                }
 
                 const char *rl = role_label(role);
                 char sub[64];
@@ -1075,6 +1093,19 @@ static void render_channel_list(int w, int h) {
             pax_draw_text(&fb, COL_GREEN, FONT, TXT_BODY, 18, text_y, ">");
         }
         pax_draw_text(&fb, name_col, FONT, TXT_BODY, 40, text_y, channels[i].name);
+
+        // Per-channel unread badge (red pill) just right of the name.
+        if (channel_unread[i] > 0) {
+            char ub[8];
+            snprintf(ub, sizeof(ub), "%d", channel_unread[i] > 99 ? 99 : channel_unread[i]);
+            pax_vec2f nsz = pax_text_size(FONT, TXT_BODY, channels[i].name);
+            pax_vec2f usz = pax_text_size(FONT, TXT_SMALL, ub);
+            int bw = (int)usz.x + 12;
+            int bx = 40 + (int)nsz.x + 8;
+            int by = y + (row_h - (TXT_SMALL + 4)) / 2;
+            pax_simple_rect(&fb, COL_RED, bx, by, bw, TXT_SMALL + 4);
+            pax_draw_text(&fb, COL_HEADER, FONT, TXT_SMALL, bx + 6, by + 2, ub);
+        }
 
         char meta[24];
         snprintf(meta, sizeof(meta), "0x%02X", channels[i].hash);

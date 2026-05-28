@@ -24,6 +24,15 @@ static const uint8_t PUBLIC_GROUP_PSK[16] = {
 channel_t channels[CHANNELS_MAX] = {0};
 int       channel_count          = 0;
 int       active_channel_idx     = 0;
+int       channel_unread[CHANNELS_MAX] = {0};
+
+int channel_unread_total(void) {
+    int sum = 0;
+    for (int i = 0; i < CHANNELS_MAX; i++) {
+        if (channels[i].active) sum += channel_unread[i];
+    }
+    return sum;
+}
 
 bool channel_list_mode    = true;
 int  channel_list_cursor  = 0;
@@ -164,6 +173,7 @@ int channels_add_with_secret(const char *name, const uint8_t secret[CHANNEL_SECR
     ch->name[CHANNEL_NAME_MAX_LEN] = '\0';
     memcpy(ch->secret, secret, CHANNEL_SECRET_LEN);
     compute_hash(ch);
+    channel_unread[slot] = 0;
     if (slot + 1 > channel_count) channel_count = slot + 1;
     channels_save_nvs();
     ESP_LOGI(TAG, "Added channel[%d] %s hash=0x%02X", slot, ch->name, ch->hash);
@@ -181,6 +191,7 @@ bool channels_remove(int idx) {
     if (idx <= 0 || idx >= CHANNELS_MAX) return false;  // Public cannot be removed
     if (!channels[idx].active) return false;
     memset(&channels[idx], 0, sizeof(channels[idx]));
+    channel_unread[idx] = 0;
     // Compact channel_count
     int last = 0;
     for (int i = 0; i < CHANNELS_MAX; i++) {

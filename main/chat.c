@@ -15,6 +15,7 @@
 #include "tanmatsu_coprocessor.h"
 
 #include "channels.h"
+#include "contacts.h"
 #include "emoji.h"
 #include "history.h"
 
@@ -50,9 +51,6 @@ char    dm_target_name[MESHCORE_MAX_NAME_SIZE + 1]      = {0};
 
 bool led_dm_pending      = false;
 bool led_channel_pending = false;
-
-int dm_unread_count      = 0;
-int channel_unread_count = 0;
 
 const uint8_t PUBLIC_CHANNEL_KEY[16] = {
     0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a,
@@ -144,6 +142,7 @@ void dm_select_target(const uint8_t pub[32], const char *name) {
     memcpy(dm_target_pub, pub, MESHCORE_PUB_KEY_SIZE);
     strncpy(dm_target_name, name ? name : "", sizeof(dm_target_name) - 1);
     dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+    contact_clear_unread(pub);  // opening a conversation clears its unread
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
         memset(chat_msgs, 0, sizeof(chat_msgs));
         chat_head   = 0;
@@ -194,6 +193,7 @@ void ch_add_message(const char *text, bool is_mine) {
 void ch_select_channel(int idx) {
     if (idx < 0 || idx >= CHANNELS_MAX || !channels[idx].active) return;
     active_channel_idx = idx;
+    channel_unread[idx] = 0;  // opening a channel clears its unread
     if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
         memset(ch_msgs, 0, sizeof(ch_msgs));
         ch_head   = 0;

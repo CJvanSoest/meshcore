@@ -63,10 +63,6 @@ extern char    dm_target_name[MESHCORE_MAX_NAME_SIZE + 1];
 extern bool led_dm_pending;
 extern bool led_channel_pending;
 
-// ── Per-tab unread counters (rendered as badges on the tab bar) ──────────────
-extern int dm_unread_count;
-extern int channel_unread_count;
-
 // ── Public channel ───────────────────────────────────────────────────────────
 extern const uint8_t PUBLIC_CHANNEL_KEY[16];
 extern uint8_t       channel_hash;  // first byte of SHA256(PUBLIC_CHANNEL_KEY)

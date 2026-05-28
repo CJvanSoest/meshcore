@@ -23,6 +23,11 @@ extern channel_t channels[CHANNELS_MAX];
 extern int       channel_count;     // number of active slots in [0..channel_count)
 extern int       active_channel_idx; // selected slot for TX
 
+// Per-channel unread counter. RAM-only / ephemeral. Slot-aligned with
+// channels[] (channels keep their slot index — no compaction shift).
+extern int       channel_unread[CHANNELS_MAX];
+int              channel_unread_total(void);  // sum across all channels
+
 // Called once at boot, after chat_init. Bootstraps channels[0]=Public and
 // loads any user-added channels from NVS blob "mc.channels".
 void channels_init(void);
