@@ -143,6 +143,7 @@ void dm_select_target(const uint8_t pub[32], const char *name) {
     strncpy(dm_target_name, name ? name : "", sizeof(dm_target_name) - 1);
     dm_target_name[sizeof(dm_target_name) - 1] = '\0';
     contact_clear_unread(pub);  // opening a conversation clears its unread
+    update_notification_led();  // turn LED off once nothing remains unread
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
         memset(chat_msgs, 0, sizeof(chat_msgs));
         chat_head   = 0;
@@ -194,6 +195,7 @@ void ch_select_channel(int idx) {
     if (idx < 0 || idx >= CHANNELS_MAX || !channels[idx].active) return;
     active_channel_idx = idx;
     channel_unread[idx] = 0;  // opening a channel clears its unread
+    update_notification_led();  // turn LED off once nothing remains unread
     if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
         memset(ch_msgs, 0, sizeof(ch_msgs));
         ch_head   = 0;
@@ -207,9 +209,13 @@ void ch_select_channel(int idx) {
 void update_notification_led(void) {
     tanmatsu_coprocessor_handle_t copr = NULL;
     if (bsp_tanmatsu_coprocessor_get_handle(&copr) != ESP_OK) return;
-    if (led_dm_pending) {
+    // Driven by the live unread totals (not the old led_*_pending flags) so the
+    // LED clears the moment the last unread DM/channel is opened — no tab cycling.
+    bool dm = (contact_unread_total() > 0);
+    bool ch = (channel_unread_total() > 0);
+    if (dm) {
         tanmatsu_coprocessor_set_message(copr, false, true, false, false, false, false, false, false);
-    } else if (led_channel_pending) {
+    } else if (ch) {
         tanmatsu_coprocessor_set_message(copr, false, false, true, false, false, false, false, false);
     } else {
         tanmatsu_coprocessor_set_message(copr, false, false, false, false, false, false, false, false);
