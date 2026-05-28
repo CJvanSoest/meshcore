@@ -50,6 +50,17 @@ extern uint16_t                      advert_interval_s;
 extern meshcore_device_role_t        lora_role;
 extern uint8_t                       path_hash_size;         // 1/2/3 bytes per hop
 
+// Regulatory country (ISO 3166-1 alpha-2 or "--" sentinel). Drives the
+// freq/power soft-warn + duty-cycle enforcement in region_limits.c. Default
+// "--" until user picks one in Settings; until then no regulatory checks are
+// applied (firstboot ergonomics — we don't gate TX, just don't warn either).
+extern char                          country_code[4];
+
+// External antenna gain (dBi). Feeds region_effective_power_dbm() so the
+// regulatory ERP check accounts for high-gain antennas. Default 0 (stub).
+// Range -3..15. Only editable in UI once country_code != "--".
+extern int8_t                        antenna_gain_dbi;
+
 // Manual GPS coords (degrees × 1e6 — MeshCore upstream scale, see
 // AdvertDataHelpers.h::getLat which divides by 1000000.0).
 // Both must be valid to be embedded in adverts; invalid = field absent.
@@ -64,6 +75,10 @@ void load_lora_advert_name(void);
 void save_lora_advert_name(void);
 void load_region_scope(void);
 void save_region_scope(void);
+void load_country_code(void);
+void save_country_code(void);
+void load_antenna_gain(void);
+void save_antenna_gain(void);
 void load_gps_coords(void);
 void save_gps_coords(void);
 

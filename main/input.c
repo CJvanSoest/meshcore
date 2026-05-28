@@ -23,6 +23,7 @@
 #include "identity.h"
 #include "nodes.h"
 #include "radio.h"
+#include "region_limits.h"
 #include "settings_nvs.h"
 #include "ui_state.h"
 
@@ -124,6 +125,30 @@ void field_adjust(int field, int delta) {
             if (v < 1) v = 3;
             if (v > 3) v = 1;
             path_hash_size = (uint8_t)v;
+            break;
+        }
+        case FIELD_SENSITIVITY:
+            lora_cfg.rx_boost = !lora_cfg.rx_boost;  // toggle (delta direction irrelevant)
+            break;
+        case FIELD_COUNTRY: {
+            int idx = 0;
+            for (int i = 0; i < REGION_COUNTRY_COUNT; i++) {
+                if (strcmp(REGION_COUNTRIES[i].country_code, country_code) == 0) {
+                    idx = i;
+                    break;
+                }
+            }
+            idx = ((idx + delta) % REGION_COUNTRY_COUNT + REGION_COUNTRY_COUNT) % REGION_COUNTRY_COUNT;
+            strncpy(country_code, REGION_COUNTRIES[idx].country_code, sizeof(country_code) - 1);
+            country_code[sizeof(country_code) - 1] = '\0';
+            break;
+        }
+        case FIELD_ANTENNA_GAIN: {
+            if (country_code[0] == '-' || country_code[0] == '\0') break;  // locked
+            int v = (int)antenna_gain_dbi + delta;
+            if (v < -3) v = -3;
+            if (v > 15) v = 15;
+            antenna_gain_dbi = (int8_t)v;
             break;
         }
         default:
@@ -412,8 +437,12 @@ void handle_nav(uint32_t key) {
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {
-            // FIELD_RADIO_FW / FIELD_RADIO_FW_APP are read-only — Enter no-op.
-            if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP) {
+            // FIELD_RADIO_FW / FIELD_RADIO_FW_APP / FIELD_DUTY_CYCLE are read-only — Enter no-op.
+            // FIELD_ANTENNA_GAIN is read-only until country is set (otherwise gain has no effect).
+            bool gain_locked = (selected == FIELD_ANTENNA_GAIN &&
+                                (country_code[0] == '-' || country_code[0] == '\0'));
+            if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP ||
+                selected == FIELD_DUTY_CYCLE || gain_locked) {
                 // ignore
             } else if (!edit_mode) {
                 edit_mode = true;
@@ -423,8 +452,10 @@ void handle_nav(uint32_t key) {
                     settings_begin_text_edit(selected);
                 }
             } else {
-                if (field_editing_text)        settings_commit_text_edit(selected);
-                else                            save_lora_config();
+                if (field_editing_text)              settings_commit_text_edit(selected);
+                else if (selected == FIELD_COUNTRY)  save_country_code();
+                else if (selected == FIELD_ANTENNA_GAIN) save_antenna_gain();
+                else                                  save_lora_config();
                 edit_mode = false;
                 dirty     = false;
             }
@@ -773,8 +804,12 @@ void handle_key(char c) {
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {
-            // FIELD_RADIO_FW / FIELD_RADIO_FW_APP are read-only — Enter no-op.
-            if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP) {
+            // FIELD_RADIO_FW / FIELD_RADIO_FW_APP / FIELD_DUTY_CYCLE are read-only — Enter no-op.
+            // FIELD_ANTENNA_GAIN is read-only until country is set (otherwise gain has no effect).
+            bool gain_locked = (selected == FIELD_ANTENNA_GAIN &&
+                                (country_code[0] == '-' || country_code[0] == '\0'));
+            if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP ||
+                selected == FIELD_DUTY_CYCLE || gain_locked) {
                 // ignore
             } else if (!edit_mode) {
                 edit_mode = true;
@@ -784,8 +819,10 @@ void handle_key(char c) {
                     settings_begin_text_edit(selected);
                 }
             } else {
-                if (field_editing_text)        settings_commit_text_edit(selected);
-                else                            save_lora_config();
+                if (field_editing_text)              settings_commit_text_edit(selected);
+                else if (selected == FIELD_COUNTRY)  save_country_code();
+                else if (selected == FIELD_ANTENNA_GAIN) save_antenna_gain();
+                else                                  save_lora_config();
                 edit_mode = false;
                 dirty     = false;
             }

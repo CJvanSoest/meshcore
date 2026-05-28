@@ -36,6 +36,7 @@
 #include "bsp/tanmatsu.h"
 #include "tanmatsu_coprocessor.h"
 #include "driver/gpio.h"
+#include "esp_app_desc.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "nvs.h"
@@ -200,7 +201,13 @@ void app_main(void) {
     } while(0)
 
     pax_background(&fb, COL_BG);
-    pax_draw_text(&fb, COL_AMBER, FONT, TXT_TITLE, 14, 16, "MeshCore v4");
+    {
+        const esp_app_desc_t *desc = esp_app_get_description();
+        char title[48];
+        snprintf(title, sizeof(title), "MeshCore %s",
+                 (desc && desc->version[0]) ? desc->version : "?");
+        pax_draw_text(&fb, COL_AMBER, FONT, TXT_TITLE, 14, 16, title);
+    }
     blit();
     vTaskDelay(pdMS_TO_TICKS(1500));
 
@@ -244,6 +251,8 @@ void app_main(void) {
     load_owner_name();
     load_lora_advert_name();
     load_region_scope();
+    load_country_code();
+    load_antenna_gain();
     load_gps_coords();
     contacts_load();
 

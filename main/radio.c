@@ -24,6 +24,7 @@
 #include "contacts.h"
 #include "identity.h"
 #include "nodes.h"
+#include "region_limits.h"
 #include "settings_nvs.h"
 
 static const char *TAG = "radio";
@@ -102,6 +103,95 @@ volatile bool     noise_floor_supported = true;
 
 uint32_t last_advert_ms = 0;
 
+// ── Duty-cycle accounting (rolling 1-hour, 1-minute bucket granularity) ──────
+// 60 buckets of airtime-ms, indexed by wall-minute. Rotate on minute change.
+// `dc_total_ms` is the cached sum across all buckets so render can read it
+// without rescanning. Updated under `rx_mutex` (re-used to keep TX paths +
+// readers cheap). All TX paths feed `dc_record_tx(airtime_ms)`. The pre-TX
+// check `dc_budget_available()` blocks send when the configured country's
+// sub-band budget is exhausted; the budget is informational if country=="--".
+static uint32_t dc_buckets[60]      = {0};
+static uint8_t  dc_head_min         = 0;
+static uint32_t dc_total_ms         = 0;
+static uint32_t dc_last_rotate_ms   = 0;
+volatile uint32_t dc_used_ms        = 0;   // mirror of dc_total_ms for render
+volatile uint32_t dc_budget_ms      = 0;   // from current sub-band, 0 = unlimited
+volatile bool     dc_last_tx_blocked = false;  // sticky flag, render clears via UI
+
+static const regulatory_subband_t *active_subband(void) {
+    const regulatory_country_t *rc = region_get_country(country_code);
+    if (!rc || rc->n_subbands == 0) return NULL;
+    return region_match_subband(rc, (float)lora_cfg.frequency / 1000000.0f);
+}
+
+// Semtech AN1200.13 / SX1276 datasheet airtime formula (works for SX126x too).
+// Returns time-on-air in milliseconds for the current lora_cfg given a payload
+// of `payload_bytes` (the full LoRa packet payload incl. header byte).
+static uint32_t compute_airtime_ms(uint16_t payload_bytes) {
+    uint8_t  sf = lora_cfg.spreading_factor;
+    uint16_t bw_khz = lora_cfg.bandwidth;  // already in kHz per settings convention
+    uint8_t  cr = lora_cfg.coding_rate;    // 5..8 → CR_value = cr-4
+    uint16_t preamble = lora_cfg.preamble_length;
+    uint8_t  ldr = lora_cfg.low_data_rate_optimization ? 1 : 0;
+    if (bw_khz == 0 || sf < 6 || sf > 12) return 0;
+
+    // T_sym (µs) = (1 << SF) * 1000 / BW_kHz  (precise: 2^SF / BW)
+    uint32_t t_sym_us = ((uint32_t)1 << sf) * 1000u / bw_khz;
+
+    // Preamble symbols = preamble + 4.25 → use *100 fixed point
+    uint32_t n_pre_x100 = (uint32_t)preamble * 100u + 425u;
+
+    // Payload symbol count per Semtech AN1200.13:
+    // n_payload = 8 + max(ceil((8*PL - 4*SF + 28 + 16*CRC - 20*IH) / (4*(SF - 2*DE))) * (CR_val+4), 0)
+    // CRC=1, IH=0 (explicit header)
+    int32_t num = 8 * (int32_t)payload_bytes - 4 * (int32_t)sf + 28 + 16;
+    int32_t den = 4 * ((int32_t)sf - 2 * (int32_t)ldr);
+    if (den <= 0) return 0;
+    int32_t ceil_div = (num + den - 1) / den;
+    if (ceil_div < 0) ceil_div = 0;
+    int32_t n_payload = 8 + ceil_div * (int32_t)(cr - 4 + 4);
+
+    // Total µs = (n_pre + n_payload) * t_sym
+    uint64_t total_us = ((uint64_t)n_pre_x100 + (uint64_t)n_payload * 100u) * t_sym_us / 100u;
+    return (uint32_t)((total_us + 999u) / 1000u);
+}
+
+static void dc_rotate_if_needed(uint32_t now_ms) {
+    uint32_t elapsed = now_ms - dc_last_rotate_ms;
+    if (elapsed < 60000u) return;
+    uint32_t advance = elapsed / 60000u;
+    if (advance > 60u) advance = 60u;
+    for (uint32_t i = 0; i < advance; i++) {
+        dc_head_min = (uint8_t)((dc_head_min + 1u) % 60u);
+        dc_total_ms -= dc_buckets[dc_head_min];
+        dc_buckets[dc_head_min] = 0;
+    }
+    dc_last_rotate_ms += advance * 60000u;
+    dc_used_ms = dc_total_ms;
+}
+
+static bool dc_budget_available(uint32_t need_ms) {
+    uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    dc_rotate_if_needed(now_ms);
+    const regulatory_subband_t *sb = active_subband();
+    uint32_t budget = sb ? region_dc_budget_ms_per_hour(sb) : 0;
+    dc_budget_ms = budget;
+    // budget == 0 means either no sub-band match (country unset → don't enforce
+    // anything) or 100% DC (no limit). Either way, allow.
+    if (budget == 0 || budget >= 3600000u) return true;
+    return (dc_total_ms + need_ms) <= budget;
+}
+
+static void dc_record_tx(uint32_t airtime_ms) {
+    if (airtime_ms == 0) return;
+    uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    dc_rotate_if_needed(now_ms);
+    dc_buckets[dc_head_min] += airtime_ms;
+    dc_total_ms             += airtime_ms;
+    dc_used_ms               = dc_total_ms;
+    dc_last_tx_blocked       = false;  // recovered — a TX got through
+}
+
 // ── ADVERT TX ────────────────────────────────────────────────────────────────
 void send_advert(void) {
     if (!c6_available || !identity_is_ready()) return;
@@ -159,11 +249,22 @@ void send_advert(void) {
     pkt.length = pkt_len;
     memcpy(pkt.data, pkt_data, pkt_len);
 
+    uint32_t airtime_ms = compute_airtime_ms(pkt_len);
+    if (!dc_budget_available(airtime_ms)) {
+        dc_last_tx_blocked = true;
+        ESP_LOGW(TAG, "ADVERT skipped: duty-cycle budget exhausted "
+                       "(%lums used / %lums budget, +%lums)",
+                 (unsigned long)dc_used_ms, (unsigned long)dc_budget_ms,
+                 (unsigned long)airtime_ms);
+        return;
+    }
+
     lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_TX);
     esp_err_t res = lora_send_packet(&lora_handle, &pkt);
     lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_RX);
 
     if (res == ESP_OK) {
+        dc_record_tx(airtime_ms);
         last_advert_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         ESP_LOGI(TAG, "ADVERT sent (%s) pub=%02X%02X%02X%02X",
                  advert.name_valid ? advert.name : "(no name)",
@@ -269,7 +370,17 @@ bool send_dm_message(const char *text, const uint8_t *target_pub, uint8_t ack_cr
     lora_protocol_lora_packet_t pkt = {0};
     pkt.length = pkt_len;
     memcpy(pkt.data, pkt_data, pkt_len);
-    return lora_send_packet(&lora_handle, &pkt) == ESP_OK;
+
+    uint32_t airtime_ms = compute_airtime_ms(pkt_len);
+    if (!dc_budget_available(airtime_ms)) {
+        dc_last_tx_blocked = true;
+        ESP_LOGW(TAG, "DM skipped: duty-cycle budget exhausted");
+        return false;
+    }
+
+    bool ok = (lora_send_packet(&lora_handle, &pkt) == ESP_OK);
+    if (ok) dc_record_tx(airtime_ms);
+    return ok;
 }
 
 // ── Public-channel TX (GRP_TXT) ──────────────────────────────────────────────
@@ -350,11 +461,19 @@ bool send_chat_message(const char *text) {
     pkt.length = pkt_len;
     memcpy(pkt.data, pkt_data, pkt_len);
 
+    uint32_t airtime_ms = compute_airtime_ms(pkt_len);
+    if (!dc_budget_available(airtime_ms)) {
+        dc_last_tx_blocked = true;
+        ESP_LOGW(TAG, "Chat skipped: duty-cycle budget exhausted");
+        return false;
+    }
+
     lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_TX);
     esp_err_t res = lora_send_packet(&lora_handle, &pkt);
     lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_RX);
 
     if (res == ESP_OK) {
+        dc_record_tx(airtime_ms);
         ESP_LOGI(TAG, "Chat sent: %s", prefixed);
         return true;
     }
@@ -744,7 +863,15 @@ static void lora_rx_task(void *arg) {
                                 lora_protocol_lora_packet_t lora_pkt = {0};
                                 lora_pkt.length = path_sz;
                                 memcpy(lora_pkt.data, path_data, path_sz);
-                                lora_send_packet(&lora_handle, &lora_pkt);
+                                uint32_t air_ms = compute_airtime_ms(path_sz);
+                                if (dc_budget_available(air_ms)) {
+                                    if (lora_send_packet(&lora_handle, &lora_pkt) == ESP_OK) {
+                                        dc_record_tx(air_ms);
+                                    }
+                                } else {
+                                    dc_last_tx_blocked = true;
+                                    ESP_LOGW(TAG, "PATH_RETURN skipped: duty-cycle exhausted");
+                                }
                             }
                         }
                     } while (0);

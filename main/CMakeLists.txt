@@ -15,6 +15,7 @@ idf_component_register(
 		"chat.c"
 		"channels.c"
 		"radio.c"
+		"region_limits.c"
 		"input.c"
 		"render.c"
 		"emoji.c"
@@ -26,6 +27,7 @@ idf_component_register(
 		"meshcore/payload/grp_txt.c"
 	PRIV_REQUIRES
 		esp_lcd
+		esp_app_format
 		nvs_flash
 		badge-bsp
 		tanmatsu-lora

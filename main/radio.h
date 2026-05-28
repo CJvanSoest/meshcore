@@ -57,6 +57,14 @@ extern volatile bool     noise_floor_supported;     // false after NACK from old
 // ── Last advert TX timestamp (ms since boot) — read by render_settings ───────
 extern uint32_t last_advert_ms;
 
+// ── Duty-cycle accounting (rolling 1h, ms-on-air) ────────────────────────────
+// Updated by radio.c TX paths; read-only for render. dc_budget_ms == 0 means
+// either no country/sub-band match or unlimited DC (US/AU/etc.); render should
+// show "—" in that case. dc_last_tx_blocked is sticky until cleared by UI.
+extern volatile uint32_t dc_used_ms;
+extern volatile uint32_t dc_budget_ms;
+extern volatile bool     dc_last_tx_blocked;
+
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 // Create rx_mutex and start lora_rx_task, noise_floor_task, advert_task.
 // Call after radio + identity + nodes/chat are initialised.
