@@ -96,8 +96,16 @@ bool chat_mark_ack_by_crc(const uint8_t ack_crc[4]);
 void dm_select_target(const uint8_t pub[32], const char *name);
 
 // ── Channel messages ─────────────────────────────────────────────────────────
-// Add a channel message to the ring AND append to the channel history file.
+// Add a channel message for a specific channel index: always persists to that
+// channel's own history file; adds to the visible ring only if it's the active
+// channel. Returns true if added to the ring (RX path gates meta on this).
+bool ch_add_message_for(int ch_idx, const char *text, bool is_mine);
+
+// Convenience for own outgoing messages — targets the active channel.
 void ch_add_message(const char *text, bool is_mine);
+
+// Switch active channel + reload its history into the visible ring.
+void ch_select_channel(int idx);
 
 // ── Misc ─────────────────────────────────────────────────────────────────────
 // Sync the coprocessor notification LED to the current pending-flag state

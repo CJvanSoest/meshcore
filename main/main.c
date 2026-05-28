@@ -260,7 +260,8 @@ void app_main(void) {
     history_init(node_prv_key);
     DIAG(history_is_ready() ? COL_GREEN : COL_YELLOW, "  SD: %s", history_status());
     // DM history is loaded per peer in dm_select_target — no boot-time DM load.
-    if (history_is_ready()) { history_load_channel(ch_ring_add_from_disk); }
+    // Channel history is per-channel; load the active channel (Public at boot).
+    if (history_is_ready()) { ch_select_channel(active_channel_idx); }
 
     DIAG(COL_GRAY, "lora_init_remote(16)...");
     res = lora_init_remote(&lora_handle, 16);

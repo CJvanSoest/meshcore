@@ -33,7 +33,7 @@
 #define SD_MOUNT_POINT       "/sd"
 #define HISTORY_DIR          "/sd/meshcore"
 #define HISTORY_DM_DIR       "/sd/meshcore/dm"
-#define CH_HISTORY_LOG_PATH  "/sd/meshcore/channel.bin"
+#define HISTORY_CH_DIR       "/sd/meshcore/ch"
 #define HISTORY_REC_MAGIC    "MCR1"
 
 static const char *TAG = "history";
@@ -89,6 +89,7 @@ void history_init(const uint8_t prv_key[32]) {
 
     mkdir(HISTORY_DIR, 0775);     // ignores EEXIST
     mkdir(HISTORY_DM_DIR, 0775);
+    mkdir(HISTORY_CH_DIR, 0775);
 
     mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
                     prv_key, 32,
@@ -203,12 +204,36 @@ static void load_impl(const char *path, history_ring_add_fn add) {
     xSemaphoreGive(s_mutex);
 }
 
-void history_append_channel(const char *text, bool is_mine) {
-    append_impl(CH_HISTORY_LOG_PATH, text, is_mine);
+// Per-channel path: /sd/meshcore/ch/<secret-hex8>.bin
+// 8-byte secret prefix as hex = 16 chars, unique enough for max 8 channels.
+static void ch_path(const uint8_t secret[16], char *out, size_t cap) {
+    snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin",
+             HISTORY_CH_DIR,
+             secret[0], secret[1], secret[2], secret[3],
+             secret[4], secret[5], secret[6], secret[7]);
 }
 
-void history_load_channel(history_ring_add_fn add) {
-    load_impl(CH_HISTORY_LOG_PATH, add);
+void history_append_channel(const uint8_t secret[16], const char *text, bool is_mine) {
+    if (!s_ready || secret == NULL) return;
+    char path[64];
+    ch_path(secret, path, sizeof(path));
+    append_impl(path, text, is_mine);
+}
+
+void history_load_channel(const uint8_t secret[16], history_ring_add_fn add) {
+    if (!s_ready || secret == NULL) return;
+    char path[64];
+    ch_path(secret, path, sizeof(path));
+    load_impl(path, add);
+}
+
+void history_delete_channel(const uint8_t secret[16]) {
+    if (!s_ready || secret == NULL) return;
+    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(200)) != pdTRUE) return;
+    char path[64];
+    ch_path(secret, path, sizeof(path));
+    remove(path);
+    xSemaphoreGive(s_mutex);
 }
 
 // Per-contact path: /sd/meshcore/dm/<pubkey-hex16>.bin
@@ -231,13 +256,6 @@ void history_load_dm(const uint8_t peer_pub[32], history_ring_add_fn add) {
     char path[64];
     dm_path(peer_pub, path, sizeof(path));
     load_impl(path, add);
-}
-
-void history_delete_channel(void) {
-    if (!s_ready) return;
-    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(200)) != pdTRUE) return;
-    remove(CH_HISTORY_LOG_PATH);
-    xSemaphoreGive(s_mutex);
 }
 
 void history_delete_dm(const uint8_t peer_pub[32]) {
