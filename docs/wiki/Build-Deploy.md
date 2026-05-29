@@ -110,7 +110,7 @@ Built separately from the
 (or upstream + local patches). Use the C6 sub-toolchain (esp32c6 target,
 same IDF version). Flash via esptool over USB after pressing `U` in the
 MeshCore Settings tab. Full instructions in
-[C6 Radio](C6-Radio#firmware-update-workflow).
+[C6 Radio](C6-Radio.md#firmware-update-workflow).
 
 ## Build env quirks
 
