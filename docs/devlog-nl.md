@@ -222,3 +222,13 @@ Vervolg op het vorige: de maintainer mergede beide gemelde firmwarebugs upstream
 
 🍴 **Drie forks, drie groottes delta.** Eindstaat: radio = upstream + 1 (rx_boost-redirect), lora = upstream + 1 (rx_boost), launcher = upstream + 3 (WiFi-autoconnect, versie-accept, `[C]`-tag verbergen). Alles wat kón convergeren is geconvergeerd; wat rest zijn bewuste features. Les: documenteer per fork exact wat de delta is en waaróm — dan blijft "kan dit terug naar upstream?" een beantwoordbare vraag i.p.v. een archeologische.
 
+---
+
+## Update — Docs, wiki-links & appstore-inzending (mei 2026)
+
+🔗 **Dezelfde markdown, twee renderers, twee link-conventies.** Een nieuwe wiki-pagina opende niet: een kale link `(Firmware-Versions)` werkt in een wiki, maar in de GitHub/Gitea **repo-bestandsbrowser** resolvet 'ie naar een pad zónder extensie → 404. De `.md`-vorm (`(Firmware-Versions.md)`) werkt in béíde. Bonus-valkuil: de gerenderde Gitea-wiki bleek een aparte git-repo die handmatig gesynct moet worden — de bron-`docs/wiki/` was al maanden vóór de wiki uit. Les: weet via welke renderer je docs bekeken worden, en test een link in díe context — "het rendert" is niet "de links werken".
+
+📦 **Het schema is de waarheid, niet de README.** Bij het inpakken voor de Tanmatsu-appstore (PR naar `Nicolai-Electronics/app-repository`) zei de README `license` en `target`, maar de echte validator (`.validator/schema.json`, Ajv) eiste `license_type` en `targets` — en de naam/description-regex verbood `:` en `,`, die in onze beschrijving zaten. `additionalProperties:false` betekende dat een extra `repository`-veld de boel zou breken. Door lokaal tegen dat schema te valideren (Python `jsonschema`) vóór de PR ving ik alles in één keer i.p.v. via een CI-faalronde. Les: valideer tegen de machine-leesbare bron (schema + een werkend voorbeeld), niet tegen het proza eromheen.
+
+🚪 **Een eerste PR van een nieuwe contributor wacht aan de poort.** De PR stond meteen open, maar de metadata-CI draaide niet — GitHub houdt Actions van een first-time contributor tegen tot een maintainer ze goedkeurt (de CLA-check liep wél automatisch). Geen fout, gewoon de regel. Les: als checks "ontbreken" i.p.v. "falen" op een fork-PR, is het vaak approval-gating, geen kapotte CI — wacht op de maintainer i.p.v. te debuggen wat er niet stuk is.
+

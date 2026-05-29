@@ -408,6 +408,18 @@ The launcher hard-compared the radio against `"v3.1.0"`; our git-described radio
 
 End state: radio = upstream + 1 (rx_boost redirect), lora = upstream + 1 (rx_boost), launcher = upstream + 3 (WiFi auto-connect, version-accept, hide the `[C]` tag). Everything that could converge has converged; what remains are deliberate features. Document each fork's delta and *why* — then "can this go back upstream?" stays an answerable question instead of an archaeological one.
 
+### 54. Same markdown, two renderers, two link conventions
+
+A new wiki page wouldn't open: a bare link `(Firmware-Versions)` works in a wiki, but in the GitHub/Gitea **repo file browser** it resolves to a path without an extension → 404. The `.md` form (`(Firmware-Versions.md)`) works in both. Bonus trap: the rendered Gitea wiki turned out to be a separate git repo that must be synced by hand — the source `docs/wiki/` had been ahead of it for months. Know which renderer your docs are viewed through and test a link in *that* context — "it renders" isn't "the links work".
+
+### 55. The schema is the source of truth, not the README
+
+Packaging for the Tanmatsu app store (PR to `Nicolai-Electronics/app-repository`), the README said `license` and `target`, but the actual validator (`.validator/schema.json`, Ajv) required `license_type` and `targets` — and the name/description regex forbids `:` and `,`, both of which were in our description. `additionalProperties:false` meant an extra `repository` field would have failed. Validating locally against that schema (Python `jsonschema`) before the PR caught everything in one pass instead of via a CI failure round. Validate against the machine-readable source (schema + a working example), not the prose around it.
+
+### 56. A first-time contributor's PR waits at the gate
+
+The PR opened fine, but the metadata CI didn't run — GitHub holds Actions on a first-time contributor's PR until a maintainer approves them (the CLA check did run automatically). Not a failure, just the rule. When checks are *missing* rather than *failing* on a fork PR, it's usually approval-gating, not broken CI — wait for the maintainer instead of debugging what isn't broken.
+
 ---
 
 ## Links
