@@ -208,3 +208,17 @@ De upstream-maintainer refactorde de radio-firmware ingrijpend (de lora-driver w
 
 🤝 **Synchroniseren met een bewegend doel.** De maintainer was diezelfde dag volop aan het refactoren (v3.1.0, system-protocol, launcher-updates). Onze fixes zijn één-regelaars: lokaal in onze fork toegepast om door te kunnen, én meteen als issue + reproductie + bootlog teruggemeld zodat het upstream gefixt wordt i.p.v. permanent in onze fork te leven. Les: bij een actief-bewegende upstream — fix lokaal om verder te komen, maar rapporteer direct met genoeg detail dat de maintainer het kan overnemen.
 
+---
+
+## Update — Issue #18 gemerged: de fork krimpt (mei 2026)
+
+Vervolg op het vorige: de maintainer mergede beide gemelde firmwarebugs upstream (radio **v3.1.1**: de RX-fix als `0ca17e3 "Fix receiving LoRa packets (issue #18)"`, de callback-limiet als `MAX_CUSTOM_MSG_HANDLERS=6`). Tijd om de forks op te ruimen.
+
+📉 **Een geslaagde bugmelding maakt je eigen patch overbodig — en dat is het doel.** Beide onze fix-commits waren nu redundant. De radio-fork ging van 3 delta-commits terug naar **één** (alleen nog de redirect naar onze lora-fork voor rx_boost), ge-rebased op v3.1.1. Les: het succes van een upstream-bijdrage meet je niet in regels die je toevoegt, maar in regels die je weer kunt wéghalen.
+
+🔢 **Gelijke bestandsgrootte verslaat naïeve mismatch-detectie.** De app-binary veranderde alleen in één versie-string — exact even lang, dus dezelfde grootte. De launcher detecteert een nieuwe versie op revisie-óf-grootte; beide ongewijzigd → hij bleef de oude cache draaien. Fix: AppFS-cache expliciet wissen zodat hij vers vanaf SD herinstalleert. Les: een cache-invalidatie op "grootte of revisie" mist precies de wijziging die geen van beide raakt.
+
+🏷️ **Hardcoded versie-checks verouderen stilletjes.** De launcher checkte de radio hard op `"v3.1.0"`; onze git-described radio meldt `v3.1.1-1-g…` → valse mismatch én de gevaarlijke "Update radio" downgrade-tegel verscheen. In onze launcher-fork prefix-matchen we nu `v3.1.` — dat verbergt de waarschuwing én de tegel. Les: vergelijk firmwareversies op een betekenis-niveau (lijn/range), niet op een exacte string die elke build verandert.
+
+🍴 **Drie forks, drie groottes delta.** Eindstaat: radio = upstream + 1 (rx_boost-redirect), lora = upstream + 1 (rx_boost), launcher = upstream + 3 (WiFi-autoconnect, versie-accept, `[C]`-tag verbergen). Alles wat kón convergeren is geconvergeerd; wat rest zijn bewuste features. Les: documenteer per fork exact wat de delta is en waaróm — dan blijft "kan dit terug naar upstream?" een beantwoordbare vraag i.p.v. een archeologische.
+

@@ -392,6 +392,22 @@ The first blocker was subtler: the esp-hosted slave has a fixed custom-callback 
 
 The maintainer was actively refactoring that same day (v3.1.0, a system protocol, launcher updates). Both of our fixes are one-liners: applied locally in our fork to keep moving, and reported immediately as an issue with reproduction + boot log so they get fixed upstream instead of living forever in our fork. With a fast-moving upstream, patch locally to unblock, but report right away with enough detail that the maintainer can take it over.
 
+### 50. A successful bug report makes your own patch redundant — that's the goal
+
+The maintainer merged both reported firmware bugs upstream (radio v3.1.1: the RX fix as `0ca17e3 "Fix receiving LoRa packets (issue #18)"`, the callback limit as `MAX_CUSTOM_MSG_HANDLERS=6`). Both of our fix commits were now redundant, so the radio fork shrank from three delta commits to **one** (just the redirect to our lora fork for rx_boost), rebased onto v3.1.1. The success of an upstream contribution isn't measured in lines you add, but in lines you can later remove.
+
+### 51. Equal file size defeats naive mismatch detection
+
+The app binary changed only in one version string — exactly the same length, hence the same size. The launcher detects a new version by revision-or-size; both unchanged → it kept running the old cache. Fix: explicitly clear the AppFS cache so it reinstalls fresh from SD. A cache invalidation keyed on "size or revision" misses precisely the change that touches neither.
+
+### 52. Hardcoded version checks rot silently
+
+The launcher hard-compared the radio against `"v3.1.0"`; our git-described radio reports `v3.1.1-1-g…` → a false mismatch, and the dangerous "Update radio" downgrade tile appeared. Our launcher fork now prefix-matches `v3.1.`, hiding both the warning and the tile. Compare firmware versions at a meaning level (line/range), not against an exact string that every build changes.
+
+### 53. Three forks, three sizes of delta
+
+End state: radio = upstream + 1 (rx_boost redirect), lora = upstream + 1 (rx_boost), launcher = upstream + 3 (WiFi auto-connect, version-accept, hide the `[C]` tag). Everything that could converge has converged; what remains are deliberate features. Document each fork's delta and *why* — then "can this go back upstream?" stays an answerable question instead of an archaeological one.
+
 ---
 
 ## Links
