@@ -13,7 +13,7 @@
 // those out when the radio is unavailable, so FIELD_FREQ must stay that boundary.
 typedef enum {
     // ── Device & identity ──
-    FIELD_RADIO_FW = 0,      // read-only — SX126x silicon version reported by C6
+    FIELD_RADIO_FW = 0,      // read-only — SX126x silicon ID (version register) reported by C6
     FIELD_RADIO_FW_APP,      // read-only — hand-maintained tanmatsu-radio app fw label
     FIELD_OWNER,
     FIELD_ADV_NAME,

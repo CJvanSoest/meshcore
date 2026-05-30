@@ -72,7 +72,7 @@ field of each group:
 
 | Section | Fields |
 |---|---|
-| Device & identity | Radio chip, Radio firmware, Owner name, Advert name |
+| Device & identity | Radio ID, Radio firmware, Owner name, Advert name |
 | Regulatory | Country, Antenna gain, Duty cycle |
 | Radio | Frequency, SF, BW, CR, TX power, Sync word, Preamble, LoRa preset, RX sensitivity |
 | Network & behavior | Advert interval, Role, Path hash size |

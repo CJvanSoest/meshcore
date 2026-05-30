@@ -197,9 +197,10 @@ static void render_settings(void) {
     typedef struct { const char *label; char value[64]; } row_t;
     row_t rows[FIELD_COUNT];
 
-    // lora_get_status returns the SX126x silicon version (e.g. "sx1262 V20
-    // 2002"), shown as "Radio chip".
-    rows[FIELD_RADIO_FW].label = "Radio chip";
+    // lora_get_status returns the SX126x silicon version-register string,
+    // which reads "sx1261 ..." even on an SX1262 (shared silicon). Shown as
+    // "Radio ID"; the resolved part type is reported separately via chip_type.
+    rows[FIELD_RADIO_FW].label = "Radio ID";
     snprintf(rows[FIELD_RADIO_FW].value, sizeof(rows[FIELD_RADIO_FW].value), "%s",
              radio_fw_version[0] ? radio_fw_version : "?");
 
