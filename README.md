@@ -16,7 +16,7 @@ A [MeshCore](https://meshcore.co.uk) LoRa mesh communication app for the
 | **Hardware** | Tanmatsu badge (rev 5+) |
 | **Application processor** | ESP32-P4 |
 | **Radio co-processor** | ESP32-C6 |
-| **Radio chip** | SX1268 (LoRa, 868 MHz EU band) |
+| **Radio chip** | SX1262 (LoRa, 868 MHz EU band) |
 | **Display** | 4" MIPI DSI, 800×1280 px |
 | **Framework** | ESP-IDF v5.5.1 |
 
