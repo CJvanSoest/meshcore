@@ -41,10 +41,20 @@ static const char *TAG = "radio";
 static void apply_region_scope(meshcore_message_t *msg) {
     if (!region_scope[0]) return;  // no scope: stay on plain FLOOD
 
+    // Upstream MeshCore RegionMap::getTransportKeysFor prepends '#' to the
+    // region name before SHA256-deriving the transport key. Match that or our
+    // HMAC code differs from what scope-aware relays compute and they drop us.
+    char scope_name[35];
+    if (region_scope[0] == '#') {
+        snprintf(scope_name, sizeof(scope_name), "%s", region_scope);
+    } else {
+        snprintf(scope_name, sizeof(scope_name), "#%s", region_scope);
+    }
+
     uint8_t region_key[16];
     {
         uint8_t digest[32];
-        mbedtls_sha256((const uint8_t *)region_scope, strlen(region_scope), digest, 0);
+        mbedtls_sha256((const uint8_t *)scope_name, strlen(scope_name), digest, 0);
         memcpy(region_key, digest, sizeof(region_key));
     }
 
@@ -259,9 +269,7 @@ void send_advert(void) {
         return;
     }
 
-    lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_TX);
     esp_err_t res = lora_send_packet(&lora_handle, &pkt);
-    lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_RX);
 
     if (res == ESP_OK) {
         dc_record_tx(airtime_ms);
@@ -468,9 +476,7 @@ bool send_chat_message(const char *text) {
         return false;
     }
 
-    lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_TX);
     esp_err_t res = lora_send_packet(&lora_handle, &pkt);
-    lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_RX);
 
     if (res == ESP_OK) {
         dc_record_tx(airtime_ms);
