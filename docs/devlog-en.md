@@ -420,6 +420,22 @@ Packaging for the Tanmatsu app store (PR to `Nicolai-Electronics/app-repository`
 
 The PR opened fine, but the metadata CI didn't run — GitHub holds Actions on a first-time contributor's PR until a maintainer approves them (the CLA check did run automatically). Not a failure, just the rule. When checks are *missing* rather than *failing* on a fork PR, it's usually approval-gating, not broken CI — wait for the maintainer instead of debugging what isn't broken.
 
+### 57. The spec sometimes lives in an upstream .cpp file, not in the docs
+
+After the v2.1.0 release a field symptom came in: messages from Tanmatsu to the public `#test` channel never showed up on a relay dashboard, while the same messages from a Heltec at the same spot were indexed fine. My `apply_region_scope` derived the transport key from `SHA256("nl")`, matching the prose spec. Upstream's `RegionMap::getTransportKeysFor` silently prepends `#` to the name before SHA256 — *"implicit auto hashtag region"*. My HMAC codes therefore mismatched every scope-aware relay, and they drop what they can't verify. A side-by-side of my nine lines of HMAC code next to upstream's fourteen revealed it in seconds. For protocol keys, the regenerator implementation is the definitive reference — a prose spec is always a summary.
+
+### 58. A direct-vs-relay test splits your failure space in half
+
+Before pinning the problem to the HMAC, I needed to know: was it in my TX bytes or in the relay path? One test separates the two: the Heltec sits 2m from Tanmatsu, no repeater needed. Send to `#test`, watch whether Heltec sees it in its own channel view. If yes → my bytes are correct → the bug is downstream. If no → the bug is in packet construction. Without that split I could have spent hours in `apply_region_scope` without knowing the bug lived there. When a diagnosis spans multiple layers, design a test that disables exactly one layer — confirmed isolation beats speculative breadth.
+
+### 59. The firmware console is an oracle when your app stays silent
+
+The radio co-processor logged `Can not set TX mode directly` on every send — my app called `lora_set_mode(TX)` before `lora_send_packet`, a pattern that worked in a previous firmware version but is rejected in the current one. The app ignored the return code and the actual TX still went out via the newer API, so nothing visibly broke — only the console got noisy. Without tapping that serial port I'd never have spotted the obsolete wrapper call. A radio or co-processor with its own log is a free second witness to your behaviour — wire it up, especially when the app itself is silent.
+
+### 60. A silent API break is a ticking clock
+
+The `set_mode(TX)` rejection came with a clear ERROR line in the console, but because the app ignored the return code and the actual TX took a different call path, things kept working. Only when I went hunting for a less explicable second error (an SPI timeout one second after every RPC) did the set_mode spam jump out. An error in a log you don't read is effectively not an error — it's only when a second problem forces you to look that the first one suddenly shouts everything else that's broken. Don't drop return values just because the happy path still completes.
+
 ---
 
 ## Links
