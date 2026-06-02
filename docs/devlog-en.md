@@ -436,6 +436,18 @@ The radio co-processor logged `Can not set TX mode directly` on every send — m
 
 The `set_mode(TX)` rejection came with a clear ERROR line in the console, but because the app ignored the return code and the actual TX took a different call path, things kept working. Only when I went hunting for a less explicable second error (an SPI timeout one second after every RPC) did the set_mode spam jump out. An error in a log you don't read is effectively not an error — it's only when a second problem forces you to look that the first one suddenly shouts everything else that's broken. Don't drop return values just because the happy path still completes.
 
+### 61. A struct extension across a wire boundary is a breaking change
+
+Three days after v2.1.1 went live, Renze flashed his stock-upstream firmware and saw `lora_get_config: Invalid response length: 24` and "C6 unavailable" on my appstore build. Somewhere along the way my fork of the LoRa component had added a `bool rx_boost` field to the config struct — the struct grew from 16 to 17 bytes, the response from 24 to 25. My app expects 25, his stock firmware delivers 24, the strict size check rejects it, the handle never initializes, no radio. Appending a boolean to a packed struct feels innocent — no shifted bits, no changed semantics — but the wire-protocol code on the other side does `if (response_length != sizeof(struct))` or worse `<`, not `>=`. The moment my fork-app runs against stock firmware or vice versa, that check fires. A struct that crosses a transport is a protocol, and a protocol can't grow without versioning, a tolerant parser, or a separate cmd byte. Silently appending a field is a promise to every current consumer that nobody wrote down.
+
+### 62. An app store widens the blast radius of every ABI choice
+
+When my app only ran on my own hardware, that struct decision was fine — both ends built from the same commit. The moment I published to `apps.tanmatsu.cloud`, every combination of (my app) × (whichever firmware version a user happens to run) became a real deployment. What used to be an implicit assumption — "we both use my fork" — became an implicit *requirement*, and requirements you don't make visible, nobody satisfies. Publishing means admitting your consumers are outside your control — check your environment assumptions explicitly, or build the app tolerant enough that the differences don't matter.
+
+### 63. A fallback parser buys you the time an upstream PR can't
+
+The right long-term fix was the field landing upstream, but Renze's repo moves at its own pace and my users are stuck *now*. So I did two things in parallel: open a PR upstream (struct match realigned at the source), and add a tolerant parser to my own fork (accept 24 or 25 byte responses, default `rx_boost = false` on the short form). The PR is the correct long-term answer; the fallback is a bridge that works today. For community-stack bugs, "open a PR" is rarely fast enough — a two-track response (upstream PR + local defensive patch) decouples your recovery time from someone else's review cycle.
+
 ---
 
 ## Links
