@@ -15,6 +15,7 @@ idf_component_register(
 		"chat.c"
 		"channels.c"
 		"radio.c"
+		"radio_system_protocol_client.c"
 		"region_limits.c"
 		"input.c"
 		"render.c"

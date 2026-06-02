@@ -48,6 +48,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "lora.h"
+#include "radio_system_protocol_client.h"
 #include "wifi_connection.h"
 #include "meshcore/packet.h"
 #include "meshcore/payload/advert.h"
@@ -283,11 +284,26 @@ void app_main(void) {
             memcpy(radio_fw_version, status.version_string, n);
             radio_fw_version[n] = '\0';
         }
-        // Radio app-firmware version query dropped in the v0.2.1 sync: this C6
-        // firmware carries the upstream system-protocol (stub on our fork base);
-        // re-add a query via the system protocol once it exposes a version cmd.
-        // radio_fw_app_version stays empty → render.c shows TANMATSU_RADIO_FW_LABEL.
+        // Query app firmware version via radio system-protocol (event 0x05,
+        // GET_INFORMATION). Upstream tanmatsu-radio >=v3.1.1 exposes this; on
+        // older firmware the call NACKs/times-out and render.c falls back to
+        // the hand-maintained TANMATSU_RADIO_FW_LABEL.
         radio_fw_app_version[0] = '\0';
+        DIAG(COL_GRAY, "sys_proto get_information...");
+        if (radio_system_protocol_init() == ESP_OK) {
+            radio_system_protocol_information_t info = {0};
+            if (radio_system_protocol_get_information(&info) == ESP_OK) {
+                size_t n = sizeof(info.firmware_version);
+                if (n > RADIO_FW_APP_VERSION_LEN - 1) n = RADIO_FW_APP_VERSION_LEN - 1;
+                memcpy(radio_fw_app_version, info.firmware_version, n);
+                radio_fw_app_version[n] = '\0';
+                DIAG(COL_GREEN, "  fw: %s (live)", radio_fw_app_version);
+            } else {
+                DIAG(COL_YELLOW, "  fw: query failed - hardcoded fallback");
+            }
+        } else {
+            DIAG(COL_YELLOW, "  fw: init failed - hardcoded fallback");
+        }
         DIAG(COL_GRAY, "lora_get_config from C6...");
         lora_protocol_config_params_t c6_cfg = {0};
         esp_err_t cfg_res = lora_get_config(&lora_handle, &c6_cfg);
