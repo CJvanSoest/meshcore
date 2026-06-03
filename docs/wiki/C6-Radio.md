@@ -76,14 +76,23 @@ optimised for 868/915 MHz.
 
 ## Firmware update workflow
 
-The Settings tab `U` key triggers `enter_radio_bootloader()` which:
+**End users — update via the Launcher:** open the **Launcher → Tools →
+Firmware update**. This pulls the latest stable launcher *and* C6 radio
+firmware from `ota.tanmatsu.cloud` in one go. As of `tanmatsu-radio`
+v3.1.1 the OTA bundle ships the `lora_protocol` server (callback-limit
+fix) and the `tanmatsu-lora` v0.2.1 component MeshCore expects.
 
-1. Stops the ESP-Hosted heartbeat
-2. Deinits ESP-Hosted
-3. Powers the C6 OFF, then back ON in `BOOTLOADER` mode
-4. Replaces the screen with the esptool command sheet
+> **Do this before installing MeshCore on a freshly-recovered device.**
+> `recovery.tanmatsu.cloud` currently serves an old radio firmware
+> (`ESP-HOSTED 2.1.0`, pre-`tanmatsu-radio`-rename) and launcher 0.1.2 —
+> too old for the MeshCore protocol: `lora_get_config` returns a
+> response shorter than the 24/25-byte forms our fallback handles, and
+> the app shows "LoRa radio not available". The launcher's "Tools →
+> Firmware update" path is what unblocks it.
 
-Then on the Mac:
+**Developers — flash a custom C6 build via esptool:** put the C6 into
+DFU mode externally (radio off → radio on into bootloader via the BSP
+power APIs) and flash with:
 
 ```sh
 esptool.py --chip esp32c6 --port /dev/cu.usbmodemXXXXX --before no_reset \
@@ -93,20 +102,24 @@ esptool.py --chip esp32c6 --port /dev/cu.usbmodemXXXXX --before no_reset \
   0x10000 build/tanmatsu/tanmatsu-radio.bin
 ```
 
-> The current firmware's partition table dropped the unused OTA-data
-> partition (no `0xd000 ota_data` line) and grew the app partition. Always
-> take the exact offsets from `build/tanmatsu/flasher_args.json`.
+> The current `tanmatsu-radio` partition table dropped the unused
+> OTA-data partition (no `0xd000 ota_data` line) and grew the app
+> partition. Always take the exact offsets from
+> `build/tanmatsu/flasher_args.json`.
 
-`--before no_reset` is critical — the C6 is already in DFU, we don't want
-esptool to toggle the reset line. After flashing, press ESC / F1 to power
-cycle the badge. On the next boot MeshCore detects the blank C6 NVS
-(`frequency = 0`) and re-pushes the saved LoRa config.
+`--before no_reset` is critical — the C6 is already in DFU, we don't
+want esptool to toggle the reset line. On the next boot MeshCore
+detects the blank C6 NVS (`frequency = 0`) and re-pushes the saved
+LoRa config.
 
 ## Mismatch warning in launcher
 
-The Tanmatsu launcher checks the C6 firmware version against its embedded
-expected version. We run a Gitea fork of `tanmatsu-radio` (upstream
-main / v3.1.0-line + the three patches above), which doesn't match the
-launcher's expected version, so it may print a "mismatch firmware" warning.
-**Ignore it** — the MeshCore app talks to the radio directly and works fine.
-**Do not click "Update Radio"** in the launcher; that downgrades the C6.
+The Tanmatsu launcher checks the C6 firmware version against its
+embedded expected version. We run a Gitea fork of `tanmatsu-radio`
+(upstream main / v3.1.0-line + the three patches above), so the version
+string is `v3.1.1-1-gf919f91` instead of an exact `v3.1.1`. Our
+launcher fork prefix-matches `v3.1.` and hides both the warning and the
+"Update radio" tile; on a stock launcher the warning may appear.
+**Ignore it.** **Do not click "Update Radio"** on the home screen — it
+hits `ota.tanmatsu.cloud/radio2/instructions.json` and currently
+downgrades to an older stock build.

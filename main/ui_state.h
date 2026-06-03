@@ -53,6 +53,5 @@ extern int  settings_scroll;
 
 // ── Other shared UI flags ────────────────────────────────────────────────────
 extern bool qr_overlay_active;
-extern bool radio_bootloader_mode;
 extern bool time_from_nvs;
 extern bool lora_ready;
