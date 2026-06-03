@@ -32,8 +32,9 @@ int              channel_unread_total(void);  // sum across all channels
 // loads any user-added channels from NVS blob "mc.channels".
 void channels_init(void);
 
-// Derive a 16-byte secret from a channel name following Renze's spec:
-// secret = SHA256(name including '#')[0..15]. Used for non-Public channels.
+// Derive a 16-byte secret from a channel name following the upstream
+// MeshCore spec: secret = SHA256(name including '#')[0..15]. Used for
+// non-Public channels.
 void channels_derive_secret_from_name(const char *name, uint8_t out_secret[CHANNEL_SECRET_LEN]);
 
 // Add a channel by name (e.g. "#nl"). Derives the secret from the name,
