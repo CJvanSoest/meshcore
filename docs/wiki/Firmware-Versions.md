@@ -51,7 +51,7 @@ a clean rebuild + retest.
 **Note about radio v3.1.1:** the OTA radio bundle was built against
 v0.2.1 and ships the 16-byte config form. The app's `lora_get_config`
 client accepts both 24-byte (v0.2.1) and 25-byte (v0.3.0+) responses,
-so the same MeshCore build works on both until Renze rebuilds the radio
+so the same MeshCore build works on both until Nicolai rebuilds the radio
 firmware against v0.3.0.
 
 ## 3. `tanmatsu-launcher` — P4 launcher
