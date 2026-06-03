@@ -1,9 +1,14 @@
 # C6 radio communication
 
 The Tanmatsu has two ESP32 SoCs: the **ESP32-P4** runs the app + display,
-and the **ESP32-C6** drives the **SX1268** LoRa transceiver. The P4 talks
+and the **ESP32-C6** drives the **SX1262** LoRa transceiver. The P4 talks
 to the C6 over a hosted-WiFi-like SDIO/SPI link via Nicolai Electronics'
 `tanmatsu-lora` IDF component (which exposes `lora.h`).
+
+**Standard radio firmware: `tanmatsu-radio` v3.1.1** (stock upstream).
+That's what the Launcher's Tools → Firmware update path installs, and
+what MeshCore expects. The on-device Information tab shows the live
+version via the v3.1.1 system-protocol `get_information` query.
 
 ## RPC surface (`lora.h`)
 
@@ -12,36 +17,21 @@ to the C6 over a hosted-WiFi-like SDIO/SPI link via Nicolai Electronics'
 | `lora_init(qsize)` | Bring up the RPC link, allocate RX queue |
 | `lora_get_config(&cfg)` | Read C6-side config (frequency, SF, BW, CR, power, sync, preamble) |
 | `lora_set_config(&cfg)` | Push P4 config to C6 — applied immediately |
-| `lora_set_mode(MODE)` | `RX`, `TX`, `SLEEP` |
+| `lora_set_mode(MODE)` | `RX`, `SLEEP` (TX is implicit via `lora_send_packet`) |
 | `lora_send_packet(buf, len)` | Enqueue a TX |
 | `lora_recv_packet(...)` | Pop the next received frame |
+| `lora_get_rssi_inst(handle, float* dBm)` | Instant-RSSI poll for the noise-floor display |
 
 `radio.c` builds an RX task that loops on `lora_recv_packet`. RSSI/SNR
-fields are populated only when the firmware on the C6 supports them — see
-below.
+fields are populated in the per-packet stats on every `PACKET_RX`.
 
 ## RSSI / SNR + noise floor
 
-Per-packet RSSI/SNR and the instant-RSSI (noise floor) poll are **upstream**
-since `tanmatsu-lora` v0.2.1 / `tanmatsu-radio` (our PRs #14 / #3). The
-component returns RSSI/SNR in the per-packet stats on every `PACKET_RX`, and
-`lora_get_rssi_inst(handle, float* dBm)` polls the instant RSSI for the
-noise-floor display (60 s interval — 5 s breaks the SX126x preamble→header
-transition).
-
-We run the C6 from a small Gitea fork of `tanmatsu-radio` (upstream main /
-v3.1.0-line) carrying three not-yet-upstream patches:
-
-1. `rx_boost` — boosted RX gain toggle (in the `tanmatsu-lora` fork).
-2. `CONFIG_ESP_HOSTED_MAX_CUSTOM_MSG_HANDLERS` 3 → 8, so the LoRa protocol
-   server actually registers (upstream registers 6 servers but the table is 3).
-3. Fix for an inverted RX-forward check (`lora_receive_packet` returns
-   `esp_err_t`, so `if (...)` was true only on *failure* — packets never
-   reached the host).
-
-Patches 2 and 3 are reported upstream in
-[tanmatsu-radio#18](https://github.com/Nicolai-Electronics/tanmatsu-radio/issues/18);
-drop the fork once they land.
+Per-packet RSSI/SNR are upstream since `tanmatsu-lora` **v0.2.1** /
+`tanmatsu-radio` **v3.1.0** (originally our PRs #3 / #14). The component
+returns RSSI/SNR in the per-packet stats on every `PACKET_RX`, and
+`lora_get_rssi_inst` polls the instant RSSI for the noise-floor display
+(60 s interval — 5 s breaks the SX126x preamble→header transition).
 
 In the Nodes tab the RSSI column is coloured:
 
@@ -59,6 +49,21 @@ SNR (in dB):
 | -10 .. 0 dB | Amber |
 | < -10 dB | Red |
 
+## RX sensitivity (`rx_boost`)
+
+Settings → RX sensitivity toggles SX1262 RxGain register `0x08AC` between
+the "boosted" mode (`0x96`, ~+3 dB sensitivity, ~+2 mA RX current) and
+power-save (`0x94`). In the field the boosted mode yields noticeably
+more decoded weak-signal packets at the cost of a marginal RX-current
+increase. The setting persists in NVS (`lora.rxboost`, default true) and
+is reapplied on every `lora_set_config`.
+
+Boost is part of the lora-config struct since `tanmatsu-lora` **v0.3.0**
+(originally our PR #5; the upstream tag was cut 2026-06-03). The struct
+is the 17-byte form; v0.2.1 used a 16-byte form without `rx_boost`. The
+app accepts both response lengths (see "Firmware update workflow" below)
+so the same build keeps working across the bump.
+
 ## Frequency / band
 
 Default is the EU 868 ISM band:
@@ -71,24 +76,31 @@ Default is the EU 868 ISM band:
 | TX power | up to 22 dBm (chip max; legal cap is lower in EU) |
 
 US, JP, AU and other bands work too — set `frequency` to the matching ISM
-band frequency. The chip itself is multi-band; the Tanmatsu RF front-end is
-optimised for 868/915 MHz.
+band frequency. The SX1262 itself is multi-band; the Tanmatsu RF
+front-end is optimised for 868/915 MHz.
 
 ## Firmware update workflow
 
 **End users — update via the Launcher:** open the **Launcher → Tools →
-Firmware update**. This pulls the latest stable launcher *and* C6 radio
-firmware from `ota.tanmatsu.cloud` in one go. As of `tanmatsu-radio`
-v3.1.1 the OTA bundle ships the `lora_protocol` server (callback-limit
-fix) and the `tanmatsu-lora` v0.2.1 component MeshCore expects.
+Firmware update**. This pulls the latest stable launcher *and* the C6
+radio firmware from `ota.tanmatsu.cloud` in one go. The OTA bundle
+ships `tanmatsu-radio` v3.1.1 + the `tanmatsu-lora` component MeshCore
+expects.
 
 > **Do this before installing MeshCore on a freshly-recovered device.**
 > `recovery.tanmatsu.cloud` currently serves an old radio firmware
 > (`ESP-HOSTED 2.1.0`, pre-`tanmatsu-radio`-rename) and launcher 0.1.2 —
 > too old for the MeshCore protocol: `lora_get_config` returns a
-> response shorter than the 24/25-byte forms our fallback handles, and
-> the app shows "LoRa radio not available". The launcher's "Tools →
-> Firmware update" path is what unblocks it.
+> response shorter than the 24/25-byte forms the app's fallback handles,
+> and MeshCore reports "LoRa radio not available". The Launcher's
+> Tools → Firmware update path is what unblocks it.
+
+The app's response-length fallback accepts both:
+- **24 bytes** = `lora_protocol_config_params_t` 16-byte form (`tanmatsu-lora` v0.2.1)
+- **25 bytes** = 17-byte form including `rx_boost` (`tanmatsu-lora` v0.3.0+)
+
+so the same build runs on both stock v3.1.1 (currently shipping v0.2.1)
+and on a future radio bundle that picks up v0.3.0.
 
 **Developers — flash a custom C6 build via esptool:** put the C6 into
 DFU mode externally (radio off → radio on into bootloader via the BSP
@@ -114,12 +126,15 @@ LoRa config.
 
 ## Mismatch warning in launcher
 
-The Tanmatsu launcher checks the C6 firmware version against its
-embedded expected version. We run a Gitea fork of `tanmatsu-radio`
-(upstream main / v3.1.0-line + the three patches above), so the version
-string is `v3.1.1-1-gf919f91` instead of an exact `v3.1.1`. Our
-launcher fork prefix-matches `v3.1.` and hides both the warning and the
-"Update radio" tile; on a stock launcher the warning may appear.
-**Ignore it.** **Do not click "Update Radio"** on the home screen — it
-hits `ota.tanmatsu.cloud/radio2/instructions.json` and currently
-downgrades to an older stock build.
+The Tanmatsu launcher checks the live C6 version string against an
+embedded expected version. **Stock setup (launcher v0.1.6 + radio
+v3.1.1) matches exactly → no warning, no "Update radio" tile.** The
+warning only appears when one side runs an off-tag build — for example
+a developer running a git-described radio (`v3.1.1-1-g<sha>`) or a
+launcher that doesn't yet recognise the radio's tag. If you see it on
+a stock device, *don't* press "Update Radio" on the home screen — that
+hits `ota.tanmatsu.cloud/radio2/instructions.json` which currently
+points to an older bundle. Use Tools → Firmware update instead.
+
+See [Firmware Versions](Firmware-Versions.md) for the precise upstream
+versions each piece tracks, and where we still carry deltas.
