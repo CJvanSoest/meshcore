@@ -111,12 +111,6 @@ closes it. The encoding uses `qrcodegen` with ECC_MEDIUM and version 1..10.
 The QR buffers are `static uint8_t qr_data[qrcodegen_BUFFER_LEN_MAX]` etc.
 to avoid stack overflow (each buffer is ~3.9 KB).
 
-## Radio bootloader screen (`radio_bootloader_mode`)
-
-Triggered by `U` in Settings. The screen replaces the tab bar with a blue
-"Radio Bootloader Mode" header and displays the esptool command for the C6
-flash. The escape route is `ESC` / `F1` which power-cycles the badge.
-
 ## Battery & RX indicator
 
 Always painted at the top-right of the tab bar by `render_tab_bar`:

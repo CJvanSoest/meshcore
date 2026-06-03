@@ -20,10 +20,6 @@
 #include "pax_gfx.h"
 #include "pax_text.h"
 
-#if defined(CONFIG_IDF_TARGET_ESP32P4)
-#include "esp_hosted.h"
-#endif
-
 #include "app_config.h"
 #include "channels.h"
 #include "chat.h"
@@ -129,55 +125,6 @@ static void render_tab_bar(void) {
         status_x -= (int)sz.x;
         pax_draw_text(&fb, COL_GREEN, FONT, TXT_BODY, status_x, status_y, rxbuf);
     }
-}
-
-static void start_radio_bootloader(void) {
-#if defined(CONFIG_IDF_TARGET_ESP32P4)
-    esp_hosted_configure_heartbeat(false, 1);
-    esp_hosted_deinit();
-    vTaskDelay(pdMS_TO_TICKS(200));
-#endif
-    bsp_power_set_radio_state(BSP_POWER_RADIO_STATE_OFF);
-    vTaskDelay(pdMS_TO_TICKS(100));
-    bsp_power_set_radio_state(BSP_POWER_RADIO_STATE_BOOTLOADER);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    render();
-}
-
-void enter_radio_bootloader(void) {
-    pax_background(&fb, COL_BG);
-    pax_draw_text(&fb, COL_WHITE, FONT, TXT_TITLE, 14, 14, "Radio Firmware Update");
-    pax_draw_text(&fb, COL_GRAY,  FONT, TXT_BODY,  14, 14 + TXT_TITLE + 8, "Stopping ESP-Hosted...");
-    blit();
-    radio_bootloader_mode = true;
-    start_radio_bootloader();
-}
-
-static void render_bootloader(void) {
-    int w = (int)pax_buf_get_width(&fb);
-    int h = (int)pax_buf_get_height(&fb);
-    pax_background(&fb, COL_BG);
-    pax_simple_rect(&fb, COL_ACCENT, 0, 0, w, TAB_BAR_H);
-    pax_draw_text(&fb, COL_HEADER, FONT, TXT_TAB, 14, (TAB_BAR_H - TXT_TAB) / 2, "Radio Bootloader Mode");
-    int y = TAB_BAR_H + 12;
-    pax_draw_text(&fb, COL_GREEN, FONT, TXT_BODY, 14, y, "C6 is in bootloader mode."); y += TXT_BODY + 10;
-    pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 14, y, "On your Mac:");               y += TXT_BODY + 6;
-    pax_draw_text(&fb, COL_AMBER, pax_font_sky_mono, 14, 14, y, "ls /dev/cu.usbmodem*"); y += 20;
-    pax_draw_text(&fb, COL_GRAY,  FONT,             TXT_SMALL, 14, y, "(find the new C6 USB device)"); y += TXT_SMALL + 8;
-    pax_draw_text(&fb, COL_WHITE, pax_font_sky_mono, 14, 14, y, "cd tanmatsu-radio");                  y += 20;
-    pax_draw_text(&fb, COL_AMBER, pax_font_sky_mono, 13, 14, y, "esptool.py --chip esp32c6");          y += 18;
-    pax_draw_text(&fb, COL_AMBER, pax_font_sky_mono, 13, 14, y, "  --port /dev/cu.usbmodem21401");     y += 18;
-    pax_draw_text(&fb, COL_AMBER, pax_font_sky_mono, 13, 14, y, "  --before no_reset write_flash");    y += 18;
-    pax_draw_text(&fb, COL_AMBER, pax_font_sky_mono, 13, 14, y, "  --flash_mode dio --flash_freq 80m"); y += 18;
-    pax_draw_text(&fb, COL_AMBER, pax_font_sky_mono, 13, 14, y, "  --flash_size 8MB");                 y += 18;
-    pax_draw_text(&fb, COL_AMBER, pax_font_sky_mono, 13, 14, y, "  0x0 bootloader.bin 0x8000 pt.bin"); y += 18;
-    pax_draw_text(&fb, COL_AMBER, pax_font_sky_mono, 13, 14, y, "  0xd000 ota.bin 0x10000 app.bin");
-    int fy = h - FOOTER_H;
-    pax_simple_rect(&fb, COL_HEADER, 0, fy, w, FOOTER_H);
-    pax_simple_rect(&fb, COL_PANEL,  0, fy, w, 1);
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 12, fy + (FOOTER_H - TXT_SMALL) / 2,
-                  "ESC / F1: restart badge after flashing");
-    blit();
 }
 
 static void render_settings(void) {
@@ -476,7 +423,7 @@ static void render_settings(void) {
     } else if (edit_mode) {
         hint = "Up/Down or W/S: adjust   Enter: save   ESC: cancel";
     } else if (!c6_available) {
-        hint = "NVS only — C6 unavailable   U: flash radio";
+        hint = "NVS only — update radio via Launcher: Tools > Firmware update";
         hint_col = COL_AMBER;
     } else if (selected == FIELD_ANTENNA_GAIN) {
         hint = "Antenna gain raises ERP; editable once Country is set.";
@@ -520,7 +467,7 @@ static void render_settings(void) {
     } else if (selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
         hint = "Decimal degrees (e.g. 52.123456). Empty clears both axes.";
     } else {
-        hint = "W/S: navigate   Enter: edit   R: reload   Tab: next   U: flash";
+        hint = "W/S: navigate   Enter: edit   R: reload   Tab: next";
     }
     pax_draw_text(&fb, hint_col, FONT, TXT_BODY, 10, fy + 6, hint);
 
@@ -698,6 +645,8 @@ static void render_nodes(void) {
 
     if (!lora_rx_ok) {
         pax_draw_text(&fb, COL_AMBER, FONT, TXT_BODY, 12, list_y0 + 14, "LoRa radio not available");
+        pax_draw_text(&fb, COL_GRAY,  FONT, TXT_BODY, 12, list_y0 + 14 + TXT_BODY + 8,
+                      "Update via Launcher: Tools > Firmware update");
     } else if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         if (node_count == 0 && contact_count == 0) {
             pax_draw_text(&fb, COL_GRAY, FONT, TXT_BODY, 12, list_y0 + 14, "Listening... no nodes heard yet.");
@@ -1392,10 +1341,6 @@ static void render_emoji_picker_overlay(void) {
 }
 
 void render(void) {
-    if (radio_bootloader_mode) {
-        render_bootloader();
-        return;
-    }
     switch (current_view) {
         case VIEW_NODES:
             render_nodes();

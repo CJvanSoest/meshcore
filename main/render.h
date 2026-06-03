@@ -51,10 +51,6 @@ extern pax_buf_t  fb;
 // already serialised access to `fb`.
 void blit(void);
 
-// Top-level dispatcher: paints the current view (or overlay/bootloader screen)
-// into `fb` and calls blit().
+// Top-level dispatcher: paints the current view (or overlay) into `fb` and
+// calls blit().
 void render(void);
-
-// Enter the "radio firmware update" mode: power-cycles the C6 into USB-DFU,
-// switches to the on-screen radio-bootloader instructions.
-void enter_radio_bootloader(void);

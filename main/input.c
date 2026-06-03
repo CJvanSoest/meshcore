@@ -29,9 +29,6 @@
 
 static const char *TAG = "input";
 
-// enter_radio_bootloader lives in render.c (it draws a frame before flipping).
-extern void enter_radio_bootloader(void);
-
 // ── Settings: lookup current BW index ────────────────────────────────────────
 int bw_index(void) {
     for (int i = 0; i < BW_COUNT; i++) {
@@ -216,14 +213,6 @@ static void settings_commit_text_edit(field_t f) {
 }
 
 void handle_nav(uint32_t key) {
-    if (radio_bootloader_mode) {
-        if (key == BSP_INPUT_NAVIGATION_KEY_F1 || key == BSP_INPUT_NAVIGATION_KEY_ESC) {
-            bsp_led_set_mode(true);
-            bsp_device_restart_to_launcher();
-        }
-        return;
-    }
-
     if (qr_overlay_active) {
         qr_overlay_active = false;
         return;
@@ -474,14 +463,6 @@ void handle_nav(uint32_t key) {
 }
 
 void handle_key(char c) {
-    if (radio_bootloader_mode) {
-        if (c == 27) {
-            bsp_led_set_mode(true);
-            bsp_device_restart_to_launcher();
-        }
-        return;
-    }
-
     if (qr_overlay_active) {
         if (c == 27) qr_overlay_active = false;
         return;
@@ -902,7 +883,5 @@ void handle_key(char c) {
             if (dm_inbox_cursor > 0) dm_inbox_cursor--;
             ESP_LOGI(TAG, "DM deleted by user (D): %s", target_name);
         }
-    } else if ((c == 'u' || c == 'U') && !edit_mode && current_view == VIEW_SETTINGS) {
-        enter_radio_bootloader();
     }
 }

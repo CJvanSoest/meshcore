@@ -65,6 +65,27 @@ see the [wiki](docs/wiki/Home.md).
 
 ---
 
+## Installing
+
+On a freshly-recovered Tanmatsu (flashed via `recovery.tanmatsu.cloud`):
+
+1. After recovery, **boot into the launcher** and open **Tools → Firmware
+   update**. This pulls the latest launcher and C6 radio firmware over
+   the air. Recovery currently serves an older radio firmware
+   (`ESP-HOSTED 2.1.0`) whose `lora_protocol` ABI predates the one
+   MeshCore expects — the app will show "LoRa radio not available"
+   until you run this step.
+2. Install **MeshCore** from the appstore.
+3. Open MeshCore. The Settings tab shows the live radio firmware
+   version; nodes start arriving on the Nodes tab once the C6 receives
+   adverts.
+
+See [C6 Radio → Firmware update workflow](docs/wiki/C6-Radio.md#firmware-update-workflow)
+for the long-form explanation, including custom-build flashing for
+developers.
+
+---
+
 ## Regulatory compliance
 
 LoRa runs in licence-exempt ISM bands whose rules differ per country —

@@ -123,7 +123,6 @@ bool edit_mode             = false;
 bool dirty                 = false;
 bool lora_ready            = false;
 bool c6_available          = false;
-bool radio_bootloader_mode = false;
 bool time_from_nvs         = false;
 bool qr_overlay_active     = false;
 // Shared text-edit scratch for FIELD_OWNER / FIELD_ADV_NAME / FIELD_REGION_SCOPE.

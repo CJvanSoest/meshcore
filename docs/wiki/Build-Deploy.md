@@ -108,8 +108,9 @@ frequencies in MHz wrongly (Hz fix, PR #91).
 Built separately from the
 [`tanmatsu-radio`](https://github.com/CJvanSoest/tanmatsu-radio) checkout
 (or upstream + local patches). Use the C6 sub-toolchain (esp32c6 target,
-same IDF version). Flash via esptool over USB after pressing `U` in the
-MeshCore Settings tab. Full instructions in
+same IDF version). Flash via esptool over USB with the C6 in DFU mode
+(power-cycle into bootloader via BSP). End users update the C6 through
+**Launcher → Tools → Firmware update** instead. Full instructions in
 [C6 Radio](C6-Radio.md#firmware-update-workflow).
 
 ## Build env quirks
