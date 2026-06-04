@@ -3,14 +3,7 @@ dependencies:
   badgeteam/badge-bsp: "^0.9.9"
   nicolaielectronics/tanmatsu-wifi: "^1.1.2"
   robotman2412/pax-gfx: "^2.1.0"
-  nicolaielectronics/tanmatsu-lora:
-    git: http://192.168.2.25:3000/CJ/tanmatsu-lora.git
-    version: main
-    # Gitea fork of upstream v0.2.1 + one commit: rx_boost (RX-sensitivity
-    # toggle). Everything else — RSSI/SNR, GET_RSSI_INST (float dBm) — is
-    # upstream. Both issue #18 firmware bugs (esp-hosted handler limit + the
-    # inverted RX-forward check) are now fixed upstream in tanmatsu-radio v3.1.1,
-    # so the radio Gitea fork is down to a single delta: this same lora redirect.
-    # Drop this fork for nicolaielectronics/tanmatsu-lora once rx_boost lands
-    # upstream. (fw-version can be re-added via the v3.1.1 system protocol's
-    #  get-information command when wired up.)
+  # rx_boost shipped upstream in tanmatsu-lora v0.3.0 (paired with
+  # tanmatsu-radio v3.2.0). The CJ Gitea fork is no longer needed — drop the
+  # local git: redirect and track upstream directly.
+  nicolaielectronics/tanmatsu-lora: "^0.3.0"
