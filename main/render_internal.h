@@ -37,6 +37,15 @@ int           home_tile_count(void);
 app_view_t    home_tile_target(int idx);
 home_action_t home_tile_action(int idx);
 
+// Settings drilldown: the Settings view is a two-level menu — a list of
+// category cards, then a drilled-in view that only shows the fields belonging
+// to one category. These helpers expose the category table (defined in
+// render_settings.c) so input.c can clamp the field cursor + drive nav.
+int         settings_category_count(void);
+void        settings_category_bounds(int cat, int *first_field, int *last_field);
+const char *settings_category_title(int cat);
+int         settings_category_for_field(int f);
+
 // Overlays drawn on top of a base view by the dispatcher.
 void render_qr_overlay(void);
 void render_emoji_picker_overlay(void);

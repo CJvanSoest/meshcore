@@ -134,6 +134,9 @@ int  home_cursor           = 0;  // VIEW_HOME tile-grid focus (0..HOME_TILE_COUN
 bool qr_from_home          = false;
 char     toast_text[64]    = {0};
 uint32_t toast_start_ms    = 0;
+bool settings_category_list_mode = true;   // start in list when entering Settings
+int  settings_category_cursor    = 0;
+int  settings_category_active    = 0;
 
 // utf8_sanitize lives in chat.c. node_filter lives in nodes.c.
 

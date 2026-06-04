@@ -66,6 +66,14 @@ extern int home_cursor;
 // leaving the user stranded on the nodes list.
 extern bool qr_from_home;
 
+// Settings drilldown state. When category_list_mode is true, render_settings
+// draws the list of categories; when false, it drills into category_active
+// and renders only those fields (with `selected` clamped to that range).
+// category_cursor tracks the focused row in the category list.
+extern bool settings_category_list_mode;
+extern int  settings_category_cursor;
+extern int  settings_category_active;
+
 // Short on-screen status toast (e.g. "Flood advert sent"). The string is empty
 // when no toast is active. toast_start_ms is the tick-time the toast became
 // visible; render_home auto-clears the text after ~2 seconds.

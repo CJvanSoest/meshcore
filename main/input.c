@@ -57,6 +57,13 @@ static void open_home_tile(int idx) {
         channel_adding       = false;
         led_channel_pending  = false;
         update_notification_led();
+    } else if (target == VIEW_SETTINGS) {
+        // Opening Settings from the home tile starts at the category list so
+        // the user always sees the same top-level menu (Tab cycling preserves
+        // last position; tile-open resets).
+        settings_category_list_mode = true;
+        settings_category_cursor    = 0;
+        settings_scroll             = 0;
     }
     // QR tile: open the overlay on top of the nodes view AND remember the
     // origin so closing it bounces back to home instead of leaving the user
@@ -335,6 +342,11 @@ void handle_nav(uint32_t key) {
             field_edit_buf[0]  = '\0';
         } else if (current_view == VIEW_CHANNEL && !channel_list_mode) {
             channel_list_mode = true;
+        } else if (current_view == VIEW_SETTINGS && !settings_category_list_mode) {
+            // First ESC out of a drilled-in settings category returns to the
+            // category list; second ESC then falls through to HOME.
+            settings_category_list_mode = true;
+            settings_scroll             = 0;
         } else if (current_view != VIEW_HOME) {
             // ESC from any non-modal view returns to the home tile-grid before
             // bouncing back to the launcher (so home becomes the safe "back").
@@ -348,8 +360,14 @@ void handle_nav(uint32_t key) {
             int cols = 4;  // mirrors HOME_TILE_COLS in render_home.c
             if (home_cursor - cols >= 0) home_cursor -= cols;
         } else if (current_view == VIEW_SETTINGS) {
-            if (!edit_mode) selected = (selected - 1 + FIELD_COUNT) % FIELD_COUNT;
-            else if (!field_editing_text) field_adjust(selected, +1);
+            if (settings_category_list_mode) {
+                if (settings_category_cursor > 0) settings_category_cursor--;
+            } else if (!edit_mode) {
+                int first, last;
+                settings_category_bounds(settings_category_active, &first, &last);
+                int n = last - first + 1;
+                selected = first + (selected - first - 1 + n) % n;
+            } else if (!field_editing_text) field_adjust(selected, +1);
         } else if (current_view == VIEW_NODES) {
             if (node_cursor > 0) node_cursor--;
         } else if (current_view == VIEW_CHAT && dm_inbox_mode) {
@@ -367,8 +385,15 @@ void handle_nav(uint32_t key) {
             int total = home_tile_count();
             if (home_cursor + cols < total) home_cursor += cols;
         } else if (current_view == VIEW_SETTINGS) {
-            if (!edit_mode) selected = (selected + 1) % FIELD_COUNT;
-            else if (!field_editing_text) field_adjust(selected, -1);
+            if (settings_category_list_mode) {
+                if (settings_category_cursor < settings_category_count() - 1)
+                    settings_category_cursor++;
+            } else if (!edit_mode) {
+                int first, last;
+                settings_category_bounds(settings_category_active, &first, &last);
+                int n = last - first + 1;
+                selected = first + (selected - first + 1) % n;
+            } else if (!field_editing_text) field_adjust(selected, -1);
         } else if (current_view == VIEW_NODES) {
             int upper = node_count + contact_count - 1;
             if (upper < 0) upper = 0;
@@ -497,6 +522,18 @@ void handle_nav(uint32_t key) {
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {
+            if (settings_category_list_mode) {
+                // Drill into the focused category: clamp the field cursor to
+                // the first field of that category so the row-renderer starts
+                // at a valid position.
+                settings_category_active    = settings_category_cursor;
+                settings_category_list_mode = false;
+                int first, last;
+                settings_category_bounds(settings_category_active, &first, &last);
+                selected = first;
+                settings_scroll = 0;
+                return;
+            }
             // FIELD_RADIO_FW / FIELD_RADIO_FW_APP / FIELD_DUTY_CYCLE are read-only — Enter no-op.
             // FIELD_ANTENNA_GAIN is read-only until country is set (otherwise gain has no effect).
             bool gain_locked = (selected == FIELD_ANTENNA_GAIN &&
@@ -783,6 +820,9 @@ void handle_key(char c) {
             dm_inbox_mode = true;
         } else if (current_view == VIEW_CHANNEL && !channel_list_mode) {
             channel_list_mode = true;
+        } else if (current_view == VIEW_SETTINGS && !settings_category_list_mode) {
+            settings_category_list_mode = true;
+            settings_scroll             = 0;
         } else if (current_view != VIEW_HOME) {
             current_view = VIEW_HOME;
         } else {
@@ -794,8 +834,14 @@ void handle_key(char c) {
             int cols = 4;
             if (home_cursor - cols >= 0) home_cursor -= cols;
         } else if (current_view == VIEW_SETTINGS) {
-            if (!edit_mode) selected = (selected - 1 + FIELD_COUNT) % FIELD_COUNT;
-            else if (!field_editing_text) field_adjust(selected, +1);
+            if (settings_category_list_mode) {
+                if (settings_category_cursor > 0) settings_category_cursor--;
+            } else if (!edit_mode) {
+                int first, last;
+                settings_category_bounds(settings_category_active, &first, &last);
+                int n = last - first + 1;
+                selected = first + (selected - first - 1 + n) % n;
+            } else if (!field_editing_text) field_adjust(selected, +1);
         } else if (current_view == VIEW_NODES) {
             if (node_cursor > 0) node_cursor--;
         }
@@ -805,8 +851,15 @@ void handle_key(char c) {
             int total = home_tile_count();
             if (home_cursor + cols < total) home_cursor += cols;
         } else if (current_view == VIEW_SETTINGS) {
-            if (!edit_mode) selected = (selected + 1) % FIELD_COUNT;
-            else if (!field_editing_text) field_adjust(selected, -1);
+            if (settings_category_list_mode) {
+                if (settings_category_cursor < settings_category_count() - 1)
+                    settings_category_cursor++;
+            } else if (!edit_mode) {
+                int first, last;
+                settings_category_bounds(settings_category_active, &first, &last);
+                int n = last - first + 1;
+                selected = first + (selected - first + 1) % n;
+            } else if (!field_editing_text) field_adjust(selected, -1);
         } else if (current_view == VIEW_NODES) {
             int upper = node_count + contact_count - 1;
             if (upper < 0) upper = 0;
@@ -883,6 +936,15 @@ void handle_key(char c) {
                 update_notification_led();
             }
         } else if (current_view == VIEW_SETTINGS) {
+            if (settings_category_list_mode) {
+                settings_category_active    = settings_category_cursor;
+                settings_category_list_mode = false;
+                int first, last;
+                settings_category_bounds(settings_category_active, &first, &last);
+                selected = first;
+                settings_scroll = 0;
+                return;
+            }
             // FIELD_RADIO_FW / FIELD_RADIO_FW_APP / FIELD_DUTY_CYCLE are read-only — Enter no-op.
             // FIELD_ANTENNA_GAIN is read-only until country is set (otherwise gain has no effect).
             bool gain_locked = (selected == FIELD_ANTENNA_GAIN &&
