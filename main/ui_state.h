@@ -60,3 +60,14 @@ extern bool lora_ready;
 // Index into the home tile array (0..HOME_TILE_COUNT-1). Owned + updated by
 // input.c, read by render_home.c.
 extern int home_cursor;
+
+// QR overlay was opened from the home QR-tile (vs the classic 'Q' shortcut in
+// nodes view). When true, closing the overlay returns to VIEW_HOME instead of
+// leaving the user stranded on the nodes list.
+extern bool qr_from_home;
+
+// Short on-screen status toast (e.g. "Flood advert sent"). The string is empty
+// when no toast is active. toast_start_ms is the tick-time the toast became
+// visible; render_home auto-clears the text after ~2 seconds.
+extern char     toast_text[64];
+extern uint32_t toast_start_ms;

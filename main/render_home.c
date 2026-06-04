@@ -21,6 +21,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 
 #include "bsp/power.h"
 #include "esp_err.h"
@@ -130,7 +131,7 @@ static const home_tile_t home_tiles[HOME_TILE_COUNT] = {
     { "DM",       VIEW_CHAT,     icon_dm,       HOME_ACTION_NONE   },
     { "Channel",  VIEW_CHANNEL,  icon_channel,  HOME_ACTION_NONE   },
     { "Map",      VIEW_HOME,     icon_map,      HOME_ACTION_NONE   },  // TODO: VIEW_MAP
-    { "Advert",   VIEW_NODES,    icon_advert,   HOME_ACTION_NONE   },  // opens nodes; press 'A' there
+    { "Advert",   VIEW_HOME,     icon_advert,   HOME_ACTION_SEND_ADVERT },  // sends + toasts
     { "Settings", VIEW_SETTINGS, icon_settings, HOME_ACTION_NONE   },
     { "About",    VIEW_HOME,     icon_about,    HOME_ACTION_NONE   },  // TODO: VIEW_ABOUT
     { "QR",       VIEW_NODES,    icon_advert,   HOME_ACTION_OPEN_QR},  // shortcut to "add me" QR overlay
@@ -276,11 +277,49 @@ void render_home(void) {
         }
     }
 
-    // Footer hint.
+    // Footer: keyboard hint on the left, RX / SNR / noise on the right.
     int fy = h - HOME_FOOTER_H;
     pax_simple_rect(&fb, COL_HEADER,       0, fy, w, HOME_FOOTER_H);
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10,
-                  fy + (HOME_FOOTER_H - TXT_SMALL) / 2,
+    int hint_y = fy + (HOME_FOOTER_H - TXT_SMALL) / 2;
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_y,
                   "WSAD: nav   Enter: open   Tab: classic tabs");
+
+    // Mirror the bottom-row stats from the Settings tab so the home screen
+    // doubles as a quick-glance radio dashboard.
+    char rf[64] = {0};
+    int  snr_dB = (int)last_rx_snr_db_x4 / 4;
+    if (last_rx_stats_valid && noise_floor_valid) {
+        snprintf(rf, sizeof(rf), "RX:%d SNR:%+d N:%d",
+                 (int)last_rx_rssi_dbm, snr_dB, (int)noise_floor_dbm);
+    } else if (last_rx_stats_valid) {
+        snprintf(rf, sizeof(rf), "RX:%d SNR:%+d", (int)last_rx_rssi_dbm, snr_dB);
+    } else if (noise_floor_valid) {
+        snprintf(rf, sizeof(rf), "noise:%d", (int)noise_floor_dbm);
+    }
+    if (rf[0]) {
+        pax_vec2f rsz = pax_text_size(FONT, TXT_SMALL, rf);
+        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL,
+                      w - (int)rsz.x - 10, hint_y, rf);
+    }
+
+    // 2-second status toast (e.g. "Flood advert sent"). Centered, Pager-style
+    // panel with an accent stripe so it reads as a confirmation, not an error.
+    if (toast_text[0]) {
+        uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        if (now_ms - toast_start_ms < 2000) {
+            pax_vec2f tsz = pax_text_size(FONT, TXT_TITLE, toast_text);
+            int box_w = (int)tsz.x + 60;
+            int box_h = TXT_TITLE + 40;
+            int box_x = (w - box_w) / 2;
+            int box_y = (h - box_h) / 2;
+            pax_simple_rect(&fb, COL_PAGER_BG,     box_x, box_y, box_w, box_h);
+            pax_simple_rect(&fb, COL_PAGER_ACCENT, box_x, box_y, box_w, 3);
+            pax_simple_rect(&fb, COL_PAGER_ACCENT, box_x, box_y + box_h - 3, box_w, 3);
+            pax_draw_text(&fb, COL_PAGER_ACCENT, FONT, TXT_TITLE,
+                          box_x + 30, box_y + 20, toast_text);
+        } else {
+            toast_text[0] = 0;
+        }
+    }
 }

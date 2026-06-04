@@ -34,7 +34,18 @@ static const char *TAG = "input";
 // and initialise per-view modal state (DM inbox, channel list, etc.). TBD
 // placeholder tiles report VIEW_HOME and are a no-op here.
 static void open_home_tile(int idx) {
-    app_view_t target = home_tile_target(idx);
+    home_action_t action = home_tile_action(idx);
+    app_view_t    target = home_tile_target(idx);
+
+    // Action tiles fire inline and keep the user on the home screen so the
+    // tile-grid stays the "I am here" anchor while the toast confirms.
+    if (action == HOME_ACTION_SEND_ADVERT) {
+        send_advert();
+        snprintf(toast_text, sizeof(toast_text), "Flood advert sent");
+        toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        return;
+    }
+
     if (target == VIEW_HOME) return;
     current_view = target;
     if (target == VIEW_CHAT) {
@@ -47,9 +58,12 @@ static void open_home_tile(int idx) {
         led_channel_pending  = false;
         update_notification_led();
     }
-    // Post-open side effects (e.g. QR tile flips the overlay on nodes view).
-    if (home_tile_action(idx) == HOME_ACTION_OPEN_QR) {
+    // QR tile: open the overlay on top of the nodes view AND remember the
+    // origin so closing it bounces back to home instead of leaving the user
+    // stranded in the nodes list.
+    if (action == HOME_ACTION_OPEN_QR) {
         qr_overlay_active = true;
+        qr_from_home      = true;
     }
 }
 
@@ -239,6 +253,10 @@ static void settings_commit_text_edit(field_t f) {
 void handle_nav(uint32_t key) {
     if (qr_overlay_active) {
         qr_overlay_active = false;
+        if (qr_from_home) {
+            qr_from_home = false;
+            current_view = VIEW_HOME;
+        }
         return;
     }
 
@@ -507,7 +525,13 @@ void handle_nav(uint32_t key) {
 
 void handle_key(char c) {
     if (qr_overlay_active) {
-        if (c == 27) qr_overlay_active = false;
+        if (c == 27) {
+            qr_overlay_active = false;
+            if (qr_from_home) {
+                qr_from_home = false;
+                current_view = VIEW_HOME;
+            }
+        }
         return;
     }
 

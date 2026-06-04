@@ -312,9 +312,17 @@ void render_qr_overlay(void) {
                   (w - (int)lsz.x) / 2, qr_y - margin - TXT_TITLE - 6, label);
 
     char name_label[80];
-    snprintf(name_label, sizeof(name_label), "%s  [press any key to close]",
+    snprintf(name_label, sizeof(name_label), "%s",
              adv_src[0] ? adv_src : "(no name)");
     pax_vec2f nsz = pax_text_size(FONT, TXT_SMALL, name_label);
     pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL,
                   (w - (int)nsz.x) / 2, qr_y + qr_px + margin + 6, name_label);
+
+    // Explicit close hints below the name, so the user knows exactly which
+    // keys (and the red X on the Tanmatsu chassis) dismiss the overlay.
+    const char *close_hint = "[ESC]   [X]   [Enter]   to close";
+    pax_vec2f csz = pax_text_size(FONT, TXT_SMALL, close_hint);
+    pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL,
+                  (w - (int)csz.x) / 2,
+                  qr_y + qr_px + margin + 6 + TXT_SMALL + 6, close_hint);
 }
