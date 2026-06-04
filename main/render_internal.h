@@ -22,6 +22,19 @@ void render_settings(void);
 void render_nodes(void);
 void render_chat(void);
 void render_channel(void);
+void render_home(void);
+
+// VIEW_HOME tile-grid API used by input.c to translate tile-Enter into a
+// view switch + optional side-effect. home_tile_target() returns VIEW_HOME
+// for placeholder ("soon") tiles so input can no-op on them.
+typedef enum {
+    HOME_ACTION_NONE = 0,
+    HOME_ACTION_OPEN_QR,    // QR-tile: switch to nodes view + open QR overlay
+} home_action_t;
+
+int           home_tile_count(void);
+app_view_t    home_tile_target(int idx);
+home_action_t home_tile_action(int idx);
 
 // Overlays drawn on top of a base view by the dispatcher.
 void render_qr_overlay(void);

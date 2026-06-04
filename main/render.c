@@ -40,13 +40,15 @@ void blit(void) {
 
 void render_tab_bar(void) {
     int w = (int)pax_buf_get_width(&fb);
-    static const char *tab_labels[VIEW_COUNT] = {"Settings", "Nodes", "DM", "Channel"};
-    int tab_w = (w - 200) / VIEW_COUNT;
+    // Tab labels in app_view_t enum order — only the four classic views
+    // appear here; VIEW_HOME has its own header in render_home.c.
+    static const char *tab_labels[VIEW_TAB_COUNT] = {"Settings", "Nodes", "DM", "Channel"};
+    int tab_w = (w - 200) / VIEW_TAB_COUNT;
 
     pax_simple_rect(&fb, COL_HEADER, 0, 0, w, TAB_BAR_H);
 
     int label_y = (TAB_BAR_H - TXT_TAB) / 2;
-    for (int i = 0; i < VIEW_COUNT; i++) {
+    for (int i = 0; i < VIEW_TAB_COUNT; i++) {
         bool active = (i == (int)current_view);
         if (active) {
             pax_simple_rect(&fb, COL_ACCENT, i * tab_w, 0, tab_w, TAB_BAR_H);
@@ -159,6 +161,7 @@ void render(void) {
     // exactly once at the end so the user never sees the base layer briefly
     // through an overlay swap (the old double-blit caused QR/emoji flicker).
     switch (current_view) {
+        case VIEW_HOME:    render_home();    break;
         case VIEW_NODES:
             render_nodes();
             if (qr_overlay_active) render_qr_overlay();

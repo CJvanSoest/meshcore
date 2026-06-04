@@ -24,10 +24,34 @@
 #include "nodes.h"
 #include "radio.h"
 #include "region_limits.h"
+#include "render_internal.h"
 #include "settings_nvs.h"
 #include "ui_state.h"
 
 static const char *TAG = "input";
+
+// Open the tile under the home-cursor: switch current_view to its target
+// and initialise per-view modal state (DM inbox, channel list, etc.). TBD
+// placeholder tiles report VIEW_HOME and are a no-op here.
+static void open_home_tile(int idx) {
+    app_view_t target = home_tile_target(idx);
+    if (target == VIEW_HOME) return;
+    current_view = target;
+    if (target == VIEW_CHAT) {
+        dm_inbox_mode  = true;
+        led_dm_pending = false;
+        update_notification_led();
+    } else if (target == VIEW_CHANNEL) {
+        channel_list_mode    = true;
+        channel_adding       = false;
+        led_channel_pending  = false;
+        update_notification_led();
+    }
+    // Post-open side effects (e.g. QR tile flips the overlay on nodes view).
+    if (home_tile_action(idx) == HOME_ACTION_OPEN_QR) {
+        qr_overlay_active = true;
+    }
+}
 
 // ── Settings: lookup current BW index ────────────────────────────────────────
 int bw_index(void) {
@@ -293,12 +317,19 @@ void handle_nav(uint32_t key) {
             field_edit_buf[0]  = '\0';
         } else if (current_view == VIEW_CHANNEL && !channel_list_mode) {
             channel_list_mode = true;
+        } else if (current_view != VIEW_HOME) {
+            // ESC from any non-modal view returns to the home tile-grid before
+            // bouncing back to the launcher (so home becomes the safe "back").
+            current_view = VIEW_HOME;
         } else {
             bsp_led_set_mode(true);
             bsp_device_restart_to_launcher();
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
-        if (current_view == VIEW_SETTINGS) {
+        if (current_view == VIEW_HOME) {
+            int cols = 4;  // mirrors HOME_TILE_COLS in render_home.c
+            if (home_cursor - cols >= 0) home_cursor -= cols;
+        } else if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) selected = (selected - 1 + FIELD_COUNT) % FIELD_COUNT;
             else if (!field_editing_text) field_adjust(selected, +1);
         } else if (current_view == VIEW_NODES) {
@@ -313,7 +344,11 @@ void handle_nav(uint32_t key) {
             if (ch_scroll > 0) ch_scroll--;              // scroll up through channel history
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
-        if (current_view == VIEW_SETTINGS) {
+        if (current_view == VIEW_HOME) {
+            int cols = 4;
+            int total = home_tile_count();
+            if (home_cursor + cols < total) home_cursor += cols;
+        } else if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) selected = (selected + 1) % FIELD_COUNT;
             else if (!field_editing_text) field_adjust(selected, -1);
         } else if (current_view == VIEW_NODES) {
@@ -332,10 +367,18 @@ void handle_nav(uint32_t key) {
             ch_scroll++;                                  // scroll down (render clamps to newest)
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_LEFT) {
-        if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, -1);
+        if (current_view == VIEW_HOME) {
+            if (home_cursor > 0) home_cursor--;
+        } else if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, -1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT) {
-        if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, +1);
+        if (current_view == VIEW_HOME) {
+            if (home_cursor < home_tile_count() - 1) home_cursor++;
+        } else if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, +1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
+        if (current_view == VIEW_HOME) {
+            open_home_tile(home_cursor);
+            return;
+        }
         if (current_view == VIEW_CHANNEL && channel_adding) {
             if (field_edit_len > 0) {
                 char name[CHANNEL_NAME_MAX_LEN + 1];
@@ -679,7 +722,14 @@ void handle_key(char c) {
 
     if (c == '\t') {
         if (!edit_mode) {
-            current_view = (app_view_t)((int)(current_view + 1) % VIEW_COUNT);
+            // Tab cycles through the four classic views only; home isn't part
+            // of the tab carousel (it's the landing screen with its own header).
+            // From home, Tab jumps to Settings (the first classic tab).
+            if (current_view == VIEW_HOME) {
+                current_view = VIEW_SETTINGS;
+            } else {
+                current_view = (app_view_t)((int)(current_view + 1) % VIEW_TAB_COUNT);
+            }
             if (current_view == VIEW_CHAT) {
                 dm_inbox_mode    = true;
                 led_dm_pending   = false;
@@ -709,19 +759,28 @@ void handle_key(char c) {
             dm_inbox_mode = true;
         } else if (current_view == VIEW_CHANNEL && !channel_list_mode) {
             channel_list_mode = true;
+        } else if (current_view != VIEW_HOME) {
+            current_view = VIEW_HOME;
         } else {
             bsp_led_set_mode(true);
             bsp_device_restart_to_launcher();
         }
     } else if (c == 'w' || c == 'W') {
-        if (current_view == VIEW_SETTINGS) {
+        if (current_view == VIEW_HOME) {
+            int cols = 4;
+            if (home_cursor - cols >= 0) home_cursor -= cols;
+        } else if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) selected = (selected - 1 + FIELD_COUNT) % FIELD_COUNT;
             else if (!field_editing_text) field_adjust(selected, +1);
         } else if (current_view == VIEW_NODES) {
             if (node_cursor > 0) node_cursor--;
         }
     } else if (c == 's' || c == 'S') {
-        if (current_view == VIEW_SETTINGS) {
+        if (current_view == VIEW_HOME) {
+            int cols = 4;
+            int total = home_tile_count();
+            if (home_cursor + cols < total) home_cursor += cols;
+        } else if (current_view == VIEW_SETTINGS) {
             if (!edit_mode) selected = (selected + 1) % FIELD_COUNT;
             else if (!field_editing_text) field_adjust(selected, -1);
         } else if (current_view == VIEW_NODES) {
@@ -729,6 +788,10 @@ void handle_key(char c) {
             if (upper < 0) upper = 0;
             if (node_cursor < upper) node_cursor++;
         }
+    } else if ((c == 'a' || c == 'A') && current_view == VIEW_HOME) {
+        if (home_cursor > 0) home_cursor--;
+    } else if ((c == 'd' || c == 'D') && current_view == VIEW_HOME) {
+        if (home_cursor < home_tile_count() - 1) home_cursor++;
     } else if ((c == 'a' || c == 'A') && current_view == VIEW_NODES) {
         send_advert();
     } else if ((c == 'f' || c == 'F') && current_view == VIEW_NODES) {
@@ -768,6 +831,10 @@ void handle_key(char c) {
     } else if (c == '>' || c == '.') {
         if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, +1);
     } else if (c == '\r' || c == '\n') {
+        if (current_view == VIEW_HOME) {
+            open_home_tile(home_cursor);
+            return;
+        }
         if (current_view == VIEW_NODES) {
             if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
                 display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];

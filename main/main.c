@@ -83,7 +83,7 @@ static QueueHandle_t              input_event_queue    = NULL;
 
 // ── Views ─────────────────────────────────────────────────────────────────────
 // app_view_t + current_view live in app_config.h (shared across modules).
-app_view_t current_view = VIEW_SETTINGS;
+app_view_t current_view = VIEW_HOME;
 
 // ── Radio (TX/RX/stats) ──────────────────────────────────────────────────────
 // rx_buf + rx_count + RF stats + send_*/lora_rx_task all live in radio.c/h.
@@ -130,6 +130,7 @@ char field_edit_buf[33]    = {0};
 int  field_edit_len        = 0;
 bool field_editing_text    = false;
 int  settings_scroll       = 0;
+int  home_cursor           = 0;  // VIEW_HOME tile-grid focus (0..HOME_TILE_COUNT-1)
 
 // utf8_sanitize lives in chat.c. node_filter lives in nodes.c.
 
