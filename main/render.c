@@ -38,67 +38,82 @@ void blit(void) {
     }
 }
 
+// Shared Pager-style header for the four classic views: view name (+ DM /
+// channel unread badges) on the left, RX | TX (duty cycle %) | battery on
+// the right. Replaces the original coloured tab-bar so the home screen and
+// the classic views share one visual identity.
 void render_tab_bar(void) {
     int w = (int)pax_buf_get_width(&fb);
-    // Tab labels in app_view_t enum order — only the four classic views
-    // appear here; VIEW_HOME has its own header in render_home.c.
     static const char *tab_labels[VIEW_TAB_COUNT] = {"Settings", "Nodes", "DM", "Channel"};
-    int tab_w = (w - 200) / VIEW_TAB_COUNT;
 
-    pax_simple_rect(&fb, COL_HEADER, 0, 0, w, TAB_BAR_H);
+    pax_simple_rect(&fb, COL_PAGER_BG,     0, 0, w, TAB_BAR_H);
+    pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, TAB_BAR_H - 1, w, 1);
 
     int label_y = (TAB_BAR_H - TXT_TAB) / 2;
-    for (int i = 0; i < VIEW_TAB_COUNT; i++) {
-        bool active = (i == (int)current_view);
-        if (active) {
-            pax_simple_rect(&fb, COL_ACCENT, i * tab_w, 0, tab_w, TAB_BAR_H);
-        }
-        pax_col_t col = active ? COL_HEADER : COL_GRAY;
-        pax_vec2f sz  = pax_text_size(FONT, TXT_TAB, tab_labels[i]);
+    int x       = 12;
 
-        int unread = (i == VIEW_CHAT) ? contact_unread_total()
-                   : (i == VIEW_CHANNEL) ? channel_unread_total() : 0;
-        int badge_w = 0;
-        char badge_txt[8] = {0};
-        if (unread > 0) {
-            snprintf(badge_txt, sizeof(badge_txt), "%d", unread > 99 ? 99 : unread);
-            pax_vec2f bsz = pax_text_size(FONT, TXT_SMALL, badge_txt);
-            badge_w = (int)bsz.x + 12;
-        }
-
-        int total_w = (int)sz.x + (badge_w ? badge_w + 6 : 0);
-        int tx      = i * tab_w + (tab_w - total_w) / 2;
-        pax_draw_text(&fb, col, FONT, TXT_TAB, tx, label_y, tab_labels[i]);
-
-        if (badge_w) {
-            int bx = tx + (int)sz.x + 6;
-            int by = (TAB_BAR_H - TXT_SMALL) / 2 - 2;
-            int bh = TXT_SMALL + 4;
-            pax_simple_rect(&fb, COL_RED, bx, by, badge_w, bh);
-            pax_vec2f tsz = pax_text_size(FONT, TXT_SMALL, badge_txt);
-            int label_tx = bx + (badge_w - (int)tsz.x) / 2;
-            pax_draw_text(&fb, COL_HEADER, FONT, TXT_SMALL, label_tx, by + 2, badge_txt);
-        }
+    // Left: view name in Pager text colour. Falls back gracefully if
+    // current_view is out of range (shouldn't happen, but be safe).
+    const char *vname = (current_view >= 0 && current_view < VIEW_TAB_COUNT)
+                        ? tab_labels[current_view] : "";
+    if (vname[0]) {
+        pax_vec2f vsz = pax_text_size(FONT, TXT_TAB, vname);
+        pax_draw_text(&fb, COL_PAGER_TEXT, FONT, TXT_TAB, x, label_y, vname);
+        x += (int)vsz.x + 12;
     }
-    pax_simple_rect(&fb, COL_PANEL, 0, TAB_BAR_H - 1, w, 1);
 
-    char status_right[32] = {0};
-    int  status_x         = w - 10;
-    int  status_y         = (TAB_BAR_H - TXT_BODY) / 2;
+    // Inline unread badges for the *other* conversation tabs — so a DM or
+    // channel message arriving while you're in Settings is still visible.
+    int badge_y = (TAB_BAR_H - TXT_SMALL) / 2 - 2;
+    int badge_h = TXT_SMALL + 4;
+    int dm_unread = contact_unread_total();
+    if (dm_unread > 0 && current_view != VIEW_CHAT) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "DM %d", dm_unread > 99 ? 99 : dm_unread);
+        pax_vec2f sz = pax_text_size(FONT, TXT_SMALL, buf);
+        int bw = (int)sz.x + 12;
+        pax_simple_rect(&fb, COL_RED, x, badge_y, bw, badge_h);
+        pax_draw_text(&fb, COL_PAGER_BG, FONT, TXT_SMALL, x + 6, badge_y + 2, buf);
+        x += bw + 8;
+    }
+    int ch_unread = channel_unread_total();
+    if (ch_unread > 0 && current_view != VIEW_CHANNEL) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "# %d", ch_unread > 99 ? 99 : ch_unread);
+        pax_vec2f sz = pax_text_size(FONT, TXT_SMALL, buf);
+        int bw = (int)sz.x + 12;
+        pax_simple_rect(&fb, COL_RED, x, badge_y, bw, badge_h);
+        pax_draw_text(&fb, COL_PAGER_BG, FONT, TXT_SMALL, x + 6, badge_y + 2, buf);
+        x += bw + 8;
+    }
+
+    // Right: RX | TX (duty cycle %) | battery — same layout as home header.
+    int status_x = w - 12;
+    int status_y = (TAB_BAR_H - TXT_BODY) / 2;
 
     bsp_power_battery_information_t bat = {0};
     if (bsp_power_get_battery_information(&bat) == ESP_OK && bat.battery_available) {
         int pct = (int)bat.remaining_percentage;
         if (pct < 0) pct = 0;
         if (pct > 100) pct = 100;
-        const char *chr = bat.battery_charging ? "+" : "";
-        snprintf(status_right, sizeof(status_right), "%d%%%s", pct, chr);
-        pax_col_t bat_col = pct <= 20 ? COL_RED : (pct <= 50 ? COL_AMBER : COL_GREEN);
-        pax_vec2f sz = pax_text_size(FONT, TXT_BODY, status_right);
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d%%%s", pct, bat.battery_charging ? "+" : "");
+        pax_col_t col = pct <= 20 ? COL_RED : (pct <= 50 ? COL_AMBER : COL_GREEN);
+        pax_vec2f sz = pax_text_size(FONT, TXT_BODY, buf);
         status_x -= (int)sz.x;
-        pax_draw_text(&fb, bat_col, FONT, TXT_BODY, status_x, status_y, status_right);
+        pax_draw_text(&fb, col, FONT, TXT_BODY, status_x, status_y, buf);
         status_x -= 14;
-        pax_draw_text(&fb, COL_GRAY, FONT, TXT_BODY, status_x, status_y, "|");
+    }
+
+    if (dc_budget_ms > 0 && dc_budget_ms < 3600000u) {
+        unsigned pct_x10 = (unsigned)(((uint64_t)dc_used_ms * 1000u) / dc_budget_ms);
+        char buf[16];
+        snprintf(buf, sizeof(buf), "TX:%u.%u%%", pct_x10 / 10u, pct_x10 % 10u);
+        pax_col_t col = dc_last_tx_blocked ? COL_RED :
+                        (pct_x10 >= 800)   ? COL_AMBER : COL_PAGER_TEXT;
+        pax_vec2f sz = pax_text_size(FONT, TXT_BODY, buf);
+        status_x -= (int)sz.x;
+        pax_draw_text(&fb, col, FONT, TXT_BODY, status_x, status_y, buf);
         status_x -= 14;
     }
 
@@ -108,11 +123,11 @@ void render_tab_bar(void) {
             cnt = rx_count;
             xSemaphoreGive(rx_mutex);
         }
-        char rxbuf[12];
-        snprintf(rxbuf, sizeof(rxbuf), "RX:%d", cnt);
-        pax_vec2f sz = pax_text_size(FONT, TXT_BODY, rxbuf);
+        char buf[12];
+        snprintf(buf, sizeof(buf), "RX:%d", cnt);
+        pax_vec2f sz = pax_text_size(FONT, TXT_BODY, buf);
         status_x -= (int)sz.x;
-        pax_draw_text(&fb, COL_GREEN, FONT, TXT_BODY, status_x, status_y, rxbuf);
+        pax_draw_text(&fb, COL_GREEN, FONT, TXT_BODY, status_x, status_y, buf);
     }
 }
 

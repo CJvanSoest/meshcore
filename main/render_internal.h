@@ -29,7 +29,8 @@ void render_home(void);
 // for placeholder ("soon") tiles so input can no-op on them.
 typedef enum {
     HOME_ACTION_NONE = 0,
-    HOME_ACTION_OPEN_QR,    // QR-tile: switch to nodes view + open QR overlay
+    HOME_ACTION_OPEN_QR,        // QR-tile: open QR overlay, stay rooted at home
+    HOME_ACTION_SEND_ADVERT,    // Advert-tile: send flood advert + show toast
 } home_action_t;
 
 int           home_tile_count(void);
