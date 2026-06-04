@@ -253,8 +253,11 @@ void render_home(void) {
             pax_simple_rect(&fb, COL_PAGER_BG, tx + tile_w - 4, ty + 2, 2, tile_h - 4);
         }
 
-        // Disabled (TBD) placeholders: dimmer foreground.
-        bool tbd = (home_tiles[i].target == VIEW_HOME);
+        // Disabled (TBD) placeholders: target stays on VIEW_HOME *and* there's
+        // no inline action either (so e.g. the Advert tile, target=VIEW_HOME +
+        // HOME_ACTION_SEND_ADVERT, is live and reads as such).
+        bool tbd = (home_tiles[i].target == VIEW_HOME) &&
+                   (home_tiles[i].action == HOME_ACTION_NONE);
         if (tbd && !focused) fg = COL_GRAY;
 
         // Icon: centered horizontally, vertically biased to upper half of tile.
