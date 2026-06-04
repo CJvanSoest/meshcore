@@ -448,6 +448,26 @@ When my app only ran on my own hardware, that struct decision was fine — both 
 
 The right long-term fix was the field landing upstream, but Renze's repo moves at its own pace and my users are stuck *now*. So I did two things in parallel: open a PR upstream (struct match realigned at the source), and add a tolerant parser to my own fork (accept 24 or 25 byte responses, default `rx_boost = false` on the short form). The PR is the correct long-term answer; the fallback is a bridge that works today. For community-stack bugs, "open a PR" is rarely fast enough — a two-track response (upstream PR + local defensive patch) decouples your recovery time from someone else's review cycle.
 
+### 64. Refactor before you extend; you'll save twice the time later
+
+`render.c` was 1,353 lines when I knew I was about to add VIEW_HOME, VIEW_ABOUT, and eventually VIEW_MAP. The pull was to dive straight into the new view and grow the monolith — faster in the first minute, slower in every minute after. Instead I split first: one file per view, `render_internal.h` for cross-file declarations, dispatcher in `render.c`. Only then did I add `render_home.c`. If you know more is coming, a refactor isn't a yak-shave — it's the first of the N new features you're about to build, and the time you invest gets divided by N.
+
+### 65. Single-line fixes that kill bug classes come from looking at the system, not the bug
+
+The QR overlay flickered. The emoji picker flickered. They looked like two separate bugs. Until I looked at `render()` and noticed every `render_*()` blitted itself, and the dispatcher slapped another blit on top for the overlay. Two blits per frame = base layer visible between them = flicker. Fix: pull blit out of every render_*, dispatcher blits once at the end. No difference for the individual scenes, but the entire "overlay flickers" category is gone. Bug classes usually live in system invariants, not in individual sites. When two independent features show the same "small" glitch, don't look at the features — look at what they share.
+
+### 66. Not every backlog feature has a clean trigger; accept what your platform can't do
+
+The Brightness backlog item asked for "restore the launcher's values when MeshCore exits". But BadgeVMS PIE ELF apps have no clean exit hook — the user presses a button and the OS restarts the launcher. No `atexit`, no "on suspend", no signal handler. I skipped the restore and wrote down *why* in the wiki + the commit. An hour later the field report: "set launcher to 30 %, MeshCore to 5 %, close the app — launcher stays 30 %, reopen MeshCore — 5 %, exactly what I want." If your platform can't do something cleanly, don't invent a half-mechanism. Document why you skipped it and let the user confirm the trade-off explicitly.
+
+### 67. Hierarchical UI scales linearly with features; flat UI hits an attention ceiling
+
+v2.1.x had one Settings tab with 19 fields scrolling top to bottom. Three more fields for brightness wouldn't fit — not technically, but in *discoverability*. Tile grid → drilldown: six category tiles, drill in and you see only those three fields. The user no longer has to scan a 22-row list to find what they came for. Navigation patterns have a scale ceiling. A tab bar works to 4–5 tabs; a flat list to ~15 items; above that you need structure or the user loses the thread. The exact same shape of problem shows up in source files — a 1,300-line render.c is the same ceiling on a different axis.
+
+### 68. Waiting pays off — if you ship an interim shim while you wait
+
+The `rx_boost` PR I opened in June 2026 was meant as the upstream fix. It landed 11 days later. In the meantime my app pinned a Gitea fork of `tanmatsu-lora` with a fallback parser that accepted both the old and the new response length. The day v0.3.0 landed upstream I switched the manifest back to the IDF component registry in one commit; the CJ Gitea forks of both `tanmatsu-radio` and `tanmatsu-lora` are now zero delta and retired. With upstream dependencies the optimal strategy is parallel: PR for the real fix, local tolerant shim for the meantime. Both belong; either one alone means waiting on someone else or carrying a permanent fork burden.
+
 ---
 
 ## Links
