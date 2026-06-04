@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Settings → Brightness category (drilled in). 3 sliders cycle through
+     5/10/25/50/75/100% and apply live via the BSP backlight + LED API. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640">
+  <defs>
+    <style type="text/css"><![CDATA[
+      text { font-family: 'Saira', 'Helvetica Neue', sans-serif; }
+    ]]></style>
+  </defs>
+
+  <rect width="400" height="640" fill="#1A1B26" rx="4"/>
+  <rect x="0.5" y="0.5" width="399" height="639" fill="none" stroke="#24283B" stroke-width="1" rx="4"/>
+
+  <!-- Pager-style header -->
+  <rect x="0" y="0" width="400" height="22" fill="#0E141B"/>
+  <rect x="0" y="21" width="400" height="1" fill="#FAA61A"/>
+  <text x="6" y="15" fill="#C0C8D0" font-size="11" font-weight="500">Settings</text>
+  <text x="295" y="15" fill="#9ECE6A" font-size="10">RX:42</text>
+  <text x="332" y="15" fill="#C0C8D0" font-size="10">TX:0.4%</text>
+  <text x="370" y="15" fill="#9ECE6A" font-size="10">87%+</text>
+
+  <!-- Category title (amber + 1px underline, mirrors render_settings_drilldown) -->
+  <text x="9" y="38" fill="#E0AF68" font-size="12" font-weight="500">Brightness</text>
+  <line x1="9" y1="44" x2="391" y2="44" stroke="#E0AF68" stroke-width="0.5"/>
+
+  <!-- Field rows: row_h=44 real → 22 here -->
+  <!-- Display backlight (selected, panel-bg + blue accent bar) -->
+  <rect x="0" y="60" width="400" height="22" fill="#24283B"/>
+  <rect x="0" y="60" width="3" height="22" fill="#7AA2F7"/>
+  <text x="9" y="76" fill="#C0CAF5" font-size="10">Display backlight</text>
+  <text x="391" y="76" text-anchor="end" fill="#C0CAF5" font-size="10">5%</text>
+
+  <!-- Keyboard backlight -->
+  <text x="9" y="100" fill="#565F89" font-size="10">Keyboard backlight</text>
+  <text x="391" y="100" text-anchor="end" fill="#9ECE6A" font-size="10">5%</text>
+
+  <!-- RGB LED brightness -->
+  <text x="9" y="124" fill="#565F89" font-size="10">RGB LED brightness</text>
+  <text x="391" y="124" text-anchor="end" fill="#9ECE6A" font-size="10">5%</text>
+
+  <!-- Annotation -->
+  <text x="9" y="180" fill="#7AA2F7" font-size="10" font-style="italic">Cycle through 5 / 10 / 25 / 50 / 75 / 100 %.</text>
+  <text x="9" y="194" fill="#7AA2F7" font-size="10" font-style="italic">Applies live, persists to NVS on Enter.</text>
+  <text x="9" y="214" fill="#565F89" font-size="9">Restores nothing on exit — the per-app NVS</text>
+  <text x="9" y="225" fill="#565F89" font-size="9">value stays until the launcher overwrites it.</text>
+
+  <!-- Footer (drilldown hint) -->
+  <rect x="0" y="610" width="400" height="30" fill="#16161E"/>
+  <rect x="0" y="610" width="400" height="1" fill="#FAA61A"/>
+  <text x="5" y="628" fill="#565F89" font-size="9">W/S: navigate   Enter: edit   ESC: back to categories</text>
+</svg>

@@ -16,12 +16,12 @@ of FreeRTOS tasks plus the main event loop.
                                        │ dispatches
                 ┌──────────────────────┼──────────────────────┐
                 ▼                      ▼                      ▼
-        ┌─────────────┐         ┌─────────────┐        ┌─────────────┐
-        │   input.c   │         │  render.c   │        │   radio.c   │
-        │ navigation, │ ──────▶ │ Tokyo Night │        │ LoRa tasks, │
-        │ edit-mode   │  state  │ painter for │ ◀───── │ advert,     │
-        │ FSM         │         │ every view  │ stats  │ TX/RX rings │
-        └─────────────┘         └─────────────┘        └──────┬──────┘
+        ┌─────────────┐         ┌─────────────────┐    ┌─────────────┐
+        │   input.c   │         │   render.c +    │    │   radio.c   │
+        │ navigation, │ ──────▶ │   render_*.c    │    │ LoRa tasks, │
+        │ edit-mode   │  state  │  per-view +     │ ◀──│ advert,     │
+        │ FSM         │         │ Pager strip     │ stats │ TX/RX rings │
+        └─────────────┘         └─────────────────┘    └──────┬──────┘
                                                               │ frames
                 ┌─────────────────────────────────────────────┘
                 ▼
@@ -79,3 +79,33 @@ After the boot phase the only periodic work happens through:
 - Input events from the BSP queue (≤ 1 s wait, render after each)
 - LoRa RX task pushing frames into `chat`/`nodes`
 - Advert task firing on its interval
+
+## Render split (v2.2.0)
+
+`render.c` used to be a 1.3-k-line monolith that painted every view. As of
+v2.2.0 it's a thin dispatcher plus the shared Pager status strip and the
+emoji-picker overlay; each view lives in its own file:
+
+| File | Owns |
+|---|---|
+| `render.c` | Dispatcher (`render()`), shared `render_tab_bar` (the Pager strip), `render_emoji_picker_overlay`, `blit()`, global framebuffer `fb` |
+| `render_home.c` | `VIEW_HOME` tile grid, 8 home tiles + icons, status toast |
+| `render_settings.c` | Category tile grid + drilldown row list, 6 category icons, the field rows table |
+| `render_nodes.c` | `VIEW_NODES` table + `render_qr_overlay` (only triggered from this view or the QR home tile) |
+| `render_chat.c` | `VIEW_CHAT` (DM inbox + conversation) + shared `render_msg_list` + word-wrap |
+| `render_channel.c` | `VIEW_CHANNEL` (list mode + conversation) |
+| `render_about.c` | `VIEW_ABOUT` (version, author, credits, license, source) |
+
+Cross-file declarations (the per-view entry points + a few shared helpers
+like `render_msg_list`, the category bounds API, the home tile API)
+live in `render_internal.h`. The public API in `render.h` stays small —
+palette macros, layout constants, `render()`, `blit()`.
+
+Drawing model: each `render_*()` writes into the framebuffer but does NOT
+blit. The dispatcher calls one (and optionally an overlay on top), then
+blits exactly once at the end. This is what kills the v2.1.x QR + emoji
+overlay flicker.
+
+The render split also gave us a natural place to grow without touching
+the existing views — a future `render_map.c` for the Map tile, for
+example, drops in without re-flowing any other file.

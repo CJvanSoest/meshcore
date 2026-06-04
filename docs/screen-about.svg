@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- VIEW_ABOUT — version, authors, credits, license. Reached via the
+     About tile on the home screen; ESC returns to home. Half-scale. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640">
+  <defs>
+    <style type="text/css"><![CDATA[
+      text { font-family: 'Saira', 'Helvetica Neue', sans-serif; }
+    ]]></style>
+  </defs>
+
+  <rect width="400" height="640" fill="#0E141B" rx="4"/>
+  <rect x="0.5" y="0.5" width="399" height="639" fill="none" stroke="#16161E" stroke-width="1" rx="4"/>
+
+  <!-- Header (Pager) -->
+  <rect x="0" y="0" width="400" height="25" fill="#0E141B"/>
+  <rect x="0" y="24" width="400" height="1" fill="#FAA61A"/>
+  <text x="6" y="17" fill="#C0C8D0" font-size="11" font-weight="500">About</text>
+
+  <!-- Body — pulled from esp_app_get_description() at runtime -->
+  <text x="14" y="60" fill="#FAA61A" font-size="14" font-weight="500">MeshCore  v2.2.0</text>
+  <text x="14" y="74" fill="#565F89" font-size="8">Built Jun  4 2026  19:55:02</text>
+
+  <text x="14" y="110" fill="#C0C8D0" font-size="11" font-weight="500">Author</text>
+  <text x="14" y="124" fill="#565F89" font-size="8">CJ van Soest</text>
+
+  <text x="14" y="150" fill="#C0C8D0" font-size="11" font-weight="500">Built on</text>
+  <text x="14" y="164" fill="#565F89" font-size="8">MeshCore  by  Ripple Radios</text>
+  <text x="14" y="174" fill="#565F89" font-size="8">Tanmatsu hardware + BadgeVMS</text>
+  <text x="14" y="184" fill="#565F89" font-size="8">  by Nicolai Electronics</text>
+
+  <text x="14" y="210" fill="#C0C8D0" font-size="11" font-weight="500">License</text>
+  <text x="14" y="224" fill="#565F89" font-size="8">MIT (see LICENSE in the repo)</text>
+
+  <text x="14" y="250" fill="#C0C8D0" font-size="11" font-weight="500">Source</text>
+  <text x="14" y="264" fill="#565F89" font-size="8">github.com/CJvanSoest/meshcore</text>
+
+  <!-- Footer -->
+  <rect x="0" y="621" width="400" height="19" fill="#16161E"/>
+  <rect x="0" y="621" width="400" height="1" fill="#FAA61A"/>
+  <text x="5" y="634" fill="#565F89" font-size="8">ESC: home</text>
+</svg>

@@ -22,14 +22,27 @@ A [MeshCore](https://meshcore.co.uk) LoRa mesh communication app for the
 
 ---
 
-## Tabs
+## Views
 
-| Tab | Purpose |
+Boot drops you on a **tile-grid home screen** in LilyGo-Pager visual style.
+Each tile opens a view; ESC walks you back to home, ESC on home returns to
+the launcher.
+
+| Tile | Opens |
 |---|---|
-| **Settings** | Grouped LoRa & identity fields (frequency, SF/BW/CR, power, presets, owner name, advert interval, regulatory country/limits, region scope, …) with contextual hints |
-| **Nodes** | Live list of heard nodes with role, RSSI/SNR, last-seen; favourites starred |
-| **DM** | Inbox + per-contact end-to-end encrypted conversations, persisted to SD |
-| **Channel** | Public channel chat (AES-128-ECB), persisted to SD |
+| **Nodes** | Live list of heard nodes — role, RSSI/SNR, distance, last seen; saved contacts starred |
+| **DM** | Inbox + per-contact end-to-end encrypted conversations (carries an unread badge on the tile itself) |
+| **Channel** | Public channel chat (AES-128-ECB), per-channel rings, unread badge on the tile |
+| **Map** | Reserved — slots in once GPS via the companion-radio protocol lands |
+| **Advert** | Sends a flood advert inline + 2-second toast; stays on home |
+| **Settings** | Two-level menu: tile-grid of categories (Identity / Regulatory / Radio / Network / Region & Location / **Brightness**) → drill into the fields for one category |
+| **About** | App version, build date, author, upstream credits, MIT license, source URL |
+| **QR** | Opens the "add me as contact" QR overlay rooted at home |
+
+A persistent **Pager-style status strip** runs across every classic view —
+view name + inline DM / # unread badges on the left, RX count / TX (rolling
+1-hour duty cycle %) / battery on the right. Tab cycles the four classic
+views (Settings → Nodes → DM → Channel) for keyboard power users.
 
 ## Highlights
 
@@ -49,14 +62,19 @@ A [MeshCore](https://meshcore.co.uk) LoRa mesh communication app for the
   budget is spent); 30+ countries across EU 868/433, US/AU/NZ 915, JP, KR, IN, RU
 - **Per-message metadata** — local time, hop count, ACK state inline under
   each chat bubble
-- **Unread badges** on the tab bar for missed DM / channel messages
-- **Manual GPS coords** (×1e6 upstream scale) for Nodes-tab Dist column +
+- **Unread badges** on the home tiles + the Pager status strip for missed
+  DM / channel messages — visible no matter which view you're in
+- **Per-app brightness** — independent display backlight, keyboard backlight
+  and RGB LED brightness sliders (5/10/25/50/75/100 %, NVS-persisted) that
+  override the launcher globals while MeshCore is running
+- **Manual GPS coords** (×1e6 upstream scale) for Nodes-view Dist column +
   advert position field
 - **Twemoji-based emoji picker** — 8 base smileys, UTF-8 round-trip with
   other MeshCore clients
 - **QR contact sharing** — show a QR that the mobile app can scan directly
 - **Saved contacts** — favourites stay in the list even when out of range
-- **Live RSSI / SNR** per heard node (requires patched `tanmatsu-radio` firmware)
+- **Live RSSI / SNR / noise floor** per heard node and as a glance line on
+  both the home screen footer and the Settings drilldown bottom row
 - **Message LED + battery indicator** on every screen
 - **Real timestamps** via SNTP; last known time persisted to NVS
 
@@ -146,20 +164,50 @@ Full per-country table and the data schema live in
 
 <table>
   <tr>
-    <td align="center"><b>Settings</b></td>
-    <td align="center"><b>DM conversation</b></td>
+    <td align="center"><b>Home (tile grid)</b></td>
+    <td align="center"><b>About</b></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screen-home.svg" width="360"></td>
+    <td><img src="docs/screen-about.svg" width="360"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Settings (category tiles)</b></td>
+    <td align="center"><b>Settings → Brightness (drill-in)</b></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screen-settings-tiles.svg" width="360"></td>
+    <td><img src="docs/screen-settings-brightness.svg" width="360"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Settings → Radio (drill-in)</b></td>
+    <td align="center"><b>Nodes</b></td>
   </tr>
   <tr>
     <td><img src="docs/screen-settings.svg" width="360"></td>
-    <td><img src="docs/screen-dm.png" width="360"></td>
+    <td><img src="docs/screen-nodes.svg" width="360"></td>
   </tr>
   <tr>
-    <td align="center"><b>Nodes</b></td>
+    <td align="center"><b>DM inbox</b></td>
+    <td align="center"><b>DM conversation</b></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screen-dm-inbox.svg" width="360"></td>
+    <td><img src="docs/screen-dm.svg" width="360"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Channel</b></td>
     <td align="center"><b>QR contact card</b></td>
   </tr>
   <tr>
-    <td><img src="docs/screen-nodes.svg" width="360"></td>
+    <td><img src="docs/screen-channel.svg" width="360"></td>
     <td><img src="docs/screen-qr.svg" width="360"></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><b>Boot diagnostics</b></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/screen-boot.svg" width="360"></td>
   </tr>
 </table>
 
