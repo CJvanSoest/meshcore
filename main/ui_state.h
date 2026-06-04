@@ -55,3 +55,8 @@ extern int  settings_scroll;
 extern bool qr_overlay_active;
 extern bool time_from_nvs;
 extern bool lora_ready;
+
+// ── Home tile-grid cursor (VIEW_HOME) ────────────────────────────────────────
+// Index into the home tile array (0..HOME_TILE_COUNT-1). Owned + updated by
+// input.c, read by render_home.c.
+extern int home_cursor;

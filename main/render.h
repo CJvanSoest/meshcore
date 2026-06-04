@@ -26,6 +26,15 @@
 #define COL_PANEL   COL_DARK     // alias for clarity in surface use
 #define COL_BG      COL_BLACK    // alias for clarity at root background
 
+// ── LilyGo Pager palette (used by VIEW_HOME tile screen) ─────────────────────
+// Borrowed from the LilyGo Pager MeshCore variant so the two devices share
+// a visual identity on the home screen. The classic per-view screens
+// (settings/chat/nodes/channel) keep the Tokyo Night palette above.
+#define COL_PAGER_BG      0xFF0E141B  // window background
+#define COL_PAGER_TILE    0xFF16161E  // unfocused tile surface
+#define COL_PAGER_TEXT    0xFFC0C8D0  // body / label text
+#define COL_PAGER_ACCENT  0xFFFAA61A  // focused tile + highlights (orange)
+
 // ── Typography (Saira Regular: ASCII + Latin-1, variable pitch) ──────────────
 #define FONT      pax_font_saira_regular
 #define TXT_TITLE 24

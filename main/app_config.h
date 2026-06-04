@@ -20,7 +20,12 @@ typedef enum {
     VIEW_NODES    = 1,
     VIEW_CHAT     = 2,   // DM conversations
     VIEW_CHANNEL  = 3,   // public channel (GRP_TXT)
-    VIEW_COUNT    = 4,
+    VIEW_HOME     = 4,   // tile-grid landing screen (Pager-style)
+    VIEW_COUNT    = 5,
+    // Number of views that appear in the legacy top tab-bar. VIEW_HOME is
+    // its own landing screen with its own header, so the tab-bar still
+    // iterates only the four classic views (0..3).
+    VIEW_TAB_COUNT = 4,
 } app_view_t;
 
 extern app_view_t current_view;
