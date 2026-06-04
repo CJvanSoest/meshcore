@@ -30,6 +30,8 @@
 #include "pax_text.h"
 
 #include "app_config.h"
+#include "channels.h"
+#include "contacts.h"
 #include "radio.h"
 #include "settings_nvs.h"
 #include "ui_state.h"
@@ -119,22 +121,25 @@ static void icon_placeholder(int cx, int cy, int sz, pax_col_t col) {
 // ── Tile definitions ─────────────────────────────────────────────────────────
 typedef void (*home_icon_fn)(int cx, int cy, int sz, pax_col_t col);
 
+typedef int (*home_badge_fn)(void);
+
 typedef struct {
-    const char  *label;
-    app_view_t   target;        // view to open on Enter; VIEW_HOME = TBD
-    home_icon_fn draw_icon;
-    home_action_t action;       // post-open side-effect (e.g. open QR overlay)
+    const char    *label;
+    app_view_t     target;        // view to open on Enter; VIEW_HOME = TBD
+    home_icon_fn   draw_icon;
+    home_action_t  action;        // post-open side-effect (e.g. open QR overlay)
+    home_badge_fn  unread;        // optional: returns unread count for badge
 } home_tile_t;
 
 static const home_tile_t home_tiles[HOME_TILE_COUNT] = {
-    { "Nodes",    VIEW_NODES,    icon_nodes,    HOME_ACTION_NONE   },
-    { "DM",       VIEW_CHAT,     icon_dm,       HOME_ACTION_NONE   },
-    { "Channel",  VIEW_CHANNEL,  icon_channel,  HOME_ACTION_NONE   },
-    { "Map",      VIEW_HOME,     icon_map,      HOME_ACTION_NONE   },  // TODO: VIEW_MAP
-    { "Advert",   VIEW_HOME,     icon_advert,   HOME_ACTION_SEND_ADVERT },  // sends + toasts
-    { "Settings", VIEW_SETTINGS, icon_settings, HOME_ACTION_NONE   },
-    { "About",    VIEW_HOME,     icon_about,    HOME_ACTION_NONE   },  // TODO: VIEW_ABOUT
-    { "QR",       VIEW_NODES,    icon_advert,   HOME_ACTION_OPEN_QR},  // shortcut to "add me" QR overlay
+    { "Nodes",    VIEW_NODES,    icon_nodes,    HOME_ACTION_NONE,        NULL                  },
+    { "DM",       VIEW_CHAT,     icon_dm,       HOME_ACTION_NONE,        contact_unread_total  },
+    { "Channel",  VIEW_CHANNEL,  icon_channel,  HOME_ACTION_NONE,        channel_unread_total  },
+    { "Map",      VIEW_HOME,     icon_map,      HOME_ACTION_NONE,        NULL                  },  // TODO: VIEW_MAP
+    { "Advert",   VIEW_HOME,     icon_advert,   HOME_ACTION_SEND_ADVERT, NULL                  },
+    { "Settings", VIEW_SETTINGS, icon_settings, HOME_ACTION_NONE,        NULL                  },
+    { "About",    VIEW_HOME,     icon_about,    HOME_ACTION_NONE,        NULL                  },  // TODO: VIEW_ABOUT
+    { "QR",       VIEW_NODES,    icon_advert,   HOME_ACTION_OPEN_QR,     NULL                  },
 };
 
 // Expose the tile count + target/action lookup to input.c so Enter opens the
@@ -273,6 +278,24 @@ void render_home(void) {
                 pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY,
                               tx + (tile_w - (int)ssz.x) / 2,
                               ly + TXT_BODY + 2, sub);
+            }
+        }
+
+        // Unread badge in the top-right corner of the tile (DM, Channel).
+        // Mirrors the tab-bar pill so the count is glanceable from home.
+        if (home_tiles[i].unread) {
+            int count = home_tiles[i].unread();
+            if (count > 0) {
+                char buf[8];
+                snprintf(buf, sizeof(buf), "%d", count > 99 ? 99 : count);
+                pax_vec2f bsz = pax_text_size(FONT, TXT_SMALL, buf);
+                int bw = (int)bsz.x + 14;
+                int bh = TXT_SMALL + 8;
+                int bx = tx + tile_w - bw - 10;
+                int by = ty + 10;
+                pax_simple_rect(&fb, COL_RED, bx, by, bw, bh);
+                pax_draw_text(&fb, COL_PAGER_BG, FONT, TXT_SMALL,
+                              bx + (bw - (int)bsz.x) / 2, by + 4, buf);
             }
         }
     }

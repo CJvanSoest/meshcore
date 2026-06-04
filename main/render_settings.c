@@ -4,6 +4,7 @@
 #include "render.h"
 #include "render_internal.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -39,7 +40,8 @@ static const settings_category_t s_categories[] = {
     { FIELD_COUNTRY,      "Regulatory",        "Country, antenna gain, duty cycle"            },
     { FIELD_FREQ,         "Radio",             "Freq, SF, BW, CR, power, sync, preamble, ..." },
     { FIELD_ADVERT_INT,   "Network",           "Advert interval, role, path hash"             },
-    { FIELD_REGION_SCOPE, "Region & Location", "Region scope, GPS coordinates"                },
+    { FIELD_REGION_SCOPE, "Region &\nLocation","Region scope, GPS coordinates"                },
+    { FIELD_DISPLAY_BL,   "Brightness",        "Display, keyboard, RGB LED"                   },
 };
 #define S_CATEGORY_COUNT ((int)(sizeof(s_categories) / sizeof(s_categories[0])))
 
@@ -69,45 +71,154 @@ int settings_category_for_field(int f) {
     return 0;
 }
 
+// ── Tile-grid icons for the category screen ──────────────────────────────────
+// Drawn at the centre of each tile in the Pager-style category grid; same
+// primitive style as render_home.c so the two screens read as siblings.
+static void cat_icon_identity(int cx, int cy, int sz, pax_col_t col) {
+    pax_outline_circle(&fb, col, cx, cy - sz / 6, sz / 4);  // head
+    pax_outline_circle(&fb, col, cx, cy + sz / 3, sz / 2);  // shoulders (cropped)
+}
+
+static void cat_icon_regulatory(int cx, int cy, int sz, pax_col_t col) {
+    int s = sz / 2;
+    pax_simple_line(&fb, col, cx,     cy - s, cx + s, cy - s / 3);
+    pax_simple_line(&fb, col, cx + s, cy - s / 3, cx + s, cy + s / 3);
+    pax_simple_line(&fb, col, cx + s, cy + s / 3, cx,     cy + s);
+    pax_simple_line(&fb, col, cx,     cy + s, cx - s, cy + s / 3);
+    pax_simple_line(&fb, col, cx - s, cy + s / 3, cx - s, cy - s / 3);
+    pax_simple_line(&fb, col, cx - s, cy - s / 3, cx,     cy - s);
+}
+
+static void cat_icon_radio(int cx, int cy, int sz, pax_col_t col) {
+    int q = sz / 2;
+    pax_outline_circle(&fb, col, cx, cy, q / 4);  // node
+    pax_outline_hollow_circle(&fb, col, cx, cy, q / 2 - 2, q / 2);
+    pax_outline_hollow_circle(&fb, col, cx, cy, q     - 2, q);
+}
+
+static void cat_icon_network(int cx, int cy, int sz, pax_col_t col) {
+    int s = sz / 3;
+    pax_simple_circle(&fb, col, cx,      cy - s, sz / 12);
+    pax_simple_circle(&fb, col, cx - s,  cy + s, sz / 12);
+    pax_simple_circle(&fb, col, cx + s,  cy + s, sz / 12);
+    pax_simple_line  (&fb, col, cx,      cy - s, cx - s, cy + s);
+    pax_simple_line  (&fb, col, cx,      cy - s, cx + s, cy + s);
+    pax_simple_line  (&fb, col, cx - s,  cy + s, cx + s, cy + s);
+}
+
+static void cat_icon_region(int cx, int cy, int sz, pax_col_t col) {
+    // Map-pin-ish: tear-drop outline + small dot in the bell.
+    int r = sz / 3;
+    pax_outline_circle(&fb, col, cx, cy - r / 2, r);
+    pax_simple_line(&fb, col, cx - r * 7 / 10, cy - r / 8, cx, cy + r * 5 / 4);
+    pax_simple_line(&fb, col, cx + r * 7 / 10, cy - r / 8, cx, cy + r * 5 / 4);
+    pax_simple_circle(&fb, col, cx, cy - r / 2, r / 3);
+}
+
+static void cat_icon_brightness(int cx, int cy, int sz, pax_col_t col) {
+    int r = sz / 5;
+    pax_simple_circle(&fb, col, cx, cy, r);
+    // 8 rays evenly around the sun.
+    for (int a = 0; a < 8; a++) {
+        float t  = (float)a * 3.14159f / 4.0f;
+        float r0 = (float)r + sz / 14.0f;
+        float r1 = (float)sz / 2.0f;
+        pax_simple_line(&fb, col,
+                        cx + r0 * cosf(t), cy + r0 * sinf(t),
+                        cx + r1 * cosf(t), cy + r1 * sinf(t));
+    }
+}
+
+typedef void (*cat_icon_fn)(int cx, int cy, int sz, pax_col_t col);
+static const cat_icon_fn s_category_icons[] = {
+    cat_icon_identity,
+    cat_icon_regulatory,
+    cat_icon_radio,
+    cat_icon_network,
+    cat_icon_region,
+    cat_icon_brightness,
+};
+
 // ── Category-list renderer ───────────────────────────────────────────────────
+// 4-column Pager-style tile grid (same proportions as render_home.c), one
+// tile per category. Empty cells in the grid stay blank.
+#define S_GRID_COLS     4
+#define S_GRID_H_MARG  30
+#define S_GRID_V_MARG  20
+#define S_GRID_FOOTER  38
+
 static void render_settings_category_list(int w, int h) {
-    const int y0       = TAB_BAR_H + 12;
-    const int row_h    = 76;
-    const int footer_h = 38;
+    int area_y0 = TAB_BAR_H + S_GRID_V_MARG;
+    int area_h  = h - area_y0 - S_GRID_V_MARG - S_GRID_FOOTER;
+    int area_w  = w - S_GRID_H_MARG * 2;
 
-    pax_draw_text(&fb, COL_AMBER, FONT, TXT_TITLE, 18, y0, "Settings");
+    int rows    = (S_CATEGORY_COUNT + S_GRID_COLS - 1) / S_GRID_COLS;
+    if (rows < 1) rows = 1;
 
-    int rows_y0 = y0 + TXT_TITLE + 16;
+    int tile_w  = (area_w - S_GRID_H_MARG * (S_GRID_COLS - 1)) / S_GRID_COLS;
+    int tile_h  = (area_h - S_GRID_V_MARG * (rows - 1)) / rows;
+
     for (int i = 0; i < S_CATEGORY_COUNT; i++) {
-        int y     = rows_y0 + i * row_h;
-        bool sel  = (i == settings_category_cursor);
+        int col = i % S_GRID_COLS;
+        int row = i / S_GRID_COLS;
+        int tx  = S_GRID_H_MARG + col * (tile_w + S_GRID_H_MARG);
+        int ty  = area_y0       + row * (tile_h + S_GRID_V_MARG);
 
-        if (sel) {
-            pax_simple_rect(&fb, COL_PANEL, 0, y, w, row_h - 8);
-            pax_simple_rect(&fb, COL_ACCENT, 0, y, 5, row_h - 8);
+        bool focused  = (i == settings_category_cursor);
+        pax_col_t bg  = focused ? COL_PAGER_ACCENT : COL_PAGER_TILE;
+        pax_col_t fg  = focused ? COL_HEADER       : COL_PAGER_TEXT;
+
+        pax_simple_rect(&fb, bg, tx, ty, tile_w, tile_h);
+        if (focused) {
+            pax_simple_rect(&fb, COL_PAGER_BG, tx + 2, ty + 2, tile_w - 4, 2);
+            pax_simple_rect(&fb, COL_PAGER_BG, tx + 2, ty + tile_h - 4, tile_w - 4, 2);
+            pax_simple_rect(&fb, COL_PAGER_BG, tx + 2, ty + 2, 2, tile_h - 4);
+            pax_simple_rect(&fb, COL_PAGER_BG, tx + tile_w - 4, ty + 2, 2, tile_h - 4);
         }
-        pax_simple_rect(&fb, COL_PANEL, 18, y + row_h - 9, w - 36, 1);
 
-        pax_col_t title_col = sel ? COL_WHITE : COL_AMBER;
-        pax_draw_text(&fb, title_col, FONT, TXT_BODY, 24, y + 10,
-                      s_categories[i].title);
-        pax_draw_text(&fb, COL_GRAY,  FONT, TXT_SMALL, 24, y + 10 + TXT_BODY + 6,
-                      s_categories[i].subtitle);
+        int icon_sz = tile_w / 2;
+        if (icon_sz > tile_h * 2 / 5) icon_sz = tile_h * 2 / 5;
+        int icon_cx = tx + tile_w / 2;
+        int icon_cy = ty + tile_h * 2 / 5;
+        if (i < (int)(sizeof(s_category_icons) / sizeof(s_category_icons[0])) &&
+            s_category_icons[i]) {
+            s_category_icons[i](icon_cx, icon_cy, icon_sz, fg);
+        }
 
-        if (sel) {
-            const char *cta = "Enter ›";
-            pax_vec2f sz = pax_text_size(FONT, TXT_SMALL, cta);
-            pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL,
-                          w - (int)sz.x - 14, y + (row_h - TXT_SMALL) / 2 - 4, cta);
+        // Render label centered; support an embedded '\n' so labels that
+        // overflow a tile (e.g. "Region &\nLocation") wrap onto a second
+        // line instead of being clipped.
+        const char *lbl = s_categories[i].title;
+        const char *nl  = strchr(lbl, '\n');
+        int ly_base = ty + tile_h * 3 / 4;
+        if (nl) {
+            char line1[40];
+            int  n1 = nl - lbl;
+            if (n1 >= (int)sizeof(line1)) n1 = sizeof(line1) - 1;
+            memcpy(line1, lbl, n1);
+            line1[n1] = '\0';
+            const char *line2 = nl + 1;
+            pax_vec2f sz1 = pax_text_size(FONT, TXT_BODY, line1);
+            pax_vec2f sz2 = pax_text_size(FONT, TXT_BODY, line2);
+            int ly1 = ly_base - (TXT_BODY / 2 + 2);
+            int ly2 = ly_base + (TXT_BODY / 2 + 2);
+            pax_draw_text(&fb, fg, FONT, TXT_BODY,
+                          tx + (tile_w - (int)sz1.x) / 2, ly1, line1);
+            pax_draw_text(&fb, fg, FONT, TXT_BODY,
+                          tx + (tile_w - (int)sz2.x) / 2, ly2, line2);
+        } else {
+            pax_vec2f lsz = pax_text_size(FONT, TXT_BODY, lbl);
+            pax_draw_text(&fb, fg, FONT, TXT_BODY,
+                          tx + (tile_w - (int)lsz.x) / 2, ly_base, lbl);
         }
     }
 
-    int fy = h - footer_h;
-    pax_simple_rect(&fb, COL_HEADER, 0, fy, w, footer_h);
-    pax_simple_rect(&fb, COL_PANEL,  0, fy, w, 1);
+    int fy = h - S_GRID_FOOTER;
+    pax_simple_rect(&fb, COL_HEADER,       0, fy, w, S_GRID_FOOTER);
+    pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
     pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10,
-                  fy + (footer_h - TXT_SMALL) / 2,
-                  "W/S: nav   Enter: open   ESC: home   Tab: next view");
+                  fy + (S_GRID_FOOTER - TXT_SMALL) / 2,
+                  "WSAD: nav   Enter: open   ESC: home   Tab: next view");
 }
 
 // ── Drilled-in category renderer ─────────────────────────────────────────────
@@ -258,6 +369,16 @@ static void render_settings_drilldown(int w, int h) {
                  (unsigned long)(dc_budget_ms / 1000u),
                  dc_last_tx_blocked ? " BLOCKED" : "");
     }
+
+    rows[FIELD_DISPLAY_BL].label = "Display backlight";
+    snprintf(rows[FIELD_DISPLAY_BL].value, sizeof(rows[FIELD_DISPLAY_BL].value),
+             "%u%%", (unsigned)display_brightness);
+    rows[FIELD_KB_BL].label = "Keyboard backlight";
+    snprintf(rows[FIELD_KB_BL].value, sizeof(rows[FIELD_KB_BL].value),
+             "%u%%", (unsigned)keyboard_brightness);
+    rows[FIELD_LED_BR].label = "RGB LED brightness";
+    snprintf(rows[FIELD_LED_BR].value, sizeof(rows[FIELD_LED_BR].value),
+             "%u%%", (unsigned)led_brightness);
 
     const int row_h    = 44;
     const int title_h  = 38;

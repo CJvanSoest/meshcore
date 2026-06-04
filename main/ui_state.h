@@ -39,6 +39,10 @@ typedef enum {
     FIELD_REGION_SCOPE,
     FIELD_GPS_LAT,
     FIELD_GPS_LON,
+    // ── Brightness (display backlight, keyboard backlight, RGB LED) ──
+    FIELD_DISPLAY_BL,
+    FIELD_KB_BL,
+    FIELD_LED_BR,
     FIELD_COUNT,
 } field_t;
 

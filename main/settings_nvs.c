@@ -12,6 +12,10 @@
 
 #include "radio.h"  // lora_handle (radio v3.0.0 handle-based API)
 
+#include "bsp/display.h"
+#include "bsp/input.h"
+#include "bsp/led.h"
+
 // ── NVS keys — same namespace/keys as launcher so settings are shared ────────
 #define NVS_LORA_FREQ       "lora.freq"
 #define NVS_LORA_SF         "lora.sf"
@@ -32,6 +36,12 @@
 // user to re-enter once. save_gps_coords always writes this to current value.
 #define NVS_GPS_SCALE_VER   "lora.gps.sv"
 #define GPS_SCALE_VER_CUR   2
+#define NVS_UI_DISP_BL      "ui.disp_bl"
+#define NVS_UI_KB_BL        "ui.kb_bl"
+#define NVS_UI_LED_BR       "ui.led_br"
+#define UI_DEF_DISP_BL      50
+#define UI_DEF_KB_BL        50
+#define UI_DEF_LED_BR       5
 
 static const char *TAG = "settings";
 
@@ -66,6 +76,9 @@ int32_t                       gps_lat_e6           = 0;
 int32_t                       gps_lon_e6           = 0;
 char                          country_code[4]      = "--";
 int8_t                        antenna_gain_dbi     = 0;
+uint8_t                       display_brightness   = UI_DEF_DISP_BL;
+uint8_t                       keyboard_brightness  = UI_DEF_KB_BL;
+uint8_t                       led_brightness       = UI_DEF_LED_BR;
 
 int lora_preset_match(void) {
     for (int i = 0; i < LORA_PRESET_COUNT; i++) {
@@ -366,4 +379,39 @@ void save_lora_config(void) {
             lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_RX);
         }
     }
+}
+
+// ── Brightness (display backlight, keyboard backlight, RGB LED) ──────────────
+// Per-app values that override the launcher's globals while MeshCore is
+// running. Apply on change; restore-on-exit is best-effort (skipped for now).
+static uint8_t clamp_pct(int v) {
+    if (v < 0)   return 0;
+    if (v > 100) return 100;
+    return (uint8_t)v;
+}
+
+void load_brightness(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
+    uint8_t v;
+    if (nvs_get_u8(handle, NVS_UI_DISP_BL, &v) == ESP_OK) display_brightness  = clamp_pct(v);
+    if (nvs_get_u8(handle, NVS_UI_KB_BL,   &v) == ESP_OK) keyboard_brightness = clamp_pct(v);
+    if (nvs_get_u8(handle, NVS_UI_LED_BR,  &v) == ESP_OK) led_brightness      = clamp_pct(v);
+    nvs_close(handle);
+}
+
+void save_brightness(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    nvs_set_u8(handle, NVS_UI_DISP_BL, display_brightness);
+    nvs_set_u8(handle, NVS_UI_KB_BL,   keyboard_brightness);
+    nvs_set_u8(handle, NVS_UI_LED_BR,  led_brightness);
+    nvs_commit(handle);
+    nvs_close(handle);
+}
+
+void apply_brightness(void) {
+    bsp_display_set_backlight_brightness(display_brightness);
+    bsp_input_set_backlight_brightness(keyboard_brightness);
+    bsp_led_set_brightness(led_brightness);
 }

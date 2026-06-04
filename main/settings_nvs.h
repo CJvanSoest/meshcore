@@ -68,6 +68,13 @@ extern bool                          gps_position_valid;
 extern int32_t                       gps_lat_e6;
 extern int32_t                       gps_lon_e6;
 
+// Display / keyboard backlight + RGB LED brightness — per-app values that
+// override the launcher's globals while MeshCore is running. Values are 0-100%.
+// Defaults: display 50, keyboard 50, LED 5 (per backlog #47).
+extern uint8_t display_brightness;
+extern uint8_t keyboard_brightness;
+extern uint8_t led_brightness;
+
 // ── Load/save ────────────────────────────────────────────────────────────────
 void load_owner_name(void);
 void save_owner_name(void);
@@ -81,6 +88,10 @@ void load_antenna_gain(void);
 void save_antenna_gain(void);
 void load_gps_coords(void);
 void save_gps_coords(void);
+void load_brightness(void);
+void save_brightness(void);
+// Apply the current backlight + LED values to the BSP. Safe to call any time.
+void apply_brightness(void);
 
 void load_lora_from_nvs(void);
 void save_lora_to_nvs(void);

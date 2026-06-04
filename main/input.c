@@ -193,6 +193,24 @@ void field_adjust(int field, int delta) {
             antenna_gain_dbi = (int8_t)v;
             break;
         }
+        case FIELD_DISPLAY_BL:
+        case FIELD_KB_BL:
+        case FIELD_LED_BR: {
+            // Backlight + LED brightness all cycle through the same 6 stops so
+            // the slider feel is identical across the three fields.
+            static const uint8_t stops[] = {5, 10, 25, 50, 75, 100};
+            const int n = (int)(sizeof(stops) / sizeof(stops[0]));
+            uint8_t *v = (field == FIELD_DISPLAY_BL) ? &display_brightness
+                       : (field == FIELD_KB_BL)     ? &keyboard_brightness
+                                                    : &led_brightness;
+            int idx = 0;
+            for (int i = 0; i < n; i++) if (stops[i] == *v) { idx = i; break; }
+            idx = ((idx + delta) % n + n) % n;
+            *v = stops[idx];
+            // Apply live so the user sees the brightness change while scrolling.
+            apply_brightness();
+            break;
+        }
         default:
             break;
     }
@@ -361,7 +379,10 @@ void handle_nav(uint32_t key) {
             if (home_cursor - cols >= 0) home_cursor -= cols;
         } else if (current_view == VIEW_SETTINGS) {
             if (settings_category_list_mode) {
-                if (settings_category_cursor > 0) settings_category_cursor--;
+                // 4-col tile grid: UP moves to the row above.
+                int cols = 4;
+                if (settings_category_cursor - cols >= 0)
+                    settings_category_cursor -= cols;
             } else if (!edit_mode) {
                 int first, last;
                 settings_category_bounds(settings_category_active, &first, &last);
@@ -386,8 +407,10 @@ void handle_nav(uint32_t key) {
             if (home_cursor + cols < total) home_cursor += cols;
         } else if (current_view == VIEW_SETTINGS) {
             if (settings_category_list_mode) {
-                if (settings_category_cursor < settings_category_count() - 1)
-                    settings_category_cursor++;
+                int cols  = 4;
+                int total = settings_category_count();
+                if (settings_category_cursor + cols < total)
+                    settings_category_cursor += cols;
             } else if (!edit_mode) {
                 int first, last;
                 settings_category_bounds(settings_category_active, &first, &last);
@@ -412,11 +435,20 @@ void handle_nav(uint32_t key) {
     } else if (key == BSP_INPUT_NAVIGATION_KEY_LEFT) {
         if (current_view == VIEW_HOME) {
             if (home_cursor > 0) home_cursor--;
-        } else if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, -1);
+        } else if (current_view == VIEW_SETTINGS) {
+            if (settings_category_list_mode) {
+                if (settings_category_cursor > 0) settings_category_cursor--;
+            } else if (edit_mode && !field_editing_text) field_adjust(selected, -1);
+        }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT) {
         if (current_view == VIEW_HOME) {
             if (home_cursor < home_tile_count() - 1) home_cursor++;
-        } else if (current_view == VIEW_SETTINGS && edit_mode && !field_editing_text) field_adjust(selected, +1);
+        } else if (current_view == VIEW_SETTINGS) {
+            if (settings_category_list_mode) {
+                if (settings_category_cursor < settings_category_count() - 1)
+                    settings_category_cursor++;
+            } else if (edit_mode && !field_editing_text) field_adjust(selected, +1);
+        }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
         if (current_view == VIEW_HOME) {
             open_home_tile(home_cursor);
@@ -552,6 +584,9 @@ void handle_nav(uint32_t key) {
                 if (field_editing_text)              settings_commit_text_edit(selected);
                 else if (selected == FIELD_COUNTRY)  save_country_code();
                 else if (selected == FIELD_ANTENNA_GAIN) save_antenna_gain();
+                else if (selected == FIELD_DISPLAY_BL ||
+                         selected == FIELD_KB_BL ||
+                         selected == FIELD_LED_BR)    save_brightness();
                 else                                  save_lora_config();
                 edit_mode = false;
                 dirty     = false;
@@ -835,7 +870,9 @@ void handle_key(char c) {
             if (home_cursor - cols >= 0) home_cursor -= cols;
         } else if (current_view == VIEW_SETTINGS) {
             if (settings_category_list_mode) {
-                if (settings_category_cursor > 0) settings_category_cursor--;
+                int cols = 4;
+                if (settings_category_cursor - cols >= 0)
+                    settings_category_cursor -= cols;
             } else if (!edit_mode) {
                 int first, last;
                 settings_category_bounds(settings_category_active, &first, &last);
@@ -852,8 +889,10 @@ void handle_key(char c) {
             if (home_cursor + cols < total) home_cursor += cols;
         } else if (current_view == VIEW_SETTINGS) {
             if (settings_category_list_mode) {
-                if (settings_category_cursor < settings_category_count() - 1)
-                    settings_category_cursor++;
+                int cols  = 4;
+                int total = settings_category_count();
+                if (settings_category_cursor + cols < total)
+                    settings_category_cursor += cols;
             } else if (!edit_mode) {
                 int first, last;
                 settings_category_bounds(settings_category_active, &first, &last);
@@ -865,6 +904,13 @@ void handle_key(char c) {
             if (upper < 0) upper = 0;
             if (node_cursor < upper) node_cursor++;
         }
+    } else if ((c == 'a' || c == 'A') && current_view == VIEW_SETTINGS &&
+               settings_category_list_mode) {
+        if (settings_category_cursor > 0) settings_category_cursor--;
+    } else if ((c == 'd' || c == 'D') && current_view == VIEW_SETTINGS &&
+               settings_category_list_mode) {
+        if (settings_category_cursor < settings_category_count() - 1)
+            settings_category_cursor++;
     } else if ((c == 'a' || c == 'A') && current_view == VIEW_HOME) {
         if (home_cursor > 0) home_cursor--;
     } else if ((c == 'd' || c == 'D') && current_view == VIEW_HOME) {
@@ -963,6 +1009,9 @@ void handle_key(char c) {
                 if (field_editing_text)              settings_commit_text_edit(selected);
                 else if (selected == FIELD_COUNTRY)  save_country_code();
                 else if (selected == FIELD_ANTENNA_GAIN) save_antenna_gain();
+                else if (selected == FIELD_DISPLAY_BL ||
+                         selected == FIELD_KB_BL ||
+                         selected == FIELD_LED_BR)    save_brightness();
                 else                                  save_lora_config();
                 edit_mode = false;
                 dirty     = false;
