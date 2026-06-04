@@ -23,12 +23,101 @@
 
 extern bool c6_available;
 
-void render_settings(void) {
-    int w = (int)pax_buf_get_width(&fb);
-    int h = (int)pax_buf_get_height(&fb);
+// ── Settings category table ──────────────────────────────────────────────────
+// Single source of truth for the drilldown. `first` is the enum index where
+// the category begins; `last` is derived from the next category's `first`
+// (or FIELD_COUNT - 1 for the tail). The titles are shown both in the
+// category-list and as the drilled-in view header.
+typedef struct {
+    field_t     first;
+    const char *title;
+    const char *subtitle;
+} settings_category_t;
 
-    pax_background(&fb, COL_BLACK);
-    render_tab_bar();
+static const settings_category_t s_categories[] = {
+    { FIELD_RADIO_FW,     "Identity",          "Owner name, advert name, radio firmware"      },
+    { FIELD_COUNTRY,      "Regulatory",        "Country, antenna gain, duty cycle"            },
+    { FIELD_FREQ,         "Radio",             "Freq, SF, BW, CR, power, sync, preamble, ..." },
+    { FIELD_ADVERT_INT,   "Network",           "Advert interval, role, path hash"             },
+    { FIELD_REGION_SCOPE, "Region & Location", "Region scope, GPS coordinates"                },
+};
+#define S_CATEGORY_COUNT ((int)(sizeof(s_categories) / sizeof(s_categories[0])))
+
+int settings_category_count(void) { return S_CATEGORY_COUNT; }
+
+void settings_category_bounds(int cat, int *first_field, int *last_field) {
+    if (cat < 0 || cat >= S_CATEGORY_COUNT) {
+        *first_field = 0;
+        *last_field  = FIELD_COUNT - 1;
+        return;
+    }
+    *first_field = (int)s_categories[cat].first;
+    *last_field  = (cat + 1 < S_CATEGORY_COUNT)
+                   ? (int)s_categories[cat + 1].first - 1
+                   : FIELD_COUNT - 1;
+}
+
+const char *settings_category_title(int cat) {
+    if (cat < 0 || cat >= S_CATEGORY_COUNT) return "Settings";
+    return s_categories[cat].title;
+}
+
+int settings_category_for_field(int f) {
+    for (int c = S_CATEGORY_COUNT - 1; c >= 0; c--) {
+        if (f >= (int)s_categories[c].first) return c;
+    }
+    return 0;
+}
+
+// ── Category-list renderer ───────────────────────────────────────────────────
+static void render_settings_category_list(int w, int h) {
+    const int y0       = TAB_BAR_H + 12;
+    const int row_h    = 76;
+    const int footer_h = 38;
+
+    pax_draw_text(&fb, COL_AMBER, FONT, TXT_TITLE, 18, y0, "Settings");
+
+    int rows_y0 = y0 + TXT_TITLE + 16;
+    for (int i = 0; i < S_CATEGORY_COUNT; i++) {
+        int y     = rows_y0 + i * row_h;
+        bool sel  = (i == settings_category_cursor);
+
+        if (sel) {
+            pax_simple_rect(&fb, COL_PANEL, 0, y, w, row_h - 8);
+            pax_simple_rect(&fb, COL_ACCENT, 0, y, 5, row_h - 8);
+        }
+        pax_simple_rect(&fb, COL_PANEL, 18, y + row_h - 9, w - 36, 1);
+
+        pax_col_t title_col = sel ? COL_WHITE : COL_AMBER;
+        pax_draw_text(&fb, title_col, FONT, TXT_BODY, 24, y + 10,
+                      s_categories[i].title);
+        pax_draw_text(&fb, COL_GRAY,  FONT, TXT_SMALL, 24, y + 10 + TXT_BODY + 6,
+                      s_categories[i].subtitle);
+
+        if (sel) {
+            const char *cta = "Enter ›";
+            pax_vec2f sz = pax_text_size(FONT, TXT_SMALL, cta);
+            pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL,
+                          w - (int)sz.x - 14, y + (row_h - TXT_SMALL) / 2 - 4, cta);
+        }
+    }
+
+    int fy = h - footer_h;
+    pax_simple_rect(&fb, COL_HEADER, 0, fy, w, footer_h);
+    pax_simple_rect(&fb, COL_PANEL,  0, fy, w, 1);
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10,
+                  fy + (footer_h - TXT_SMALL) / 2,
+                  "W/S: nav   Enter: open   ESC: home   Tab: next view");
+}
+
+// ── Drilled-in category renderer ─────────────────────────────────────────────
+// Reuses the original row-rendering logic but only walks the fields belonging
+// to settings_category_active, so headings + scroll math collapse to a flat
+// list capped at ~9 rows (current max is "Radio" with 9 fields).
+static void render_settings_drilldown(int w, int h) {
+    int first_field, last_field;
+    settings_category_bounds(settings_category_active, &first_field, &last_field);
+    int field_count_local = last_field - first_field + 1;
 
     if (edit_mode) {
         const char *mode_str = "[EDIT]";
@@ -170,97 +259,67 @@ void render_settings(void) {
                  dc_last_tx_blocked ? " BLOCKED" : "");
     }
 
-    static const struct { field_t first; const char *title; } sections[] = {
-        { FIELD_RADIO_FW,     "DEVICE & IDENTITY" },
-        { FIELD_COUNTRY,      "REGULATORY" },
-        { FIELD_FREQ,         "RADIO" },
-        { FIELD_ADVERT_INT,   "NETWORK & BEHAVIOR" },
-        { FIELD_REGION_SCOPE, "REGION & LOCATION" },
-    };
-    const int n_sections = (int)(sizeof(sections) / sizeof(sections[0]));
-
     const int row_h    = 44;
-    const int head_h   = 32;
+    const int title_h  = 38;
     const int footer_h = 60;
     const int y0       = TAB_BAR_H + 6;
-    const int list_h   = h - y0 - footer_h;
 
-    typedef struct { bool heading; const char *title; int field; int y; int hgt; } disp_t;
-    disp_t disp[FIELD_COUNT + 8];
-    int n_disp = 0, content_h = 0, sel_disp = 0;
-    for (int f = 0; f < FIELD_COUNT; f++) {
-        for (int s = 0; s < n_sections; s++) {
-            if ((int)sections[s].first == f) {
-                disp[n_disp] = (disp_t){ true, sections[s].title, -1, content_h, head_h };
-                content_h += head_h;
-                n_disp++;
-                break;
-            }
-        }
-        disp[n_disp] = (disp_t){ false, NULL, f, content_h, row_h };
-        if (f == selected) sel_disp = n_disp;
-        content_h += row_h;
-        n_disp++;
-    }
+    pax_draw_text(&fb, COL_AMBER, FONT, TXT_TITLE, 18, y0,
+                  settings_category_title(settings_category_active));
+    pax_simple_rect(&fb, COL_AMBER, 18, y0 + TXT_TITLE + 4, w - 36, 1);
 
-    int reveal_top = disp[sel_disp].y;
-    if (sel_disp > 0 && disp[sel_disp - 1].heading) reveal_top = disp[sel_disp - 1].y;
-    int reveal_bot = disp[sel_disp].y + disp[sel_disp].hgt;
+    int list_y0 = y0 + title_h;
+    int list_h  = h - list_y0 - footer_h;
+
+    if (selected < first_field) selected = first_field;
+    if (selected > last_field)  selected = last_field;
+
+    int sel_row = selected - first_field;
+    int reveal_top = sel_row * row_h;
+    int reveal_bot = reveal_top + row_h;
     if (reveal_top < settings_scroll)          settings_scroll = reveal_top;
     if (reveal_bot > settings_scroll + list_h) settings_scroll = reveal_bot - list_h;
-    int max_scroll = content_h - list_h;
+    int max_scroll = field_count_local * row_h - list_h;
     if (max_scroll < 0)               max_scroll = 0;
-    if (settings_scroll > max_scroll)  settings_scroll = max_scroll;
-    if (settings_scroll < 0)           settings_scroll = 0;
+    if (settings_scroll > max_scroll) settings_scroll = max_scroll;
+    if (settings_scroll < 0)          settings_scroll = 0;
 
     int text_y_off = (row_h - TXT_BODY) / 2;
 
-    pax_clip(&fb, 0, y0, w, list_h);
-    int first_vis = -1, last_vis = -1;
-    for (int d = 0; d < n_disp; d++) {
-        int y = y0 + disp[d].y - settings_scroll;
-        if (y + disp[d].hgt <= y0 || y >= y0 + list_h) continue;
+    pax_clip(&fb, 0, list_y0, w, list_h);
+    for (int f = first_field; f <= last_field; f++) {
+        int rel = f - first_field;
+        int y   = list_y0 + rel * row_h - settings_scroll;
+        if (y + row_h <= list_y0 || y >= list_y0 + list_h) continue;
 
-        if (disp[d].heading) {
-            pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL, 18,
-                          y + head_h - TXT_SMALL - 5, disp[d].title);
-            pax_simple_rect(&fb, COL_AMBER, 18, y + head_h - 3, w - 36, 1);
-            continue;
-        }
-
-        int  i      = disp[d].field;
-        bool is_sel = (i == selected);
-        if (first_vis < 0) first_vis = i;
-        last_vis = i;
-
+        bool is_sel = (f == selected);
         if (is_sel) {
             pax_col_t bg  = edit_mode ? 0xFF3A2A1A : COL_PANEL;
             pax_col_t bar = edit_mode ? COL_AMBER  : COL_ACCENT;
             pax_simple_rect(&fb, bg,  0, y, w, row_h - 1);
             pax_simple_rect(&fb, bar, 0, y, 5, row_h - 1);
         }
-
         pax_simple_rect(&fb, COL_PANEL, 12, y + row_h - 1, w - 24, 1);
 
         pax_col_t lbl_col = is_sel ? COL_WHITE : COL_GRAY;
-        pax_draw_text(&fb, lbl_col, FONT, TXT_BODY, 18, y + text_y_off, rows[i].label);
+        pax_draw_text(&fb, lbl_col, FONT, TXT_BODY, 18, y + text_y_off, rows[f].label);
 
         pax_col_t val_col;
         bool regulatory_violation = false;
-        if (i == FIELD_FREQ || i == FIELD_POWER || i == FIELD_COUNTRY) {
+        if (f == FIELD_FREQ || f == FIELD_POWER || f == FIELD_COUNTRY) {
             const regulatory_country_t *rc = region_get_country(country_code);
             if (rc && rc->n_subbands > 0) {
                 const regulatory_subband_t *sb = region_match_subband(
                     rc, (float)lora_cfg.frequency / 1000000.0f);
                 if (!sb) {
                     regulatory_violation = true;
-                } else if (i == FIELD_POWER) {
+                } else if (f == FIELD_POWER) {
                     int8_t eff = region_effective_power_dbm(rc, (int8_t)lora_cfg.power, antenna_gain_dbi);
                     if (eff > sb->max_power_dbm) regulatory_violation = true;
                 }
             }
         }
-        if (i >= FIELD_FREQ && !c6_available) {
+        if (f >= FIELD_FREQ && !c6_available) {
             val_col = COL_AMBER;
         } else if (regulatory_violation) {
             val_col = COL_RED;
@@ -273,27 +332,20 @@ void render_settings(void) {
         }
 
         char val_disp[80];
-        bool is_text_field = (i == FIELD_OWNER || i == FIELD_ADV_NAME ||
-                              i == FIELD_REGION_SCOPE ||
-                              i == FIELD_GPS_LAT || i == FIELD_GPS_LON);
+        bool is_text_field = (f == FIELD_OWNER || f == FIELD_ADV_NAME ||
+                              f == FIELD_REGION_SCOPE ||
+                              f == FIELD_GPS_LAT || f == FIELD_GPS_LON);
         if (is_sel && edit_mode && field_editing_text && is_text_field) {
             snprintf(val_disp, sizeof(val_disp), "%s_", field_edit_buf);
         } else if (is_sel && edit_mode && !is_text_field) {
-            snprintf(val_disp, sizeof(val_disp), "< %s >", rows[i].value);
+            snprintf(val_disp, sizeof(val_disp), "< %s >", rows[f].value);
         } else {
-            snprintf(val_disp, sizeof(val_disp), "%s", rows[i].value);
+            snprintf(val_disp, sizeof(val_disp), "%s", rows[f].value);
         }
         pax_vec2f vsz = pax_text_size(FONT, TXT_BODY, val_disp);
         pax_draw_text(&fb, val_col, FONT, TXT_BODY, w - (int)vsz.x - 18, y + text_y_off, val_disp);
     }
     pax_noclip(&fb);
-
-    if (content_h > list_h && first_vis >= 0) {
-        char sc[40];
-        snprintf(sc, sizeof(sc), "%d-%d/%d", first_vis + 1, last_vis + 1, FIELD_COUNT);
-        pax_vec2f sz = pax_text_size(FONT, TXT_BODY, sc);
-        pax_draw_text(&fb, COL_GRAY, FONT, TXT_BODY, w - (int)sz.x - 10, h - footer_h - TXT_BODY - 2, sc);
-    }
 
     int fy = h - footer_h;
     pax_simple_rect(&fb, COL_HEADER, 0, fy, w, footer_h);
@@ -351,7 +403,7 @@ void render_settings(void) {
     } else if (selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
         hint = "Decimal degrees (e.g. 52.123456). Empty clears both axes.";
     } else {
-        hint = "W/S: navigate   Enter: edit   R: reload   Tab: next";
+        hint = "W/S: navigate   Enter: edit   ESC: back to categories   R: reload";
     }
     pax_draw_text(&fb, hint_col, FONT, TXT_BODY, 10, fy + 6, hint);
 
@@ -360,45 +412,20 @@ void render_settings(void) {
         pax_vec2f usz = pax_text_size(FONT, TXT_BODY, unsaved);
         pax_draw_text(&fb, COL_AMBER, FONT, TXT_BODY, w - (int)usz.x - 10, fy + 6, unsaved);
     }
+}
 
-    int row2_y = fy + 6 + TXT_BODY + 6;
-    {
-        time_t    now = time(NULL);
-        struct tm t;
-        localtime_r(&now, &t);
-        char ts[48];
-        pax_col_t ts_col;
-        if (identity_sntp_synced()) {
-            snprintf(ts, sizeof(ts), "SNTP %02d:%02d:%02d  %02d-%02d-%04d",
-                     t.tm_hour, t.tm_min, t.tm_sec,
-                     t.tm_mday, t.tm_mon + 1, t.tm_year + 1900);
-            ts_col = COL_GREEN;
-        } else if (time_from_nvs) {
-            snprintf(ts, sizeof(ts), "~%02d:%02d %02d-%02d (NVS, approx)",
-                     t.tm_hour, t.tm_min, t.tm_mday, t.tm_mon + 1);
-            ts_col = COL_AMBER;
-        } else {
-            snprintf(ts, sizeof(ts), "no time sync — timestamps incorrect");
-            ts_col = COL_RED;
-        }
-        pax_draw_text(&fb, ts_col, FONT, TXT_BODY, 10, row2_y, ts);
-    }
-    {
-        char rf[64];
-        int  snr_dB = (int)last_rx_snr_db_x4 / 4;
-        if (last_rx_stats_valid && noise_floor_valid) {
-            snprintf(rf, sizeof(rf), "RX:%d SNR:%+d N:%d",
-                     (int)last_rx_rssi_dbm, snr_dB, (int)noise_floor_dbm);
-        } else if (last_rx_stats_valid) {
-            snprintf(rf, sizeof(rf), "RX:%d SNR:%+d", (int)last_rx_rssi_dbm, snr_dB);
-        } else if (noise_floor_valid) {
-            snprintf(rf, sizeof(rf), "noise:%d", (int)noise_floor_dbm);
-        } else {
-            rf[0] = '\0';
-        }
-        if (rf[0]) {
-            pax_vec2f rsz = pax_text_size(FONT, TXT_BODY, rf);
-            pax_draw_text(&fb, COL_GRAY, FONT, TXT_BODY, w - (int)rsz.x - 10, row2_y, rf);
-        }
+// ── Public entry point: dispatches between the category list and the
+//   drilled-in field list based on settings_category_list_mode.
+void render_settings(void) {
+    int w = (int)pax_buf_get_width(&fb);
+    int h = (int)pax_buf_get_height(&fb);
+
+    pax_background(&fb, COL_BLACK);
+    render_tab_bar();
+
+    if (settings_category_list_mode) {
+        render_settings_category_list(w, h);
+    } else {
+        render_settings_drilldown(w, h);
     }
 }
