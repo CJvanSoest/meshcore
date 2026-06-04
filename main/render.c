@@ -517,8 +517,6 @@ static void render_settings(void) {
             pax_draw_text(&fb, COL_GRAY, FONT, TXT_BODY, w - (int)rsz.x - 10, row2_y, rf);
         }
     }
-
-    blit();
 }
 
 static void render_qr_overlay(void) {
@@ -559,7 +557,6 @@ static void render_qr_overlay(void) {
 
     if (!ok) {
         pax_draw_text(&fb, COL_AMBER, FONT, TXT_BODY, 20, h / 2, "QR encode failed");
-        blit();
         return;
     }
 
@@ -598,8 +595,6 @@ static void render_qr_overlay(void) {
     pax_vec2f nsz = pax_text_size(FONT, TXT_SMALL, name_label);
     pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL,
                   (w - (int)nsz.x) / 2, qr_y + qr_px + margin + 6, name_label);
-
-    blit();
 }
 
 #define NODES_ROW_H    44
@@ -824,7 +819,6 @@ static void render_nodes(void) {
         }
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy_text + TXT_BODY + 6, adv_buf);
     }
-    blit();
 }
 
 // ── Wrapped chat-message rendering (shared by DM + Channel views) ────────────
@@ -1079,7 +1073,6 @@ static void render_chat(void) {
         pax_simple_rect(&fb, COL_PANEL,  0, fy_base, w, 1);
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy_base + (footer_h - TXT_SMALL) / 2,
                       "W/S: nav   Enter: open   D: delete   Tab: next");
-        blit();
         return;
     }
 
@@ -1137,7 +1130,6 @@ static void render_chat(void) {
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (FOOTER_H - TXT_SMALL) / 2,
                       "T: type   W/S: scroll   ESC: back to inbox   Tab: next tab");
     }
-    blit();
 }
 
 static void render_channel_list(int w, int h) {
@@ -1230,7 +1222,6 @@ static void render_channel(void) {
 
     if (channel_list_mode) {
         render_channel_list(w, h);
-        blit();
         return;
     }
 
@@ -1297,11 +1288,10 @@ static void render_channel(void) {
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (FOOTER_H - TXT_SMALL) / 2,
                       "T: type   W/S: scroll   R: clear   ESC: list   Tab: next");
     }
-    blit();
 }
 
-// 2x4 emoji picker overlay. Drawn on top of an already-rendered chat view —
-// caller must call blit() afterward. Active state owned by chat module.
+// 2x4 emoji picker overlay. Drawn on top of an already-rendered chat view.
+// Active state owned by chat module.
 static void render_emoji_picker_overlay(void) {
     int w = (int)pax_buf_get_width(&fb);
     int h = (int)pax_buf_get_height(&fb);
@@ -1341,6 +1331,10 @@ static void render_emoji_picker_overlay(void) {
 }
 
 void render(void) {
+    // Single-flush model: each render_*() draws into fb but does NOT blit.
+    // Overlays (QR, emoji picker) draw on top of the base view, and we blit
+    // exactly once at the end so the user never sees the base layer briefly
+    // through an overlay swap (the old double-blit caused QR/emoji flicker).
     switch (current_view) {
         case VIEW_NODES:
             render_nodes();
@@ -1354,6 +1348,6 @@ void render(void) {
     if (emoji_picker_active && chat_typing &&
         (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL)) {
         render_emoji_picker_overlay();
-        blit();
     }
+    blit();
 }
