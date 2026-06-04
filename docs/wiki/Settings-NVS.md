@@ -37,6 +37,26 @@ shared with the launcher for `owner_name`).
 | `owner_name` | str (≤32) | Owner display name (shared with launcher) |
 | `last_time_s` | i64 | Last good SNTP timestamp; restored on boot without WiFi |
 
+### `ui` keys (per-app brightness, in `system` namespace)
+
+Per-app overrides for the three BSP backlight / LED globals. Applied on
+boot by `apply_brightness()` and again on every value change in the
+Brightness settings category, so the launcher's globals stay untouched
+once MeshCore is running. All three are `u8`, range 0..100 %, defaults
+chosen to match the backlog #47 trade-off (battery vs. visibility).
+
+| Key | Type | Default | BSP call |
+|---|---|---|---|
+| `ui.disp_bl` | u8 | 50 | `bsp_display_set_backlight_brightness(pct)` |
+| `ui.kb_bl` | u8 | 50 | `bsp_input_set_backlight_brightness(pct)` |
+| `ui.led_br` | u8 | 5 | `bsp_led_set_brightness(pct)` |
+
+Edited via Settings → Brightness; the slider cycles through
+5 / 10 / 25 / 50 / 75 / 100 % stops. The launcher's globals are NOT
+restored on exit — BadgeVMS PIE ELF apps have no clean exit hook, so the
+MeshCore value persists until the launcher writes its own value next
+time the launcher's brightness UI runs.
+
 ### `mc` namespace (MeshCore-specific identity)
 
 | Key | Type | Purpose |

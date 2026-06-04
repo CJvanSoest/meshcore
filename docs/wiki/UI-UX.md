@@ -1,7 +1,9 @@
 # UI / UX
 
 The UI is a single full-screen framebuffer (PAX-GFX) rendered after every
-input event and at ~1 Hz idle ticks for live counters.
+input event and at ~1 Hz idle ticks for live counters. As of v2.2.0 the
+classic tab-bar is replaced with a shared Pager-style status strip on every
+view, and boot lands on a tile-grid home screen instead of Settings.
 
 ## Layout constants
 
@@ -9,21 +11,29 @@ Defined in `main/render.h`:
 
 | Constant | Value | Purpose |
 |---|---|---|
-| `TAB_BAR_H` | 44 | Top tab strip height |
+| `TAB_BAR_H` | 44 | Top status-strip height (the "Pager header") |
 | `FOOTER_H` | 28 | Single-line footer height (chat/channel) |
 | `CHAT_ROW_H` | 44 | Per-message row height |
 | `CHAT_Y0` | `TAB_BAR_H + 4` | First chat row Y |
 | `CHAT_INPUT_H` | 36 | Input bar height (above footer) |
 
-Settings and Nodes tabs use a local `footer_h = 60` for their 2-line footer
-(controls + timestamp / advert age).
+Home tile-grid geometry lives in `render_home.c` as `HOME_HEADER_H=50`,
+`HOME_FOOTER_H=38`, `HOME_H_MARGIN=30`, `HOME_V_MARGIN=20`, with a 4×2 tile
+layout. Settings tile-grid geometry mirrors the same numbers in
+`render_settings.c`.
 
-## Tokyo Night palette
+## Palettes
+
+The classic views (Settings drilldown, Nodes, DM, Channel) use the Tokyo
+Night palette; home and About use the LilyGo Pager palette. The Pager
+status strip is rendered in Pager colours and overlays every view.
+
+### Tokyo Night
 
 | Token | Hex | Use |
 |---|---|---|
 | `COL_BG` | `#1A1B26` | Main background |
-| `COL_HEADER` | `#16161E` | Tab bar, footer surface |
+| `COL_HEADER` | `#16161E` | Footer surface |
 | `COL_PANEL` | `#24283B` | Row highlight, separators, message bubbles |
 | `COL_WHITE` | `#C0CAF5` | Body text |
 | `COL_GRAY` | `#565F89` | Dim / secondary text |
@@ -33,91 +43,198 @@ Settings and Nodes tabs use a local `footer_h = 60` for their 2-line footer
 | `COL_RED` | `#F7768E` | Error, signal poor |
 | (Purple) | `#BB9AF7` | ROOM_SERVER role |
 
-## Tabs
+### LilyGo Pager (home, About, status strip)
 
-| Tab | Entry behaviour |
+| Token | Hex | Use |
+|---|---|---|
+| `COL_PAGER_BG` | `#0E141B` | Window background |
+| `COL_PAGER_TILE` | `#16161E` | Unfocused tile surface |
+| `COL_PAGER_TEXT` | `#C0C8D0` | Body / label text |
+| `COL_PAGER_ACCENT` | `#FAA61A` | Focused tile, highlights (orange) |
+
+## Views
+
+| View | Enum | Entry behaviour |
+|---|---|---|
+| Home | `VIEW_HOME` | 4×2 tile-grid (Nodes / DM / Channel / Map / Advert / Settings / About / QR); WSAD or D-pad to focus, Enter opens |
+| Settings | `VIEW_SETTINGS` | Tile-grid of 6 categories → Enter drills in to that category's field list |
+| Nodes | `VIEW_NODES` | Live heard-node list with column header (Role / Name / RSSI / SNR / #Pkt / Dist / Seen) |
+| DM | `VIEW_CHAT` | If no target: inbox view (saved contacts + active DM target). If target set: per-peer conversation |
+| Channel | `VIEW_CHANNEL` | Public channel chat |
+| About | `VIEW_ABOUT` | Version + build date + author + upstream credits + license + source URL |
+
+`Tab` rotates through the four classic views (`VIEW_TAB_COUNT=4`) — home
+and About sit outside the tab carousel. `current_view` is `app_view_t`
+defined in `app_config.h`; boot default is `VIEW_HOME`.
+
+ESC falls through a back-stack: drilldown → category list → home →
+launcher. This makes home the safe "I am here" anchor across the app.
+
+## Home tile grid (`render_home.c`)
+
+4 columns × 2 rows = 8 tiles. Each tile carries:
+
+- A PAX-drawn icon (lines / circles / triangles — no bundled bitmaps yet)
+- A centered label (supports embedded `\n` for multi-line names)
+- An optional `home_badge_fn` callback (DM / Channel return their unread
+  totals via `contact_unread_total` / `channel_unread_total`, drawn as a
+  red pill in the top-right corner of the tile)
+- An optional `home_action_t` (Advert tile = `HOME_ACTION_SEND_ADVERT`
+  fires `send_advert()` inline + 2-second toast; QR tile =
+  `HOME_ACTION_OPEN_QR` flips on the QR overlay and tracks origin so ESC
+  returns to home)
+
+A tile is rendered as a "soon" placeholder (dim foreground + small
+`soon` subtitle) only when its target is `VIEW_HOME` *and* it carries
+no action — so Advert reads as live even though it doesn't switch view.
+
+## Pager status strip (`render_tab_bar`)
+
+Shared header on every classic view. Left side: view name (e.g. "Nodes")
+plus inline DM / # unread badges if the *other* tabs have unreads. Right
+side, in this order: RX count, TX (rolling 1 h duty cycle %), battery
+percentage with charging suffix. Battery turns amber/red by level; TX
+turns amber at ≥80 % budget and red when the last TX was blocked by
+duty-cycle enforcement.
+
+The home screen draws its own taller (50 px) header with the advert/owner
+name on the left instead of a view name; same right-side stats.
+
+## Settings drilldown (`render_settings.c`)
+
+Two levels:
+
+1. **Category list** (`settings_category_list_mode == true`) — 4-column
+   Pager tile grid, six tiles: Identity / Regulatory / Radio / Network /
+   Region & Location / Brightness. Each tile has its own PAX-drawn
+   category icon. Multi-line labels via embedded `\n` so the wider
+   "Region & Location" wraps onto two lines.
+2. **Drilldown** (`settings_category_list_mode == false`) — Tokyo Night
+   row list, but only the fields belonging to `settings_category_active`.
+   The category title is the amber page header.
+
+`settings_category_bounds(cat, &first, &last)` (declared in
+`render_internal.h`) drives the input clamp so navigation wraps within
+the active category instead of cycling all `FIELD_COUNT` fields. Tile
+navigation from the category list is `±1` horizontal, `±4` vertical
+(matching the 4-column layout) for both D-pad and WSAD.
+
+| Category | Fields |
 |---|---|
-| Settings | Field list with cursor; Enter enters edit mode |
-| Nodes | Live heard-node list with column header (Role / Name / RSSI / SNR / #Pkt / Dist / Seen) |
-| DM | If no target: inbox view (saved contacts + active DM target). If target set: per-peer conversation |
-| Channel | Public channel chat |
-
-`Tab` rotates between the four. `current_view` is `app_view_t` defined in
-`app_config.h`.
-
-## Edit-mode state machine (Settings tab)
-
-```
-   ─── view ───►  ENTER  ───► editing ───► ESC ───►  view
-                                  │
-                                  │  Backspace / Up / Down
-                                  ▼
-                              edit value
-                                  │
-                                  │  ENTER (save) → NVS write → view
-                                  ▼
-                              text-edit buffer
-                              (FIELD_OWNER / FIELD_ADV_NAME /
-                               FIELD_REGION_SCOPE)
-```
-
-`edit_mode` and `field_editing_text` are the two flags. `field_edit_buf` is
-a shared 33-byte text scratch; `selected` is the current row index.
-
-## Settings sections & contextual hints
-
-`render_settings` walks the `field_t` enum top to bottom (enum order = display
-order) and inserts an amber, underlined **section heading** before the first
-field of each group:
-
-| Section | Fields |
-|---|---|
-| Device & identity | Radio ID, Radio firmware, Owner name, Advert name |
+| Identity | Radio ID, Radio firmware, Owner name, Advert name |
 | Regulatory | Country, Antenna gain, Duty cycle |
 | Radio | Frequency, SF, BW, CR, TX power, Sync word, Preamble, LoRa preset, RX sensitivity |
-| Network & behavior | Advert interval, Role, Path hash size |
-| Region & location | Region scope, GPS latitude, GPS longitude |
+| Network | Advert interval, Role, Path hash size |
+| Region & Location | Region scope, GPS latitude, GPS longitude |
+| Brightness | Display backlight, Keyboard backlight, RGB LED brightness |
 
-Headings are display-only rows (not selectable). Scrolling is **pixel-based**
-(`settings_scroll` is a pixel offset, not a row index) so the shorter heading
-rows scroll with the list; the list region is `pax_clip`-ed so partial rows at
-the edges don't bleed into the tab bar or footer. Everything from `FIELD_FREQ`
-onward is a radio-config field and is greyed amber when the C6 is unavailable.
+Opening Settings from the home tile resets to the category list; opening
+via `Tab` cycle preserves the last drilled-in category so power users can
+flip between views without losing their place.
 
-The first footer line is **contextual** to the selected field — e.g. Sync word
-and Preamble explain themselves, and Country / Frequency / TX power / Duty cycle
-show the active country sub-band's limits (`<country> <band>: <range> MHz,
-max <n> dBm ERP/EIRP, <n>% duty cycle`, or an off-band warning). See the
-[Regulatory compliance](Settings-NVS.md#regulatory-compliance) section.
+## Brightness category (#47)
+
+Three per-app sliders that override the launcher backlight/LED globals
+while MeshCore is running:
+
+| Field | NVS key | Default | BSP call on change |
+|---|---|---|---|
+| Display backlight | `ui.disp_bl` | 50 | `bsp_display_set_backlight_brightness(pct)` |
+| Keyboard backlight | `ui.kb_bl` | 50 | `bsp_input_set_backlight_brightness(pct)` |
+| RGB LED brightness | `ui.led_br` | 5 | `bsp_led_set_brightness(pct)` |
+
+All three cycle through the same 5/10/25/50/75/100 % stops as the other
+sliders. `field_adjust` calls `apply_brightness()` live so the user sees
+the change while scrolling; Enter persists to NVS via `save_brightness()`.
+`load_brightness()` + `apply_brightness()` run at boot in `main.c` after
+the rest of the NVS loaders so the per-app values are applied before the
+first frame.
+
+Restore-on-exit is intentionally **not** implemented — BadgeVMS PIE ELF
+apps have no clean exit hook (see [BadgeVMS callback unsafe gotcha] in
+memory). The launcher overrides the values again as soon as it cycles
+back to its own settings.
+
+## About view (`render_about.c`)
+
+Version + build date are pulled live from `esp_app_get_description()` so
+a clean tag (e.g. `v2.2.0`) produces a clean string with no `-dirty` /
+post-tag suffix. The rest is static: author (CJ van Soest), credits
+(MeshCore by Ripple Radios; Tanmatsu + BadgeVMS by Nicolai Electronics),
+MIT license, source URL. Footer: `ESC: home`.
+
+When more items get added (commit hash, region preset, map license credits
+once maps land) prefer inline `Label: value` per line over the current
+label-stacked-above-value layout, per CJ's feedback on the v2.2.0 design.
+
+## Edit-mode state machine (Settings drilldown)
+
+```
+   ─── drilldown ───►  ENTER  ───► editing ───► ESC ───►  drilldown
+                                       │
+                                       │  Backspace / Up / Down
+                                       ▼
+                                  edit value
+                                       │
+                                       │  ENTER (save) → NVS write → drilldown
+                                       ▼
+                                  text-edit buffer
+                                  (FIELD_OWNER / FIELD_ADV_NAME /
+                                   FIELD_REGION_SCOPE / FIELD_GPS_*)
+```
+
+`edit_mode` and `field_editing_text` are the two flags. `field_edit_buf`
+is a shared 33-byte text scratch; `selected` is the current row index
+(clamped to the active category's bounds).
 
 ## DM inbox mode (`dm_inbox_mode`)
 
-The DM tab has two states:
+The DM view has two states:
 
-1. **Inbox** — list of conversations (active DM target on top, then saved
-   contacts). Avatar shows first letter of the name in an amber square for
-   the active target, blue for saved contacts.
+1. **Inbox** — list of conversations (active DM target on top, then
+   saved contacts). Avatar shows first letter of the name in an amber
+   square for the active target, blue for saved contacts. Per-contact
+   unread badges appear right of the name.
 2. **Conversation** — picked by pressing Enter on an inbox row, or by
-   pressing Enter on a node in the Nodes tab.
+   pressing Enter on a node in the Nodes view.
 
-Press ESC inside a conversation to return to inbox.
+Press ESC inside a conversation to return to inbox; ESC on the inbox
+falls through to home.
 
 ## QR overlay (`qr_overlay_active`)
 
-Triggered by `Q` in the Nodes tab. Renders a full-screen QR code encoding
-`meshcore://contact/add?name=<adv>&public_key=<hex>&type=1`. Any keypress
-closes it. The encoding uses `qrcodegen` with ECC_MEDIUM and version 1..10.
+Triggered either by the **QR home tile** (opens with `qr_from_home = true`
+so closing returns to home) or by `Q` in the Nodes view (stays in Nodes
+on close). Renders a full-screen QR encoding
+`meshcore://contact/add?name=<adv>&public_key=<hex>&type=1` using
+`qrcodegen` (ECC_MEDIUM, version 1..10).
+
+Close hint at the bottom: `[ESC] [X] [Enter] to close` in amber, so the
+keys + the Tanmatsu's physical red X button are all signposted.
 
 The QR buffers are `static uint8_t qr_data[qrcodegen_BUFFER_LEN_MAX]` etc.
-to avoid stack overflow (each buffer is ~3.9 KB).
+to avoid stack overflow (~3.9 KB each).
 
-## Battery & RX indicator
+## Status toast
 
-Always painted at the top-right of the tab bar by `render_tab_bar`:
+`render_home.c` paints a centered Pager-style toast box for ~2 seconds
+when `toast_text[0] != '\0'`. Used by the Advert tile ("Flood advert
+sent"); auto-clears once the timestamp ages out. Future action tiles can
+re-use the same `toast_text` / `toast_start_ms` globals.
+
+## Battery / RX / TX indicator
+
+Painted in the right half of the Pager strip by `render_tab_bar`:
 
 - `RX:<count>` — packets seen since boot (green)
+- `TX:<pct>%` — rolling 1-hour duty-cycle usage. Pager-text colour
+  normally, amber at ≥80 %, red when the last TX was blocked.
 - `<pct>%[+]` — battery percentage; `+` suffix means charging; coloured
   green / amber / red by level
+
+The home screen footer also mirrors the Settings tab's bottom-row stats
+on the right (`RX:<rssi> SNR:<snr> N:<noise>`) so the landing screen
+doubles as a quick radio dashboard.
 
 ## Notification LED
 
@@ -127,14 +244,15 @@ Always painted at the top-right of the tab bar by `render_tab_bar`:
 |---|---|
 | Green | At least one unseen DM |
 | Blue | At least one unseen channel message |
-| Off | The relevant tab is open or no pending message |
+| Off | The relevant view is open or no pending message |
 
-`update_notification_led` is called from chat add helpers and tab switch.
+`update_notification_led` is called from chat add helpers and on view
+switches.
 
 ## Channel list mode (`channel_list_mode`)
 
-The Channel tab opens in list mode by default — a scrollable list of
-joined channels (Public is always slot 0, hardcoded `PUBLIC_GROUP_PSK`).
+Channel view opens in list mode by default — a scrollable list of joined
+channels (Public is always slot 0, hardcoded `PUBLIC_GROUP_PSK`).
 
 | Key | Action |
 |---|---|
