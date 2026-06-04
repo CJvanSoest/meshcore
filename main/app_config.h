@@ -8,10 +8,10 @@
 #define MAX_MSG_TEXT  172
 
 // Hand-maintained label for the tanmatsu-radio C6 firmware currently on
-// the badge. v3.1.1 adds a system protocol with a get-information command
-// that exposes the app version at runtime; until that client is wired up,
-// bump this string whenever you re-flash the C6.
-#define TANMATSU_RADIO_FW_LABEL "v3.1.1-1-gf919f91"
+// the badge. v3.1.1+ exposes the app version at runtime via the system
+// protocol's get-information command, so this string is only the fallback
+// shown when the live query fails. Bump it whenever you re-flash the C6.
+#define TANMATSU_RADIO_FW_LABEL "v3.2.0"
 
 // Top-level tab/view selection. Lives here because both render, input, and
 // rx_task need to read it.
