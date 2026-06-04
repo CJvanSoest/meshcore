@@ -261,6 +261,8 @@ void app_main(void) {
     load_country_code();
     load_antenna_gain();
     load_gps_coords();
+    load_brightness();
+    apply_brightness();  // override launcher globals with our per-app NVS values
     contacts_load();
 
     DIAG(COL_GRAY, "SD mount...");
