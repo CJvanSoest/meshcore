@@ -24,6 +24,7 @@ idf_component_register(
 		"render_chat.c"
 		"render_channel.c"
 		"render_home.c"
+		"render_about.c"
 		"emoji.c"
 		"emoji_bitmaps.c"
 		"ed25519.c"

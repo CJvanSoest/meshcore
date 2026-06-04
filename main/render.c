@@ -177,6 +177,7 @@ void render(void) {
     // through an overlay swap (the old double-blit caused QR/emoji flicker).
     switch (current_view) {
         case VIEW_HOME:    render_home();    break;
+        case VIEW_ABOUT:   render_about();   break;
         case VIEW_NODES:
             render_nodes();
             if (qr_overlay_active) render_qr_overlay();

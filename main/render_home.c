@@ -138,7 +138,7 @@ static const home_tile_t home_tiles[HOME_TILE_COUNT] = {
     { "Map",      VIEW_HOME,     icon_map,      HOME_ACTION_NONE,        NULL                  },  // TODO: VIEW_MAP
     { "Advert",   VIEW_HOME,     icon_advert,   HOME_ACTION_SEND_ADVERT, NULL                  },
     { "Settings", VIEW_SETTINGS, icon_settings, HOME_ACTION_NONE,        NULL                  },
-    { "About",    VIEW_HOME,     icon_about,    HOME_ACTION_NONE,        NULL                  },  // TODO: VIEW_ABOUT
+    { "About",    VIEW_ABOUT,    icon_about,    HOME_ACTION_NONE,        NULL                  },
     { "QR",       VIEW_NODES,    icon_advert,   HOME_ACTION_OPEN_QR,     NULL                  },
 };
 
