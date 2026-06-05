@@ -139,6 +139,14 @@ bool settings_category_list_mode = true;   // start in list when entering Settin
 int  settings_category_cursor    = 0;
 int  settings_category_active    = 0;
 
+// Display blanking: F3 (yellow square) toggles the MIPI backlight off so
+// the badge is silent in the pocket while keyboard input + chat LEDs remain
+// live. We also stop calling render() to spare CPU + framebuffer DMA.
+// The power button is owned by firmware for shutdown — F3 is unused
+// elsewhere in this app so there's no conflict.
+static bool    display_blanked         = false;
+static uint8_t display_brightness_save = 100;  // captured before blanking
+
 // utf8_sanitize lives in chat.c. node_filter lives in nodes.c.
 
 // ── app_main ──────────────────────────────────────────────────────────────────
@@ -358,9 +366,32 @@ void app_main(void) {
     while (1) {
         bsp_input_event_t event;
         if (xQueueReceive(input_event_queue, &event, pdMS_TO_TICKS(1000)) != pdTRUE) {
-            render();  // periodic refresh: update RX count, last-seen timers
+            if (!display_blanked) {
+                render();  // periodic refresh: update RX count, last-seen timers
+            }
             continue;
         }
+
+        // F3 (yellow square) toggles backlight. Only act on press-edge so
+        // a single tap doesn't immediately wake the display again.
+        if (event.type == INPUT_EVENT_TYPE_NAVIGATION &&
+            event.args_navigation.key == BSP_INPUT_NAVIGATION_KEY_F3 &&
+            event.args_navigation.state) {
+            if (!display_blanked) {
+                bsp_display_get_backlight_brightness(&display_brightness_save);
+                bsp_display_set_backlight_brightness(0);
+                display_blanked = true;
+            } else {
+                bsp_display_set_backlight_brightness(display_brightness_save);
+                display_blanked = false;
+                render();  // immediate redraw on wake
+            }
+            continue;
+        }
+
+        // While blanked, swallow keyboard/nav input so the badge is silent
+        // in-pocket. Only F3 (handled above) can wake it.
+        if (display_blanked) continue;
 
         bool changed = false;
 
