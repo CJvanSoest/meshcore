@@ -208,7 +208,11 @@ void send_advert(void) {
 
     meshcore_advert_t advert = {0};
     memcpy(advert.pub_key, node_pub_key, MESHCORE_PUB_KEY_SIZE);
-    advert.timestamp = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
+    // UNIX epoch — matches upstream MeshCore convention and what the other
+    // payload paths in this file use. Earlier versions accidentally used
+    // xTaskGetTickCount-derived uptime here, which other clients rejected
+    // because the timestamp looked decades old (~15 since boot).
+    advert.timestamp = (uint32_t)time(NULL);
     advert.role      = lora_role;
 
     const char *adv_src = lora_advert_name[0] ? lora_advert_name :
