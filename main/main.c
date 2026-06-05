@@ -33,6 +33,7 @@
 #include "bsp/input.h"
 #include "bsp/led.h"
 #include "bsp/power.h"
+#include "bsp/rtc.h"
 #include "bsp/tanmatsu.h"
 #include "tanmatsu_coprocessor.h"
 #include "driver/gpio.h"
@@ -138,6 +139,14 @@ bool settings_category_list_mode = true;   // start in list when entering Settin
 int  settings_category_cursor    = 0;
 int  settings_category_active    = 0;
 
+// Display blanking: F3 (yellow square) toggles the MIPI backlight off so
+// the badge is silent in the pocket while keyboard input + chat LEDs remain
+// live. We also stop calling render() to spare CPU + framebuffer DMA.
+// The power button is owned by firmware for shutdown — F3 is unused
+// elsewhere in this app so there's no conflict.
+static bool    display_blanked         = false;
+static uint8_t display_brightness_save = 100;  // captured before blanking
+
 // utf8_sanitize lives in chat.c. node_filter lives in nodes.c.
 
 // ── app_main ──────────────────────────────────────────────────────────────────
@@ -224,23 +233,28 @@ void app_main(void) {
     setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);
     tzset();
 
+    // wifi_connection_init_stack brings up the P4↔C6 SDIO RPC pipeline that
+    // tanmatsu-lora rides on top of. We keep this call but skip the actual
+    // connect step (wifi_connect_try_all) — the badge runs as a LoRa node,
+    // not a WiFi client, so no scan / associate / DHCP / SNTP wastes air.
     DIAG(COL_GRAY, "wifi_connection_init_stack...");
     res = wifi_connection_init_stack();
     DIAG(res == ESP_OK ? COL_GREEN : COL_YELLOW, "  wifi init: %s (%d)",
          res == ESP_OK ? "OK" : "FAIL", res);
-    if (res == ESP_OK) {
-        res = wifi_connect_try_all();
-        DIAG(res == ESP_OK ? COL_GREEN : COL_YELLOW, "  wifi connect: %s",
-             res == ESP_OK ? "OK" : "no saved networks");
-        if (res == ESP_OK) {
-            esp_sntp_set_time_sync_notification_cb(identity_sntp_sync_cb);
-            esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-            esp_sntp_setservername(0, "pool.ntp.org");
-            esp_sntp_init();
-        }
+
+    // Time comes from the C6 coprocessor RTC (set by launcher/firmware SNTP
+    // at boot). bsp_rtc_update_time pulls that value into the P4 system
+    // clock — no app-side SNTP needed. Per Nicolai's hint.
+    DIAG(COL_GRAY, "bsp_rtc_update_time...");
+    esp_err_t rtc_res = bsp_rtc_update_time();
+    if (rtc_res == ESP_OK) {
+        identity_mark_time_synced();
+        DIAG(COL_GREEN, "  RTC: synced from coprocessor");
+    } else {
+        DIAG(COL_YELLOW, "  RTC: FAIL (%d)", rtc_res);
     }
 
-    // Restore last known time from NVS when no WiFi/SNTP available
+    // Restore last known time from NVS when no SNTP/RTC available
     if (!identity_sntp_synced()) {
         nvs_handle_t h;
         if (nvs_open("system", NVS_READONLY, &h) == ESP_OK) {
@@ -352,9 +366,32 @@ void app_main(void) {
     while (1) {
         bsp_input_event_t event;
         if (xQueueReceive(input_event_queue, &event, pdMS_TO_TICKS(1000)) != pdTRUE) {
-            render();  // periodic refresh: update RX count, last-seen timers
+            if (!display_blanked) {
+                render();  // periodic refresh: update RX count, last-seen timers
+            }
             continue;
         }
+
+        // F3 (yellow square) toggles backlight. Only act on press-edge so
+        // a single tap doesn't immediately wake the display again.
+        if (event.type == INPUT_EVENT_TYPE_NAVIGATION &&
+            event.args_navigation.key == BSP_INPUT_NAVIGATION_KEY_F3 &&
+            event.args_navigation.state) {
+            if (!display_blanked) {
+                bsp_display_get_backlight_brightness(&display_brightness_save);
+                bsp_display_set_backlight_brightness(0);
+                display_blanked = true;
+            } else {
+                bsp_display_set_backlight_brightness(display_brightness_save);
+                display_blanked = false;
+                render();  // immediate redraw on wake
+            }
+            continue;
+        }
+
+        // While blanked, swallow keyboard/nav input so the badge is silent
+        // in-pocket. Only F3 (handled above) can wake it.
+        if (display_blanked) continue;
 
         bool changed = false;
 
