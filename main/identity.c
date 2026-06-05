@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/time.h>
+#include <time.h>
 
 #include "esp_log.h"
 #include "esp_random.h"
@@ -35,6 +36,18 @@ void identity_sntp_sync_cb(struct timeval *tv) {
     nvs_handle_t h;
     if (nvs_open("system", NVS_READWRITE, &h) == ESP_OK) {
         nvs_set_i64(h, NVS_LAST_TIME, (int64_t)tv->tv_sec);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+void identity_mark_time_synced(void) {
+    s_sntp_synced = true;
+    time_t now = time(NULL);
+    if (now < 1000000000LL) return;  // refuse to persist obvious garbage
+    nvs_handle_t h;
+    if (nvs_open("system", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_i64(h, NVS_LAST_TIME, (int64_t)now);
         nvs_commit(h);
         nvs_close(h);
     }

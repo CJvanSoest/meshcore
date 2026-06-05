@@ -19,7 +19,21 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-06-05
+
 ### Added
+- **F3 (yellow square) toggles display backlight** (PR #5) — short press
+  blanks the MIPI backlight while keyboard input, LoRa RX and the
+  notification LEDs keep running. Second press restores the previous
+  brightness. Power button stays reserved for firmware-level power-off.
+  Home + Brightness footers gained a yellow-icon hint advertising the
+  shortcut.
+- **Time via C6 RTC, no in-app SNTP** (PR #6) — boot pulls the time
+  the launcher already synced into the coprocessor RTC via
+  `bsp_rtc_update_time()`. Drops the WiFi-associate + `esp_sntp_init`
+  dance so the WiFi PHY stays in `esp_wifi_stop()` for the whole
+  MeshCore session. Visibly faster boot; WiFi reconnects automatically
+  when the user returns to the launcher.
 - Gitea Actions CI workflow (`.gitea/workflows/build.yml`) — builds the
   tanmatsu target on every push and PR, uploads `application.bin` as
   artifact (PR #1).
@@ -31,6 +45,12 @@ of merged PR titles since the previous tag.
   demonstrates the per-file boundary-tracking pattern.
 - `scripts/release.sh` — single command for cutting a release on Gitea
   + GitHub with changelog + binary attached.
+
+### Fixed
+- **Preamble length now persists in NVS** (PR #7) — was a UI-editable
+  field that silently reset to 16 on every restart because it wasn't
+  in the `load_lora_from_nvs` / `save_lora_to_nvs` schema. Default
+  bumped to 8 to match the MeshCore protocol standard.
 
 ### Changed
 - Branch protection rule on Gitea `main`: direct push disabled, CI

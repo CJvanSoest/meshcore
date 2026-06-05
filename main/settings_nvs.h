@@ -16,7 +16,7 @@
 #define LORA_DEF_CR         8
 #define LORA_DEF_POWER      22
 #define LORA_DEF_SYNC       0x12
-#define LORA_DEF_PREAMBLE   16
+#define LORA_DEF_PREAMBLE   8     // MeshCore protocol default; was 16 leftover
 #define LORA_DEF_RAMP       40
 #define LORA_DEF_ADVERT_INT 300   // 5 min
 #define LORA_DEF_ROLE       1     // MESHCORE_DEVICE_ROLE_CHAT_NODE
