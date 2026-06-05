@@ -41,7 +41,7 @@ static const settings_category_t s_categories[] = {
     { FIELD_FREQ,         "Radio",             "Freq, SF, BW, CR, power, sync, preamble, ..." },
     { FIELD_ADVERT_INT,   "Network",           "Advert interval, role, path hash"             },
     { FIELD_REGION_SCOPE, "Region &\nLocation","Region scope, GPS coordinates"                },
-    { FIELD_DISPLAY_BL,   "Brightness",        "Display, keyboard, RGB LED"                   },
+    { FIELD_DISPLAY_BL,   "Brightness",        "Display, keyboard, RGB LED, auto-blank"       },
 };
 #define S_CATEGORY_COUNT ((int)(sizeof(s_categories) / sizeof(s_categories[0])))
 
@@ -379,6 +379,16 @@ static void render_settings_drilldown(int w, int h) {
     rows[FIELD_LED_BR].label = "RGB LED brightness";
     snprintf(rows[FIELD_LED_BR].value, sizeof(rows[FIELD_LED_BR].value),
              "%u%%", (unsigned)led_brightness);
+    rows[FIELD_BLANK_AFTER].label = "Auto-blank display";
+    if (display_blank_after_s == 0) {
+        snprintf(rows[FIELD_BLANK_AFTER].value, sizeof(rows[FIELD_BLANK_AFTER].value), "Off");
+    } else if (display_blank_after_s < 60) {
+        snprintf(rows[FIELD_BLANK_AFTER].value, sizeof(rows[FIELD_BLANK_AFTER].value),
+                 "%us", (unsigned)display_blank_after_s);
+    } else {
+        snprintf(rows[FIELD_BLANK_AFTER].value, sizeof(rows[FIELD_BLANK_AFTER].value),
+                 "%umin", (unsigned)(display_blank_after_s / 60));
+    }
 
     const int row_h    = 44;
     const int title_h  = 38;
@@ -523,10 +533,32 @@ static void render_settings_drilldown(int w, int h) {
         hint = "Role: advertised only. Does NOT enable repeater behavior.";
     } else if (selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
         hint = "Decimal degrees (e.g. 52.123456). Empty clears both axes.";
+    } else if (selected == FIELD_DISPLAY_BL || selected == FIELD_KB_BL ||
+               selected == FIELD_LED_BR    || selected == FIELD_BLANK_AFTER) {
+        // Two-line layout in the existing 60-px footer:
+        //   top: yellow-square icon hint (matches home screen)
+        //   bot: standard nav hint (kept so users don't lose discovery)
+        hint = NULL;
+        int top_y = fy + 4;
+        int bot_y = top_y + TXT_BODY + 4;
+        const char *pre  = "Press ";
+        const char *post = " to blank / wake display";
+        pax_draw_text(&fb, hint_col, FONT, TXT_BODY, 10, top_y, pre);
+        pax_vec2f pre_sz = pax_text_size(FONT, TXT_BODY, pre);
+        int icon_sz = TXT_BODY - 6;
+        int icon_x  = 10 + (int)pre_sz.x;
+        int icon_y  = top_y + (TXT_BODY - icon_sz) / 2;
+        pax_simple_rect(&fb, COL_YELLOW, icon_x, icon_y, icon_sz, icon_sz);
+        pax_draw_text(&fb, hint_col, FONT, TXT_BODY,
+                      icon_x + icon_sz + 4, top_y, post);
+        pax_draw_text(&fb, hint_col, FONT, TXT_SMALL, 10, bot_y,
+                      "W/S: navigate   Enter: edit   ESC: back   R: reload");
     } else {
         hint = "W/S: navigate   Enter: edit   ESC: back to categories   R: reload";
     }
-    pax_draw_text(&fb, hint_col, FONT, TXT_BODY, 10, fy + 6, hint);
+    if (hint) {
+        pax_draw_text(&fb, hint_col, FONT, TXT_BODY, 10, fy + 6, hint);
+    }
 
     if (dirty) {
         const char *unsaved = "* unsaved";

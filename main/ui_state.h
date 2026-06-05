@@ -43,6 +43,7 @@ typedef enum {
     FIELD_DISPLAY_BL,
     FIELD_KB_BL,
     FIELD_LED_BR,
+    FIELD_BLANK_AFTER,
     FIELD_COUNT,
 } field_t;
 
