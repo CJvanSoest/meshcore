@@ -468,6 +468,18 @@ v2.1.x had one Settings tab with 19 fields scrolling top to bottom. Three more f
 
 The `rx_boost` PR I opened in June 2026 was meant as the upstream fix. It landed 11 days later. In the meantime my app pinned a Gitea fork of `tanmatsu-lora` with a fallback parser that accepted both the old and the new response length. The day v0.3.0 landed upstream I switched the manifest back to the IDF component registry in one commit; the CJ Gitea forks of both `tanmatsu-radio` and `tanmatsu-lora` are now zero delta and retired. With upstream dependencies the optimal strategy is parallel: PR for the real fix, local tolerant shim for the meantime. Both belong; either one alone means waiting on someone else or carrying a permanent fork burden.
 
+### 69. The CI image is your artifact, not upstream's
+
+I wanted Gitea Actions to use the official `espressif/idf:v5.5.1` container — IDF and toolchain pre-installed, perfect on paper. First run failed instantly: `actions/checkout@v4` is a JavaScript action and the Espressif image ships no Node. The three options were unappealing in different ways: fall back to `runs-on: ubuntu-latest` and install IDF inside every job (10 minutes per build), avoid every JS-based action (forever taxing on what the ecosystem expects), or derive my own image once. I picked the last: `FROM espressif/idf:v5.5.1 + RUN apt install nodejs`, built locally on the NAS, tagged locally. The lesson: once your CI runs in a container, that container is an artifact you own. Waiting for upstream to add what your pipeline needs is the most expensive option — they don't know you exist.
+
+### 70. Container isolation is a feature until it's a wall
+
+Second CI run: image works, container starts, checkout begins, `git fetch http://gitea:3000/...` → "Could not resolve host: gitea". The act_runner spawns each job in its own throwaway network specifically to isolate jobs from each other — but that also detaches it from the network Gitea itself is on. Fix: `container.network: gitea_default` in the runner config, and jobs now sit on the same bridge as Gitea. No Docker magic needed in the workflow itself, just one line of infra config. The general shape: every isolation boundary you introduce comes with the cost of explicit bridging for the things that should communicate. Defaults that protect you from accidents become walls when "this specific connection is intentional" comes up.
+
+### 71. CI tells you; branch protection stops you
+
+CI alone is a notification, not a gate. As long as I can still type `git push gitea main` the green-or-red signal is advice, not policy. To convert intent into mechanism: branch protection on main, direct push disabled, the CI status check required, block-on-outdated enabled. The first real PR ever on this repo (#1, the CI workflow itself) felt like locking the door behind me — and that's exactly the point. You can no longer accidentally land a red commit, because you can no longer accidentally land anything. For solo dev the PR-flow isn't ceremony, it's **discipline scaffolding**. The one carve-out: an `unprotected_file_patterns` rule for `docs/devlog-*.md` keeps personal notes outside the merge ritual — gating notes would be bureaucratising your own thinking.
+
 ---
 
 ## Links
