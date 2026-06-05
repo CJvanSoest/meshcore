@@ -308,8 +308,19 @@ void render_home(void) {
     pax_simple_rect(&fb, COL_HEADER,       0, fy, w, HOME_FOOTER_H);
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
     int hint_y = fy + (HOME_FOOTER_H - TXT_SMALL) / 2;
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_y,
-                  "WSAD: nav   Enter: open   Tab: classic tabs");
+    const char *hint_main = "WSAD: nav   Enter: open   Tab: tabs   ";
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_y, hint_main);
+
+    // Yellow-square hint for the F3 display-blank shortcut: draw a small
+    // filled rect in the same colour as the physical key, then " display"
+    // text after it so users see "press the yellow square → display off".
+    pax_vec2f hint_main_sz = pax_text_size(FONT, TXT_SMALL, hint_main);
+    int icon_sz = TXT_SMALL - 4;
+    int icon_x  = 10 + (int)hint_main_sz.x;
+    int icon_y  = hint_y + (TXT_SMALL - icon_sz) / 2;
+    pax_simple_rect(&fb, COL_YELLOW, icon_x, icon_y, icon_sz, icon_sz);
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL,
+                  icon_x + icon_sz + 4, hint_y, " display");
 
     // Mirror the bottom-row stats from the Settings tab so the home screen
     // doubles as a quick-glance radio dashboard.
