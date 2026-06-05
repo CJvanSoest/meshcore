@@ -24,3 +24,10 @@ void identity_init(void);
 // to NVS for offline-boot restore.
 struct timeval;
 void identity_sntp_sync_cb(struct timeval *tv);
+
+// Mark the system clock as authoritative and persist the current epoch to
+// NVS as last-known-good. Call after a successful bsp_rtc_update_time()
+// (i.e. when the launcher/firmware already SNTP-synced) so downstream code
+// that gates on identity_sntp_synced() (e.g. NVS-time fallback) sees the
+// clock as trusted.
+void identity_mark_time_synced(void);
