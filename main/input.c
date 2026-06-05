@@ -211,6 +211,16 @@ void field_adjust(int field, int delta) {
             apply_brightness();
             break;
         }
+        case FIELD_BLANK_AFTER: {
+            // Idle-blank timeout cycler. 0 = off; otherwise seconds.
+            static const uint16_t stops[] = {0, 30, 60, 300, 600, 1800};
+            const int n = (int)(sizeof(stops) / sizeof(stops[0]));
+            int idx = 0;
+            for (int i = 0; i < n; i++) if (stops[i] == display_blank_after_s) { idx = i; break; }
+            idx = ((idx + delta) % n + n) % n;
+            display_blank_after_s = stops[idx];
+            break;
+        }
         default:
             break;
     }
@@ -586,7 +596,8 @@ void handle_nav(uint32_t key) {
                 else if (selected == FIELD_ANTENNA_GAIN) save_antenna_gain();
                 else if (selected == FIELD_DISPLAY_BL ||
                          selected == FIELD_KB_BL ||
-                         selected == FIELD_LED_BR)    save_brightness();
+                         selected == FIELD_LED_BR ||
+                         selected == FIELD_BLANK_AFTER) save_brightness();
                 else                                  save_lora_config();
                 edit_mode = false;
                 dirty     = false;
@@ -1011,7 +1022,8 @@ void handle_key(char c) {
                 else if (selected == FIELD_ANTENNA_GAIN) save_antenna_gain();
                 else if (selected == FIELD_DISPLAY_BL ||
                          selected == FIELD_KB_BL ||
-                         selected == FIELD_LED_BR)    save_brightness();
+                         selected == FIELD_LED_BR ||
+                         selected == FIELD_BLANK_AFTER) save_brightness();
                 else                                  save_lora_config();
                 edit_mode = false;
                 dirty     = false;

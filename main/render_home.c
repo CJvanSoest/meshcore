@@ -43,7 +43,7 @@
 #define HOME_H_MARGIN      30
 #define HOME_V_MARGIN      20
 #define HOME_HEADER_H      50
-#define HOME_FOOTER_H      38
+#define HOME_FOOTER_H      60   // two stacked TXT_SMALL hint lines
 
 // ── Icon drawing helpers — simple PAX-shape glyphs, ~60 px diameter ──────────
 static void icon_nodes(int cx, int cy, int sz, pax_col_t col) {
@@ -303,24 +303,32 @@ void render_home(void) {
         }
     }
 
-    // Footer: keyboard hint on the left, RX / SNR / noise on the right.
+    // Footer: two stacked hint lines, RX/SNR stats float right on the bottom one.
     int fy = h - HOME_FOOTER_H;
     pax_simple_rect(&fb, COL_HEADER,       0, fy, w, HOME_FOOTER_H);
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
-    int hint_y = fy + (HOME_FOOTER_H - TXT_SMALL) / 2;
-    const char *hint_main = "WSAD: nav   Enter: open   Tab: tabs   ";
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_y, hint_main);
 
-    // Yellow-square hint for the F3 display-blank shortcut: draw a small
-    // filled rect in the same colour as the physical key, then " display"
-    // text after it so users see "press the yellow square → display off".
-    pax_vec2f hint_main_sz = pax_text_size(FONT, TXT_SMALL, hint_main);
+    int line_h = TXT_SMALL + 4;
+    int hint_y_top = fy + (HOME_FOOTER_H - 2 * line_h) / 2;
+    int hint_y     = hint_y_top + line_h;
+
+    // Top line: yellow-square shortcut for blank/wake the display. Drawn as
+    // "Press [yellow] to blank / wake display" with the small coloured rect
+    // standing in for the physical key cap.
+    const char *hint_top_pre  = "Press ";
+    const char *hint_top_post = " to blank / wake display";
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_y_top, hint_top_pre);
+    pax_vec2f pre_sz = pax_text_size(FONT, TXT_SMALL, hint_top_pre);
     int icon_sz = TXT_SMALL - 4;
-    int icon_x  = 10 + (int)hint_main_sz.x;
-    int icon_y  = hint_y + (TXT_SMALL - icon_sz) / 2;
+    int icon_x  = 10 + (int)pre_sz.x;
+    int icon_y  = hint_y_top + (TXT_SMALL - icon_sz) / 2;
     pax_simple_rect(&fb, COL_YELLOW, icon_x, icon_y, icon_sz, icon_sz);
     pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL,
-                  icon_x + icon_sz + 4, hint_y, " display");
+                  icon_x + icon_sz + 4, hint_y_top, hint_top_post);
+
+    // Bottom line: keyboard navigation hints (RX/SNR appended on the right).
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_y,
+                  "WSAD: nav   Enter: open   Tab: tabs");
 
     // Mirror the bottom-row stats from the Settings tab so the home screen
     // doubles as a quick-glance radio dashboard.
