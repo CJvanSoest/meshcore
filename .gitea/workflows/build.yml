@@ -10,7 +10,7 @@ jobs:
     name: Build (tanmatsu)
     runs-on: ubuntu-latest
     container:
-      image: espressif/idf:v5.5.1
+      image: espressif/idf:v5.5.1-node
     steps:
       - name: Checkout
         uses: actions/checkout@v4
