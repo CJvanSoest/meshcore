@@ -1,3 +1,13 @@
+// Tanmatsu radio system-protocol client (Nicolai-compat boundary).
+//
+// upstream:  github.com/Nicolai-Electronics/tanmatsu-radio
+//            protocol/system_protocol.{h,c}
+// tracks:    v3.2.0 (commit d83ad84) — bump on every sync
+//
+// See ARCHITECTURE.md "Wire-boundary discipline" for the rules that
+// apply to this file (tracking comment, tolerant parsers, no local
+// struct extensions).
+
 #include <stdint.h>
 #include "esp_err.h"
 
