@@ -39,9 +39,11 @@
 #define NVS_UI_DISP_BL      "ui.disp_bl"
 #define NVS_UI_KB_BL        "ui.kb_bl"
 #define NVS_UI_LED_BR       "ui.led_br"
+#define NVS_UI_BLANK_AFTER  "ui.blank_after"
 #define UI_DEF_DISP_BL      50
 #define UI_DEF_KB_BL        50
 #define UI_DEF_LED_BR       5
+#define UI_DEF_BLANK_AFTER  0     // off by default — user must opt in
 
 static const char *TAG = "settings";
 
@@ -79,6 +81,7 @@ int8_t                        antenna_gain_dbi     = 0;
 uint8_t                       display_brightness   = UI_DEF_DISP_BL;
 uint8_t                       keyboard_brightness  = UI_DEF_KB_BL;
 uint8_t                       led_brightness       = UI_DEF_LED_BR;
+uint16_t                      display_blank_after_s = UI_DEF_BLANK_AFTER;
 
 int lora_preset_match(void) {
     for (int i = 0; i < LORA_PRESET_COUNT; i++) {
@@ -397,15 +400,18 @@ void load_brightness(void) {
     if (nvs_get_u8(handle, NVS_UI_DISP_BL, &v) == ESP_OK) display_brightness  = clamp_pct(v);
     if (nvs_get_u8(handle, NVS_UI_KB_BL,   &v) == ESP_OK) keyboard_brightness = clamp_pct(v);
     if (nvs_get_u8(handle, NVS_UI_LED_BR,  &v) == ESP_OK) led_brightness      = clamp_pct(v);
+    uint16_t v16;
+    if (nvs_get_u16(handle, NVS_UI_BLANK_AFTER, &v16) == ESP_OK) display_blank_after_s = v16;
     nvs_close(handle);
 }
 
 void save_brightness(void) {
     nvs_handle_t handle;
     if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
-    nvs_set_u8(handle, NVS_UI_DISP_BL, display_brightness);
-    nvs_set_u8(handle, NVS_UI_KB_BL,   keyboard_brightness);
-    nvs_set_u8(handle, NVS_UI_LED_BR,  led_brightness);
+    nvs_set_u8 (handle, NVS_UI_DISP_BL, display_brightness);
+    nvs_set_u8 (handle, NVS_UI_KB_BL,   keyboard_brightness);
+    nvs_set_u8 (handle, NVS_UI_LED_BR,  led_brightness);
+    nvs_set_u16(handle, NVS_UI_BLANK_AFTER, display_blank_after_s);
     nvs_commit(handle);
     nvs_close(handle);
 }

@@ -143,8 +143,29 @@ int  settings_category_active    = 0;
 // live. We also stop calling render() to spare CPU + framebuffer DMA.
 // The power button is owned by firmware for shutdown — F3 is unused
 // elsewhere in this app so there's no conflict.
-static bool    display_blanked         = false;
-static uint8_t display_brightness_save = 100;  // captured before blanking
+// Auto-blank: when display_blank_after_s (Settings) > 0, the same blank
+// trips automatically after that many seconds of input-idle time.
+static bool     display_blanked = false;
+static uint32_t last_input_ms   = 0;    // updated on any input event
+
+// Drop display backlight to 0. Keyboard backlight + RGB LED stay live so
+// in-pocket notifications keep working.
+static void enter_display_blank(void) {
+    if (display_blanked) return;
+    bsp_display_set_backlight_brightness(0);
+    display_blanked = true;
+}
+
+// Restore display backlight from the persisted Settings value. Using
+// apply_brightness() instead of a cached "save" var is more robust: after
+// repeated blank/wake cycles a stale captured brightness could end up at
+// 0, leaving the display permanently dark. apply_brightness() always pulls
+// the user-configured value.
+static void exit_display_blank(void) {
+    if (!display_blanked) return;
+    apply_brightness();
+    display_blanked = false;
+}
 
 // utf8_sanitize lives in chat.c. node_filter lives in nodes.c.
 
@@ -357,7 +378,17 @@ void app_main(void) {
 
     render();
 
+    last_input_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+
     while (1) {
+        uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+
+        // Auto-blank when idle longer than Settings → Auto-blank value. 0 = off.
+        if (!display_blanked && display_blank_after_s > 0 &&
+            (now_ms - last_input_ms) >= (uint32_t)display_blank_after_s * 1000u) {
+            enter_display_blank();
+        }
+
         bsp_input_event_t event;
         if (xQueueReceive(input_event_queue, &event, pdMS_TO_TICKS(1000)) != pdTRUE) {
             if (!display_blanked) {
@@ -372,13 +403,11 @@ void app_main(void) {
             event.args_navigation.key == BSP_INPUT_NAVIGATION_KEY_F3 &&
             event.args_navigation.state) {
             if (!display_blanked) {
-                bsp_display_get_backlight_brightness(&display_brightness_save);
-                bsp_display_set_backlight_brightness(0);
-                display_blanked = true;
+                enter_display_blank();
             } else {
-                bsp_display_set_backlight_brightness(display_brightness_save);
-                display_blanked = false;
-                render();  // immediate redraw on wake
+                exit_display_blank();
+                last_input_ms = now_ms;  // re-arm idle timer on wake
+                render();                // immediate redraw on wake
             }
             continue;
         }
@@ -386,6 +415,9 @@ void app_main(void) {
         // While blanked, swallow keyboard/nav input so the badge is silent
         // in-pocket. Only F3 (handled above) can wake it.
         if (display_blanked) continue;
+
+        // Any real input resets the idle timer.
+        last_input_ms = now_ms;
 
         bool changed = false;
 

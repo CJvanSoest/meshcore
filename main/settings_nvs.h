@@ -75,6 +75,11 @@ extern uint8_t display_brightness;
 extern uint8_t keyboard_brightness;
 extern uint8_t led_brightness;
 
+// Idle timeout in seconds after which the MIPI backlight auto-blanks (LoRa
+// RX + LEDs keep running). 0 = disabled. F3 short-press always toggles
+// regardless of this value.
+extern uint16_t display_blank_after_s;
+
 // ── Load/save ────────────────────────────────────────────────────────────────
 void load_owner_name(void);
 void save_owner_name(void);
