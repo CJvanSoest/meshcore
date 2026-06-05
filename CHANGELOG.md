@@ -19,6 +19,26 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-06-05
+
+### Added
+- **Auto-screensaver timer** (PR #8) — extension of the F3 manual
+  display-blank from v2.3.0. Configurable idle timeout in
+  Settings → Brightness → "Auto-blank display": Off / 30s / 1min /
+  5min / 10min / 30min. When idle for the chosen interval the badge
+  blanks the backlight the same way a short F3 press does (LoRa RX,
+  keyboard backlight and notification LEDs keep running); F3 wake
+  re-arms the timer.
+- Yellow-icon hint in the Settings → Brightness footer, mirroring
+  the home-screen one so users configuring auto-blank also see the
+  manual F3 shortcut.
+
+### Fixed
+- Repeated F3 blank/wake cycles occasionally failed on the second
+  wake because the brightness-on-blank capture could end up as 0.
+  Exit-blank now calls `apply_brightness()` to pull the current
+  Settings value, dropping the stale local cache.
+
 ## [2.3.0] - 2026-06-05
 
 ### Added
