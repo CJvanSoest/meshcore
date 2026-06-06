@@ -192,9 +192,19 @@ void identity_init(void) {
         if (ed25519_tv1_keypair_ok && ed25519_tv1_sign_ok) {
             ESP_LOGI(TAG, "RFC8032 TV1: PASS");
         } else {
-            ESP_LOGE(TAG, "RFC8032 TV1: keypair=%s sign=%s",
+            /* Hard-fail: if the build's Ed25519 produces wrong output for the
+             * RFC 8032 test vectors, every outgoing advert/DM signature will
+             * be rejected by upstream MeshCore verifiers. Refusing to start
+             * is louder than running silently broken (the original bug spent
+             * months hidden because the sender never sees rejections). The
+             * device will reboot to launcher; CI's host-side test catches
+             * this before merge, but this is the runtime backstop. */
+            ESP_LOGE(TAG, "RFC8032 TV1 FAIL: keypair=%s sign=%s — ABORTING",
                      ed25519_tv1_keypair_ok ? "PASS" : "FAIL",
                      ed25519_tv1_sign_ok ? "PASS" : "FAIL");
+            ESP_LOGE(TAG, "Crypto is broken; refusing to start. See "
+                          "tests/test_ed25519.c for the host-side gate.");
+            abort();
         }
     }
 }

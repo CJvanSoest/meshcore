@@ -28,6 +28,7 @@ idf_component_register(
 		"emoji.c"
 		"emoji_bitmaps.c"
 		"ed25519.c"
+		"ed25519_mpi.c"
 		"qrcodegen.c"
 		"meshcore/packet.c"
 		"meshcore/payload/advert.c"
