@@ -482,6 +482,28 @@ CI alone is a notification, not a gate. As long as I can still type `git push gi
 
 ---
 
+## Update — v2.3.x sprint: F3 blank, RTC time, preamble fix, auto-screensaver (June 2026)
+
+A short sprint driven half by user feedback and half by a hint from the firmware maintainer. Three small features, one quiet protocol-bug hunt that's still in flight, and one debug rabbit hole that cost more time than the features combined.
+
+### 72. A protocol bug that survives because the happy path validates against itself
+
+The `send_advert` code wrote `advert.timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS / 1000` — seconds since boot, not UNIX epoch. Locally everything looked fine: my own RX path doesn't validate the timestamp against wall-clock, and the signature it computes covers exactly the same bad value, so the signature checks out. Other clients enforce a freshness window on the timestamp and silently drop anything that claims to be from 1970. The bug had been there for months without me noticing because the sender never sees the rejection. Lesson: any time you serialize a "time" field, audit every encoder in the codebase for the same convention. Mixing `time(NULL)` and `xTaskGetTickCount` across paths is the kind of inconsistency that only surfaces when someone else's stricter validator is in the loop. A good test is to read your own packets back with a *foreign* parser, not just the local one — your local code is a co-conspirator.
+
+### 73. A user-supplied packet capture is the cheapest debug data you'll get
+
+The issue reporter ran a Waveshare LoRa USB stick alongside their TDeck+ / T1000-E / Xiao receivers and pasted a 110-byte hex dump of my Tanmatsu's advert in the GitHub issue. Within ten minutes of reading that dump byte-by-byte against our `meshcore_serialize` layout I had the timestamp anomaly pinned: bytes [34..37] = `0F 00 00 00` = 15 seconds = uptime. No amount of "check region scope, check antenna, check sensitivity" was going to find that without seeing the bytes. Lesson: when a user reports a protocol-level bug, ask for the raw packet *before* you start guessing. The cost on their side is one capture; the saving on yours is hours of speculation. Build issue templates that hint at this. And if your stack doesn't have a packet sniffer view in-app, building one is suddenly the highest-leverage feature you can add (which is now issue #3 on this repo).
+
+### 74. Build-state drift is invisible to `git diff`
+
+Half a day into testing what I thought was the "no-WiFi, RTC-time" change, every receiver-side check failed: `wifi init: FAIL`, `lora_init_remote: OK` followed by "C6 unavailable", the works. I assumed the runtime change broke something. After reverting to a build identical to `main` HEAD and *still* seeing the failure, I compared the local `sdkconfig_tanmatsu` against a known-good worktree: my build dir had `CONFIG_ESP_HOSTED_CP_TARGET_ESP32H2` + `CONFIG_ESP_HOSTED_SPI_HOST_INTERFACE` enabled, the working dir had `..._C6` + `..._SDIO`. Toggling `tanmatsu-wifi` and `wifi-manager` in `idf_component.yml` during the experiment had let idf.py re-derive the merged sdkconfig from Kconfig defaults — and those defaults aren't Tanmatsu-friendly. `git diff` was clean because `sdkconfig_*` is gitignored. Lesson: when "everything is broken" and the source is provably unchanged, suspect generated config before suspecting code. Recovery for this specific drift: `rm -f sdkconfig_<device> && rm -rf build/<device> && make build`. Worth a recovery note because it'll happen again the next time deps shuffle.
+
+### 75. An app-store PR is a long-lived contract, not a per-release event
+
+A PR was open at Nicolai's app-repository bumping the manifest from v2.1.2 to v2.2.0. Mid-sprint I cut v2.3.0 (separate features), then v2.3.1 (auto-screensaver follow-up). The reflex was "close that PR, open a new one for v2.3.1". Instead I amended the same branch in place, updated the metadata to v2.3.1 / revision 6, copied the new binary, force-pushed, and patched the PR title + body via the GitHub API. Same review thread, same maintainer conversation, same context — the maintainer keeps the history. Closing and reopening would have buried the prior discussion. Lesson: an app-store PR is the longest-lived artefact in the release pipeline. Optimize for the reviewer's attention, not for your release cadence. If you've cut two releases in one day, the reviewer doesn't want two PRs — they want one PR they can look at once.
+
+---
+
 ## Links
 
 - Source: [github.com/CJvanSoest/meshcore](https://github.com/CJvanSoest/meshcore)
