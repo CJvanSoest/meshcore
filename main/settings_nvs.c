@@ -26,6 +26,7 @@
 #define NVS_LORA_ROLE       "lora.role"
 #define NVS_LORA_PATHHASH   "lora.pathhash"
 #define NVS_LORA_PREAMBLE   "lora.preamble"
+#define NVS_LORA_SYNC       "lora.sync"
 #define NVS_LORA_REGION     "lora.region"
 #define NVS_LORA_COUNTRY    "lora.country"
 #define NVS_LORA_ANT_GAIN   "lora.antgain"
@@ -331,6 +332,10 @@ void load_lora_from_nvs(void) {
     if (nvs_get_u16(handle, NVS_LORA_PREAMBLE, &pre) == ESP_OK && pre != 0) {
         lora_cfg.preamble_length = pre;
     }
+    uint8_t sync = 0;
+    if (nvs_get_u8(handle, NVS_LORA_SYNC, &sync) == ESP_OK && sync != 0) {
+        lora_cfg.sync_word = sync;
+    }
     nvs_close(handle);
 }
 
@@ -347,6 +352,7 @@ void save_lora_to_nvs(void) {
     nvs_set_u8 (handle, NVS_LORA_PATHHASH, path_hash_size);
     nvs_set_u8 (handle, NVS_LORA_RX_BOOST, lora_cfg.rx_boost ? 1 : 0);
     nvs_set_u16(handle, NVS_LORA_PREAMBLE, lora_cfg.preamble_length);
+    nvs_set_u8 (handle, NVS_LORA_SYNC,     lora_cfg.sync_word);
     nvs_commit(handle);
     nvs_close(handle);
     ESP_LOGI(TAG, "LoRa config saved to NVS");

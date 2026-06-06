@@ -251,6 +251,7 @@ void send_advert(void) {
     meshcore_message_t msg = {0};
     msg.type           = MESHCORE_PAYLOAD_TYPE_ADVERT;
     msg.route          = MESHCORE_ROUTE_TYPE_FLOOD;
+    msg.bytes_per_hop  = path_hash_size;
     msg.payload_length = payload_len;
     memcpy(msg.payload, payload, payload_len);
     apply_region_scope(&msg);
@@ -366,6 +367,7 @@ bool send_dm_message(const char *text, const uint8_t *target_pub, uint8_t ack_cr
     msg.type           = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
     msg.route          = MESHCORE_ROUTE_TYPE_FLOOD;
     msg.version        = 0;
+    msg.bytes_per_hop  = path_hash_size;
     msg.path_length    = 0;
     msg.payload[0]     = target_pub[0];     // dest hash
     msg.payload[1]     = node_pub_key[0];   // src  hash
@@ -460,6 +462,7 @@ bool send_chat_message(const char *text) {
     msg.type           = MESHCORE_PAYLOAD_TYPE_GRP_TXT;
     msg.route          = MESHCORE_ROUTE_TYPE_FLOOD;
     msg.version        = 0;
+    msg.bytes_per_hop  = path_hash_size;
     msg.path_length    = 0;
     msg.payload_length = payload_len;
     memcpy(msg.payload, payload, payload_len);
@@ -856,6 +859,7 @@ static void lora_rx_task(void *arg) {
                             path_msg.type          = MESHCORE_PAYLOAD_TYPE_PATH;
                             path_msg.route         = MESHCORE_ROUTE_TYPE_FLOOD;
                             path_msg.version       = 0;
+                            path_msg.bytes_per_hop = path_hash_size;
                             path_msg.path_length   = 0;
                             path_msg.payload[0]    = src_hash;
                             path_msg.payload[1]    = node_pub_key[0];
