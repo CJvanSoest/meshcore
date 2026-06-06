@@ -27,6 +27,9 @@ uint8_t node_prv_key[64] = {0};
 static bool s_ready       = false;
 static bool s_sntp_synced = false;
 
+bool ed25519_tv1_keypair_ok = false;
+bool ed25519_tv1_sign_ok    = false;
+
 bool identity_is_ready(void)     { return s_ready;       }
 bool identity_sntp_synced(void)  { return s_sntp_synced; }
 
@@ -154,4 +157,44 @@ void identity_init(void) {
              node_pub_key[20], node_pub_key[21], node_pub_key[22], node_pub_key[23],
              node_pub_key[24], node_pub_key[25], node_pub_key[26], node_pub_key[27],
              node_pub_key[28], node_pub_key[29], node_pub_key[30], node_pub_key[31]);
+
+    /* RFC 8032 TV1 sign-roundtrip self-test. Catches regressions in the
+     * Ed25519 impl (keypair derivation + deterministic sign). Verbose only
+     * on failure -- a green boot just logs one PASS line. */
+    {
+        static const uint8_t tv_seed[32] = {
+            0x9d,0x61,0xb1,0x9d,0xef,0xfd,0x5a,0x60,
+            0xba,0x84,0x4a,0xf4,0x92,0xec,0x2c,0xc4,
+            0x44,0x49,0xc5,0x69,0x7b,0x32,0x69,0x19,
+            0x70,0x3b,0xac,0x03,0x1c,0xae,0x7f,0x60
+        };
+        static const uint8_t tv_pub_expected[32] = {
+            0xd7,0x5a,0x98,0x01,0x82,0xb1,0x0a,0xb7,
+            0xd5,0x4b,0xfe,0xd3,0xc9,0x64,0x07,0x3a,
+            0x0e,0xe1,0x72,0xf3,0xda,0xa6,0x23,0x25,
+            0xaf,0x02,0x1a,0x68,0xf7,0x07,0x51,0x1a
+        };
+        static const uint8_t tv_sig_expected[64] = {
+            0xe5,0x56,0x43,0x00,0xc3,0x60,0xac,0x72,
+            0x90,0x86,0xe2,0xcc,0x80,0x6e,0x82,0x8a,
+            0x84,0x87,0x7f,0x1e,0xb8,0xe5,0xd9,0x74,
+            0xd8,0x73,0xe0,0x65,0x22,0x49,0x01,0x55,
+            0x5f,0xb8,0x82,0x15,0x90,0xa3,0x3b,0xac,
+            0xc6,0x1e,0x39,0x70,0x1c,0xf9,0xb4,0x6b,
+            0xd2,0x5b,0xf5,0xf0,0x59,0x5b,0xbe,0x24,
+            0x65,0x51,0x41,0x43,0x8e,0x7a,0x10,0x0b
+        };
+        uint8_t tv_pub[32], tv_prv[64], tv_sig[64];
+        ed25519_create_keypair(tv_pub, tv_prv, tv_seed);
+        ed25519_tv1_keypair_ok = (memcmp(tv_pub, tv_pub_expected, 32) == 0);
+        ed25519_sign(tv_sig, NULL, 0, tv_pub, tv_prv);
+        ed25519_tv1_sign_ok = (memcmp(tv_sig, tv_sig_expected, 64) == 0);
+        if (ed25519_tv1_keypair_ok && ed25519_tv1_sign_ok) {
+            ESP_LOGI(TAG, "RFC8032 TV1: PASS");
+        } else {
+            ESP_LOGE(TAG, "RFC8032 TV1: keypair=%s sign=%s",
+                     ed25519_tv1_keypair_ok ? "PASS" : "FAIL",
+                     ed25519_tv1_sign_ok ? "PASS" : "FAIL");
+        }
+    }
 }

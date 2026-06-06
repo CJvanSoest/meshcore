@@ -31,3 +31,10 @@ void identity_sntp_sync_cb(struct timeval *tv);
 // that gates on identity_sntp_synced() (e.g. NVS-time fallback) sees the
 // clock as trusted.
 void identity_mark_time_synced(void);
+
+// RFC 8032 Ed25519 self-test results. Set by identity_init() at boot.
+// True iff TV1 keypair derivation + deterministic sign produced the expected
+// reference output. False here means every outgoing advert/DM signature will
+// be rejected by RFC8032 verifiers and the mesh will silently drop us.
+extern bool ed25519_tv1_keypair_ok;
+extern bool ed25519_tv1_sign_ok;
