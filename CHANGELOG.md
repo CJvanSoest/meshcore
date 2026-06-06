@@ -19,6 +19,34 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-06-06
+
+### Fixed
+- **Advert reception** (PR #14, GitHub issue #1) — adverts broadcast by
+  the Tanmatsu were rejected at protocol level by every upstream MeshCore
+  verifier (Heltec, T-Deck+, T1000-E, Xiao SX1262, Waveshare USB). Root
+  cause: the in-tree ref10-style Ed25519 implementation produced wrong
+  points for RFC 8032 test vectors. Rewrote `ed25519_create_keypair` and
+  `ed25519_sign` to delegate all field/group arithmetic to `mbedtls_mpi`
+  (same battle-tested layer that powers the working X25519 path). Slower
+  per call (~250 ms scalar mult) but RFC 8032 TV1 sign-roundtrip now PASSes
+  on boot. Confirmed end-to-end against a Heltec node and externally with
+  Python's `cryptography.Ed25519PublicKey.verify`.
+  - **Side-effect**: `node_pub_key` derives differently for the same NVS
+    seed (now canonical encoding). Existing QR contacts see this device
+    as a new identity and must re-add via QR.
+- **`path_hash_size` setting now actually applied to outgoing packets**.
+  Was stored + displayed in Settings → multibyte but `msg.bytes_per_hop`
+  stayed at the implicit default for every TX (advert, DM, channel msg,
+  PATH_RETURN). Now mirrors upstream `Mesh::sendFlood()`.
+- **`sync_word` setting persisted to NVS**. Was pushed to C6 in-session
+  but lost on the next cold boot. New `lora.sync` NVS key.
+
+### Added
+- **RFC 8032 TV1 sign-roundtrip self-test** runs in `identity_init()` at
+  boot and exposes `ed25519_tv1_keypair_ok` / `ed25519_tv1_sign_ok` as
+  globals so future Ed25519 regressions surface immediately.
+
 ## [2.3.1] - 2026-06-05
 
 ### Added
