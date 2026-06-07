@@ -138,5 +138,5 @@ of merged PR titles since the previous tag.
 - Advert tile no longer dimmed as "soon" placeholder — it has an
   action (`HOME_ACTION_SEND_ADVERT`), so it's live.
 
-[Unreleased]: http://192.168.2.25:3000/CJ/meshcore/compare/v2.2.0...HEAD
-[2.2.0]: http://192.168.2.25:3000/CJ/meshcore/releases/tag/v2.2.0
+[Unreleased]: https://github.com/CJvanSoest/meshcore/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/CJvanSoest/meshcore/releases/tag/v2.2.0

@@ -7,6 +7,7 @@
 ## Test plan
 - [ ] Lokaal gebouwd (`make build DEVICE=tanmatsu`)
 - [ ] Op device getest — flow:
+- [ ] Privacy: geen LAN-IP / Infisical secret names / persoonlijke paden in files die de GitHub-mirror raken (zie `.github/workflows/privacy.yml`)
 
 ## Breaking changes
 <!-- Geen, of: beschrijf wat er breekt en wat een gebruiker moet doen
