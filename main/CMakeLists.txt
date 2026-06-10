@@ -11,6 +11,7 @@ idf_component_register(
 		"contacts.c"
 		"identity.c"
 		"settings_nvs.c"
+		"nvs_helpers.c"
 		"nodes.c"
 		"chat.c"
 		"channels.c"
@@ -20,6 +21,7 @@ idf_component_register(
 		"input.c"
 		"render.c"
 		"render_settings.c"
+		"render_settings_icons.c"
 		"render_nodes.c"
 		"render_chat.c"
 		"render_channel.c"
@@ -29,7 +31,18 @@ idf_component_register(
 		"emoji_bitmaps.c"
 		"ed25519.c"
 		"ed25519_mpi.c"
+		"gps.c"
+		"gps_parser.c"
 		"qrcodegen.c"
+		"companion-radio-protocol/mc_companion_command_parser.c"
+		"companion-radio-protocol/mc_companion_serial_interface.c"
+		"companion-radio-protocol/mc_companion_server.c"
+		"companion_transport.c"
+		"ble_companion.c"
+		"wifi_keepalive.c"
+		"http_server.c"
+		"cert_gen.c"
+		"sounds.c"
 		"meshcore/packet.c"
 		"meshcore/payload/advert.c"
 		"meshcore/payload/grp_txt.c"
@@ -37,6 +50,11 @@ idf_component_register(
 		esp_lcd
 		esp_app_format
 		nvs_flash
+		bt
+		lwip
+		esp_http_server
+		esp_https_server
+		json
 		badge-bsp
 		tanmatsu-lora
 		tanmatsu-wifi
@@ -45,7 +63,9 @@ idf_component_register(
 		fatfs
 		sdmmc
 		esp_driver_sdmmc
+		esp_driver_i2s
 		${extra_requires}
+		espressif__mdns
 	INCLUDE_DIRS
 		"."
 		"meshcore"

@@ -1,41 +1,47 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- VIEW_ABOUT — version, authors, credits, license. Reached via the
-     About tile on the home screen; ESC returns to home. Half-scale. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640">
+<!-- VIEW_ABOUT — version, authors, credits, license. Mirrors the real
+     about-screen content (render_about.c): version, build, MeshCore /
+     Tanmatsu upstream attribution, source URL, issue tracker.
+     Landscape 800×480 at half-scale, dense single-column layout. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240">
   <defs>
     <style type="text/css"><![CDATA[
       text { font-family: 'Saira', 'Helvetica Neue', sans-serif; }
     ]]></style>
   </defs>
 
-  <rect width="400" height="640" fill="#0E141B" rx="4"/>
-  <rect x="0.5" y="0.5" width="399" height="639" fill="none" stroke="#16161E" stroke-width="1" rx="4"/>
+  <rect width="400" height="240" fill="#0E141B" rx="4"/>
+  <rect x="0.5" y="0.5" width="399" height="239" fill="none" stroke="#16161E" stroke-width="1" rx="4"/>
 
-  <!-- Header (Pager) -->
-  <rect x="0" y="0" width="400" height="25" fill="#0E141B"/>
-  <rect x="0" y="24" width="400" height="1" fill="#FAA61A"/>
-  <text x="6" y="17" fill="#C0C8D0" font-size="11" font-weight="500">About</text>
+  <!-- Header strip -->
+  <rect x="0" y="0" width="400" height="22" fill="#0E141B"/>
+  <rect x="0" y="21" width="400" height="1" fill="#FAA61A"/>
+  <text x="6" y="15" fill="#FAA61A" font-size="11" font-weight="600">About</text>
 
-  <!-- Body — pulled from esp_app_get_description() at runtime -->
-  <text x="14" y="60" fill="#FAA61A" font-size="14" font-weight="500">MeshCore  v2.2.0</text>
-  <text x="14" y="74" fill="#565F89" font-size="8">Built Jun  4 2026  19:55:02</text>
+  <!-- Version + build + disclaimer (top of body) -->
+  <text x="14" y="40" fill="#FAA61A" font-size="13" font-weight="700">v2.4.0</text>
+  <text x="14" y="54" fill="#565F89" font-size="9">build 2026-06-10</text>
+  <text x="14" y="70" fill="#FAA61A" font-size="9">Community app — not the official MeshCore app</text>
 
-  <text x="14" y="110" fill="#C0C8D0" font-size="11" font-weight="500">Author</text>
-  <text x="14" y="124" fill="#565F89" font-size="8">CJ van Soest</text>
+  <!-- Section: Author -->
+  <text x="14" y="93"  fill="#C0C8D0" font-size="10" font-weight="600">Author</text>
+  <text x="14" y="106" fill="#565F89" font-size="9">CJ van Soest (CJvS)</text>
 
-  <text x="14" y="150" fill="#C0C8D0" font-size="11" font-weight="500">Built on</text>
-  <text x="14" y="164" fill="#565F89" font-size="8">MeshCore  by  Ripple Radios</text>
-  <text x="14" y="174" fill="#565F89" font-size="8">Tanmatsu hardware + BadgeVMS</text>
-  <text x="14" y="184" fill="#565F89" font-size="8">  by Nicolai Electronics</text>
+  <!-- Section: Built on -->
+  <text x="14" y="125" fill="#C0C8D0" font-size="10" font-weight="600">Built on</text>
+  <text x="14" y="138" fill="#565F89" font-size="9">MeshCore  by  Ripple Radios</text>
+  <text x="14" y="150" fill="#565F89" font-size="9">Tanmatsu  by  Nicolai Electronics</text>
 
-  <text x="14" y="210" fill="#C0C8D0" font-size="11" font-weight="500">License</text>
-  <text x="14" y="224" fill="#565F89" font-size="8">MIT (see LICENSE in the repo)</text>
+  <!-- Section: License -->
+  <text x="14" y="170" fill="#C0C8D0" font-size="10" font-weight="600">License</text>
+  <text x="14" y="183" fill="#565F89" font-size="9">MIT (see LICENSE in the repo)</text>
 
-  <text x="14" y="250" fill="#C0C8D0" font-size="11" font-weight="500">Source</text>
-  <text x="14" y="264" fill="#565F89" font-size="8">github.com/CJvanSoest/meshcore</text>
+  <!-- Source + issues, two compact lines -->
+  <text x="14" y="202" fill="#C0C8D0" font-size="9" font-weight="500">Source: <tspan fill="#565F89">github.com/CJvanSoest/meshcore</tspan></text>
 
   <!-- Footer -->
-  <rect x="0" y="621" width="400" height="19" fill="#16161E"/>
-  <rect x="0" y="621" width="400" height="1" fill="#FAA61A"/>
-  <text x="5" y="634" fill="#565F89" font-size="8">ESC: home</text>
+  <rect x="0" y="218" width="400" height="22" fill="#16161E"/>
+  <rect x="0" y="218" width="400" height="1" fill="#FAA61A"/>
+  <text x="6" y="232" fill="#565F89" font-size="8">Issues: github.com/CJvanSoest/meshcore/issues</text>
+  <text x="394" y="232" text-anchor="end" fill="#565F89" font-size="8">ESC: back to home</text>
 </svg>

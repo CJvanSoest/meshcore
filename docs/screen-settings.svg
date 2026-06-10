@@ -1,68 +1,64 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Settings → Radio category (drilled in). After Enter on the Radio
-     tile the screen lists only that category's fields with a Tokyo Night
-     row style; the Pager strip stays on top. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640">
+<!-- VIEW_SETTINGS (drilled into Radio category) — landscape 800×480 at half-scale. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240">
   <defs>
     <style type="text/css"><![CDATA[
       text { font-family: 'Saira', 'Helvetica Neue', sans-serif; }
     ]]></style>
   </defs>
 
-  <rect width="400" height="640" fill="#1A1B26" rx="4"/>
-  <rect x="0.5" y="0.5" width="399" height="639" fill="none" stroke="#24283B" stroke-width="1" rx="4"/>
+  <rect width="400" height="240" fill="#0E141B" rx="4"/>
+  <rect x="0.5" y="0.5" width="399" height="239" fill="none" stroke="#16161E" stroke-width="1" rx="4"/>
 
-  <!-- Pager header -->
+  <!-- Tab bar with [EDIT] indicator on right -->
   <rect x="0" y="0" width="400" height="22" fill="#0E141B"/>
   <rect x="0" y="21" width="400" height="1" fill="#FAA61A"/>
-  <text x="6" y="15" fill="#C0C8D0" font-size="11" font-weight="500">Settings</text>
-  <text x="295" y="15" fill="#9ECE6A" font-size="10">RX:42</text>
-  <text x="332" y="15" fill="#C0C8D0" font-size="10">TX:0.4%</text>
+  <text x="6" y="15" fill="#FAA61A" font-size="11" font-weight="600">Settings</text>
+  <text x="216" y="15" fill="#FAA61A" font-size="9" font-weight="500">[EDIT]</text>
+  <text x="296" y="15" fill="#9ECE6A" font-size="10">RX:42</text>
+  <text x="334" y="15" fill="#C0C8D0" font-size="10">TX:0.4%</text>
   <text x="370" y="15" fill="#9ECE6A" font-size="10">87%+</text>
 
-  <!-- Category title -->
-  <text x="9" y="38" fill="#E0AF68" font-size="12" font-weight="500">Radio</text>
-  <line x1="9" y1="44" x2="391" y2="44" stroke="#E0AF68" stroke-width="0.5"/>
+  <!-- Drilldown title -->
+  <text x="9" y="38" fill="#FAA61A" font-size="13" font-weight="600">Radio</text>
+  <line x1="9" y1="42" x2="391" y2="42" stroke="#FAA61A" stroke-width="0.5"/>
 
-  <!-- Field rows -->
-  <text x="9"   y="76"  fill="#565F89" font-size="10">Frequency</text>
-  <text x="391" y="76"  text-anchor="end" fill="#9ECE6A" font-size="10">869.618 MHz</text>
+  <!-- Field rows. Each row ≈ 17 px tall. Label left, value right. -->
+  <g font-size="10">
+    <!-- Frequency (focused / editing — amber highlight) -->
+    <rect x="6" y="48" width="388" height="17" fill="#1A1F26"/>
+    <text x="12" y="60" fill="#FAA61A" font-weight="500">Frequency</text>
+    <text x="388" y="60" text-anchor="end" fill="#FAA61A" font-weight="500">869.618 MHz</text>
 
-  <!-- SF (focused) -->
-  <rect x="0" y="82" width="400" height="22" fill="#24283B"/>
-  <rect x="0" y="82" width="3" height="22" fill="#7AA2F7"/>
-  <text x="9"   y="98"  fill="#C0CAF5" font-size="10">Spreading factor</text>
-  <text x="391" y="98"  text-anchor="end" fill="#C0CAF5" font-size="10">SF7</text>
+    <text x="12" y="76" fill="#C0C8D0">Spreading factor</text>
+    <text x="388" y="76" text-anchor="end" fill="#9ECE6A">SF7</text>
 
-  <text x="9"   y="120" fill="#565F89" font-size="10">Bandwidth</text>
-  <text x="391" y="120" text-anchor="end" fill="#9ECE6A" font-size="10">62 kHz</text>
+    <text x="12" y="92" fill="#C0C8D0">Bandwidth</text>
+    <text x="388" y="92" text-anchor="end" fill="#9ECE6A">62 kHz</text>
 
-  <text x="9"   y="142" fill="#565F89" font-size="10">Coding rate</text>
-  <text x="391" y="142" text-anchor="end" fill="#9ECE6A" font-size="10">4/5</text>
+    <text x="12" y="108" fill="#C0C8D0">Coding rate</text>
+    <text x="388" y="108" text-anchor="end" fill="#9ECE6A">4/5</text>
 
-  <text x="9"   y="164" fill="#565F89" font-size="10">TX power</text>
-  <text x="391" y="164" text-anchor="end" fill="#9ECE6A" font-size="10">22 dBm</text>
+    <text x="12" y="124" fill="#C0C8D0">TX power</text>
+    <text x="388" y="124" text-anchor="end" fill="#9ECE6A">22 dBm</text>
 
-  <text x="9"   y="186" fill="#565F89" font-size="10">Sync word</text>
-  <text x="391" y="186" text-anchor="end" fill="#9ECE6A" font-size="10">0x12</text>
+    <text x="12" y="140" fill="#C0C8D0">Sync word</text>
+    <text x="388" y="140" text-anchor="end" fill="#9ECE6A">0x12</text>
 
-  <text x="9"   y="208" fill="#565F89" font-size="10">Preamble length</text>
-  <text x="391" y="208" text-anchor="end" fill="#9ECE6A" font-size="10">16</text>
+    <text x="12" y="156" fill="#C0C8D0">Preamble length</text>
+    <text x="388" y="156" text-anchor="end" fill="#9ECE6A">16</text>
 
-  <text x="9"   y="230" fill="#565F89" font-size="10">LoRa preset</text>
-  <text x="391" y="230" text-anchor="end" fill="#9ECE6A" font-size="10">EU/UK (Narrow)</text>
+    <text x="12" y="172" fill="#C0C8D0">LoRa preset</text>
+    <text x="388" y="172" text-anchor="end" fill="#9ECE6A">EU/UK (Narrow)</text>
 
-  <text x="9"   y="252" fill="#565F89" font-size="10">RX sensitivity</text>
-  <text x="391" y="252" text-anchor="end" fill="#9ECE6A" font-size="10">High (+3dB)</text>
+    <text x="12" y="188" fill="#C0C8D0">RX sensitivity</text>
+    <text x="388" y="188" text-anchor="end" fill="#9ECE6A">High (+3dB)</text>
+  </g>
 
-  <!-- Annotation -->
-  <text x="9" y="310" fill="#7AA2F7" font-size="10" font-style="italic">Drilled into one category — only that</text>
-  <text x="9" y="324" fill="#7AA2F7" font-size="10" font-style="italic">section's fields are shown.</text>
-  <text x="9" y="346" fill="#565F89" font-size="9">ESC walks back: drilldown → category list</text>
-  <text x="9" y="357" fill="#565F89" font-size="9">→ home → launcher.</text>
-
-  <!-- Footer -->
-  <rect x="0" y="610" width="400" height="30" fill="#16161E"/>
-  <rect x="0" y="610" width="400" height="1" fill="#FAA61A"/>
-  <text x="5" y="628" fill="#565F89" font-size="9">W/S: navigate   Enter: edit   ESC: back to categories</text>
+  <!-- Footer with RSSI/SNR/N glance + key hint -->
+  <rect x="0" y="200" width="400" height="40" fill="#16161E"/>
+  <rect x="0" y="200" width="400" height="1" fill="#FAA61A"/>
+  <text x="6" y="213" fill="#565F89" font-size="8">Sub-band g3 869.4–869.65 MHz: 27 dBm ERP, 10% DC</text>
+  <text x="6" y="225" fill="#565F89" font-size="8">W/S: row   &lt;/&gt;: adjust   Enter: edit/commit   R: reload   ESC: back to categories</text>
+  <text x="394" y="234" text-anchor="end" fill="#565F89" font-size="8">RX:-92  SNR:+4  N:-110</text>
 </svg>

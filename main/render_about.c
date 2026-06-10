@@ -58,21 +58,26 @@ void render_about(void) {
     // ("Nicolai" / "Nicolai Electronics" in public-facing strings).
     about_line_t lines[] = {
         { COL_PAGER_ACCENT, TXT_TITLE, ver_line,                                 6  },
-        { COL_GRAY,         TXT_SMALL, build_line,                              22 },
+        { COL_GRAY,         TXT_SMALL, build_line,                               6  },
+        { COL_AMBER,        TXT_SMALL, "Community app -- not the official "
+                                       "MeshCore app",                          22 },
 
         { COL_PAGER_TEXT,   TXT_BODY,  "Author",                                 4  },
-        { COL_GRAY,         TXT_SMALL, "CJ van Soest",                          16 },
+        { COL_GRAY,         TXT_SMALL, "CJ van Soest (CJvS)",                   16 },
 
         { COL_PAGER_TEXT,   TXT_BODY,  "Built on",                               4  },
         { COL_GRAY,         TXT_SMALL, "MeshCore  by  Ripple Radios",            2 },
-        { COL_GRAY,         TXT_SMALL, "Tanmatsu hardware + BadgeVMS",           2 },
-        { COL_GRAY,         TXT_SMALL, "  by Nicolai Electronics",              16 },
+        { COL_GRAY,         TXT_SMALL, "Tanmatsu  by  Nicolai Electronics",     16 },
 
         { COL_PAGER_TEXT,   TXT_BODY,  "License",                                4 },
         { COL_GRAY,         TXT_SMALL, "MIT (see LICENSE in the repo)",         16 },
 
         { COL_PAGER_TEXT,   TXT_BODY,  "Source",                                 4 },
-        { COL_GRAY,         TXT_SMALL, "github.com/CJvanSoest/meshcore",         0 },
+        { COL_GRAY,         TXT_SMALL, "github.com/CJvanSoest/meshcore",         6 },
+
+        { COL_PAGER_TEXT,   TXT_BODY,  "Issues / questions",                     4 },
+        { COL_GRAY,         TXT_SMALL,
+            "github.com/CJvanSoest/meshcore/issues",                             0 },
     };
     const int n_lines = (int)(sizeof(lines) / sizeof(lines[0]));
 

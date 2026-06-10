@@ -9,6 +9,13 @@ CONFIG_IDF_EXPERIMENTAL_FEATURES=y
 CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_NIMBLE_TRANSPORT_UART=n
+# BLE Security Manager: LE Secure Connections + Passkey Display Entry.
+# Tanmatsu shows a 6-digit code on the screen; the iPhone MeshCore app
+# prompts the user to type it. LTKs are bonded so the second pairing
+# is silent. See VIEW_BLE_PAIR for the display side.
+CONFIG_BT_NIMBLE_SM_SC=y
+CONFIG_BT_NIMBLE_SM_LEGACY=n
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
 CONFIG_ESP_WIFI_IRAM_OPT=y
 CONFIG_ESP_WIFI_RX_IRAM_OPT=y
 CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_CMD_SLOT_1=16

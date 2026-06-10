@@ -7,7 +7,8 @@
 // per-view render_*.c files. Not part of the public render API — public
 // callers use render.h.
 
-#include "chat.h"  // chat_msg_t (render_msg_list signature)
+#include "chat.h"      // chat_msg_t (render_msg_list signature)
+#include "ui_state.h"  // app_view_t, field_t
 
 // Top header strip; called at the start of every full-view render.
 void render_tab_bar(void);
@@ -31,7 +32,7 @@ void render_about(void);
 typedef enum {
     HOME_ACTION_NONE = 0,
     HOME_ACTION_OPEN_QR,        // QR-tile: open QR overlay, stay rooted at home
-    HOME_ACTION_SEND_ADVERT,    // Advert-tile: send flood advert + show toast
+    HOME_ACTION_OPEN_ADVERT,    // Advert-tile: drill into Settings -> Advert
 } home_action_t;
 
 int           home_tile_count(void);
@@ -43,9 +44,20 @@ home_action_t home_tile_action(int idx);
 // to one category. These helpers expose the category table (defined in
 // render_settings.c) so input.c can clamp the field cursor + drive nav.
 int         settings_category_count(void);
+// Visible-only views: skips categories with hidden_from_grid set. Grid
+// rendering + grid cursor nav use these so the hidden Advert category
+// doesn't show up as a Settings tile but is still reachable via the
+// Home -> Advert tile.
+int         settings_visible_category_count(void);
+int         settings_visible_category_real_idx(int slot);
 void        settings_category_bounds(int cat, int *first_field, int *last_field);
 const char *settings_category_title(int cat);
 int         settings_category_for_field(int f);
+
+// Persist field `f` to NVS using the registry-defined save_*() (defined in
+// render_settings.c's s_fields[]). Fields without a dedicated save_*()
+// fall back to save_lora_config(). Replaces input.c's old persist_field_change.
+void        field_save(field_t f);
 
 // Overlays drawn on top of a base view by the dispatcher.
 void render_qr_overlay(void);

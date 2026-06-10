@@ -1,63 +1,113 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- QR-overlay — encodes meshcore://contact/add?name=...&public_key=...&type=1
-     so a peer can scan and add this badge as a contact in one tap. Triggered
-     from the QR home-tile or 'Q' in the Nodes view. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640">
+<!-- QR overlay (drawn on top of VIEW_NODES or VIEW_HOME).
+     Landscape 800×480 at half-scale. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240">
   <defs>
     <style type="text/css"><![CDATA[
       text { font-family: 'Saira', 'Helvetica Neue', sans-serif; }
     ]]></style>
   </defs>
 
-  <rect width="400" height="640" fill="#1A1B26" rx="4"/>
-  <rect x="0.5" y="0.5" width="399" height="639" fill="none" stroke="#24283B" stroke-width="1" rx="4"/>
+  <rect width="400" height="240" fill="#0E141B" rx="4"/>
+  <rect x="0.5" y="0.5" width="399" height="239" fill="none" stroke="#16161E" stroke-width="1" rx="4"/>
 
-  <!-- "Scan to add contact" headline above the QR (amber, TXT_TITLE real) -->
-  <text x="200" y="148" text-anchor="middle" fill="#E0AF68" font-size="14" font-weight="500">Scan to add contact</text>
+  <!-- Dim background overlay (the QR overlay is drawn on top of whatever
+       view was active when Q was pressed) -->
+  <rect x="0" y="0" width="400" height="240" fill="#0E141B" opacity="0.95"/>
 
-  <!-- White QR background panel, stylised module pattern -->
-  <rect x="80" y="170" width="240" height="240" fill="#FFFFFF"/>
-  <g fill="#000000">
-    <!-- Three finder patterns + a scattering of modules to suggest a real QR -->
-    <rect x="92"  y="182" width="42" height="42"/>
-    <rect x="100" y="190" width="26" height="26" fill="#FFFFFF"/>
-    <rect x="108" y="198" width="10" height="10"/>
+  <!-- Header strip -->
+  <rect x="0" y="0" width="400" height="22" fill="#0E141B"/>
+  <rect x="0" y="21" width="400" height="1" fill="#FAA61A"/>
+  <text x="6" y="15" fill="#FAA61A" font-size="11" font-weight="600">QR contact card</text>
 
-    <rect x="266" y="182" width="42" height="42"/>
-    <rect x="274" y="190" width="26" height="26" fill="#FFFFFF"/>
-    <rect x="282" y="198" width="10" height="10"/>
+  <!-- QR code on left half — schematic block grid (not a real QR) -->
+  <g fill="#C0C8D0">
+    <!-- Finder pattern top-left -->
+    <rect x="40" y="40" width="42" height="42" fill="#C0C8D0"/>
+    <rect x="46" y="46" width="30" height="30" fill="#0E141B"/>
+    <rect x="52" y="52" width="18" height="18" fill="#C0C8D0"/>
+    <!-- Finder pattern top-right -->
+    <rect x="150" y="40" width="42" height="42" fill="#C0C8D0"/>
+    <rect x="156" y="46" width="30" height="30" fill="#0E141B"/>
+    <rect x="162" y="52" width="18" height="18" fill="#C0C8D0"/>
+    <!-- Finder pattern bottom-left -->
+    <rect x="40" y="150" width="42" height="42" fill="#C0C8D0"/>
+    <rect x="46" y="156" width="30" height="30" fill="#0E141B"/>
+    <rect x="52" y="162" width="18" height="18" fill="#C0C8D0"/>
 
-    <rect x="92"  y="356" width="42" height="42"/>
-    <rect x="100" y="364" width="26" height="26" fill="#FFFFFF"/>
-    <rect x="108" y="372" width="10" height="10"/>
-
-    <!-- Body modules — purely indicative -->
-    <rect x="148" y="190" width="6" height="6"/><rect x="160" y="190" width="6" height="6"/>
-    <rect x="148" y="202" width="6" height="6"/><rect x="166" y="208" width="6" height="6"/>
-    <rect x="180" y="190" width="6" height="6"/><rect x="190" y="196" width="6" height="6"/>
-    <rect x="160" y="220" width="6" height="6"/><rect x="178" y="226" width="6" height="6"/>
-    <rect x="200" y="232" width="6" height="6"/><rect x="216" y="226" width="6" height="6"/>
-    <rect x="232" y="220" width="6" height="6"/><rect x="248" y="240" width="6" height="6"/>
-    <rect x="200" y="252" width="6" height="6"/><rect x="210" y="270" width="6" height="6"/>
-    <rect x="180" y="280" width="6" height="6"/><rect x="232" y="278" width="6" height="6"/>
-    <rect x="160" y="300" width="6" height="6"/><rect x="200" y="308" width="6" height="6"/>
-    <rect x="252" y="312" width="6" height="6"/><rect x="280" y="320" width="6" height="6"/>
-    <rect x="156" y="328" width="6" height="6"/><rect x="200" y="334" width="6" height="6"/>
-    <rect x="240" y="338" width="6" height="6"/><rect x="280" y="350" width="6" height="6"/>
-    <rect x="180" y="356" width="6" height="6"/><rect x="216" y="362" width="6" height="6"/>
-    <rect x="252" y="372" width="6" height="6"/><rect x="280" y="380" width="6" height="6"/>
-    <rect x="156" y="384" width="6" height="6"/><rect x="196" y="378" width="6" height="6"/>
+    <!-- Data area — random blocks to suggest content -->
+    <rect x="90"  y="46"  width="6" height="6"/>
+    <rect x="100" y="46"  width="6" height="6"/>
+    <rect x="116" y="46"  width="6" height="6"/>
+    <rect x="130" y="46"  width="6" height="6"/>
+    <rect x="90"  y="58"  width="6" height="6"/>
+    <rect x="108" y="58"  width="6" height="6"/>
+    <rect x="116" y="58"  width="6" height="6"/>
+    <rect x="124" y="58"  width="6" height="6"/>
+    <rect x="138" y="58"  width="6" height="6"/>
+    <rect x="100" y="70"  width="6" height="6"/>
+    <rect x="116" y="70"  width="6" height="6"/>
+    <rect x="124" y="70"  width="6" height="6"/>
+    <rect x="138" y="70"  width="6" height="6"/>
+    <rect x="40"  y="100" width="6" height="6"/>
+    <rect x="56"  y="100" width="6" height="6"/>
+    <rect x="70"  y="100" width="6" height="6"/>
+    <rect x="86"  y="100" width="6" height="6"/>
+    <rect x="100" y="100" width="6" height="6"/>
+    <rect x="116" y="100" width="6" height="6"/>
+    <rect x="130" y="100" width="6" height="6"/>
+    <rect x="144" y="100" width="6" height="6"/>
+    <rect x="158" y="100" width="6" height="6"/>
+    <rect x="172" y="100" width="6" height="6"/>
+    <rect x="186" y="100" width="6" height="6"/>
+    <rect x="46"  y="112" width="6" height="6"/>
+    <rect x="62"  y="112" width="6" height="6"/>
+    <rect x="78"  y="112" width="6" height="6"/>
+    <rect x="92"  y="112" width="6" height="6"/>
+    <rect x="106" y="112" width="6" height="6"/>
+    <rect x="120" y="112" width="6" height="6"/>
+    <rect x="134" y="112" width="6" height="6"/>
+    <rect x="148" y="112" width="6" height="6"/>
+    <rect x="162" y="112" width="6" height="6"/>
+    <rect x="178" y="112" width="6" height="6"/>
+    <rect x="50"  y="124" width="6" height="6"/>
+    <rect x="64"  y="124" width="6" height="6"/>
+    <rect x="80"  y="124" width="6" height="6"/>
+    <rect x="100" y="124" width="6" height="6"/>
+    <rect x="114" y="124" width="6" height="6"/>
+    <rect x="128" y="124" width="6" height="6"/>
+    <rect x="142" y="124" width="6" height="6"/>
+    <rect x="156" y="124" width="6" height="6"/>
+    <rect x="170" y="124" width="6" height="6"/>
+    <rect x="184" y="124" width="6" height="6"/>
+    <rect x="100" y="160" width="6" height="6"/>
+    <rect x="116" y="160" width="6" height="6"/>
+    <rect x="124" y="160" width="6" height="6"/>
+    <rect x="138" y="160" width="6" height="6"/>
+    <rect x="100" y="172" width="6" height="6"/>
+    <rect x="108" y="172" width="6" height="6"/>
+    <rect x="124" y="172" width="6" height="6"/>
+    <rect x="138" y="172" width="6" height="6"/>
+    <rect x="100" y="184" width="6" height="6"/>
+    <rect x="116" y="184" width="6" height="6"/>
+    <rect x="124" y="184" width="6" height="6"/>
   </g>
 
-  <!-- Owner / advert name caption -->
-  <text x="200" y="432" text-anchor="middle" fill="#565F89" font-size="9">CJvS</text>
-  <!-- Explicit close hints (amber) -->
-  <text x="200" y="450" text-anchor="middle" fill="#E0AF68" font-size="9" font-weight="500">[ESC]   [X]   [Enter]   to close</text>
+  <!-- Caption on right half: identity summary -->
+  <g font-family="Saira, 'Helvetica Neue', sans-serif">
+    <text x="220" y="60"  fill="#FAA61A" font-size="12" font-weight="600">CJvS</text>
+    <text x="220" y="78"  fill="#565F89" font-size="9">Role: chat</text>
+    <text x="220" y="94"  fill="#565F89" font-size="9">Region: NL-NH</text>
 
-  <!-- Annotation -->
-  <text x="14" y="500" fill="#7AA2F7" font-size="10" font-style="italic">Triggered from the QR home tile or 'Q'</text>
-  <text x="14" y="513" fill="#7AA2F7" font-size="10" font-style="italic">in the Nodes view. URL embeds name + 32-</text>
-  <text x="14" y="526" fill="#7AA2F7" font-size="10" font-style="italic">byte pub_key + type=1 (chat node).</text>
-  <text x="14" y="546" fill="#565F89" font-size="9">From the home tile, closing returns to home;</text>
-  <text x="14" y="558" fill="#565F89" font-size="9">from Nodes ('Q'), closing stays in Nodes.</text>
+    <text x="220" y="120" fill="#C0C8D0" font-size="9">Pubkey (hex):</text>
+    <text x="220" y="134" fill="#C0C8D0" font-size="8" font-family="monospace">a3f1c2d4e5f6a7b8</text>
+    <text x="220" y="146" fill="#C0C8D0" font-size="8" font-family="monospace">c1d2e3f4a5b6c7d8</text>
+    <text x="220" y="170" fill="#565F89" font-size="8">Scan with MeshCore iOS/Android</text>
+    <text x="220" y="180" fill="#565F89" font-size="8">to add as contact.</text>
+  </g>
+
+  <!-- Footer with explicit close hints in amber -->
+  <rect x="0" y="218" width="400" height="22" fill="#16161E"/>
+  <rect x="0" y="218" width="400" height="1" fill="#FAA61A"/>
+  <text x="200" y="232" text-anchor="middle" fill="#FAA61A" font-size="9" font-weight="500">[ESC]  [X]  [Enter]   to close</text>
 </svg>

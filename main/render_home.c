@@ -75,6 +75,9 @@ static void icon_map(int cx, int cy, int sz, pax_col_t col) {
     pax_outline_circle(&fb, col, cx, cy, sz / 4);
 }
 
+// Originally drawn as a 3x3 dotted pattern (QR-like). Kept around because
+// the QR tile uses the same routine -- only the Advert tile moves to the
+// new antenna mast below.
 static void icon_advert(int cx, int cy, int sz, pax_col_t col) {
     int b = sz / 8;
     int g = sz / 4;
@@ -86,6 +89,43 @@ static void icon_advert(int cx, int cy, int sz, pax_col_t col) {
             }
         }
     }
+}
+
+static void icon_antenna(int cx, int cy, int sz, pax_col_t col) {
+    // Broadcast tower: tripod (/\), cross-bar, small circle at top of the
+    // mast, and concentric arcs on either side as radio waves. See
+    // ~/Documents/antenna 1.jpeg for the reference shape.
+    int half     = sz / 2;
+    int top_y    = cy - half + half / 4;    // top of the circle
+    int base_y   = cy + half - half / 8;    // baseline
+    int base_dx  = half * 3 / 5;            // half-width of the splay at base
+    int circle_r = sz / 10;
+
+    // Top circle (transmitter).
+    pax_outline_circle(&fb, col, cx, top_y, circle_r);
+
+    // Mast legs: two diagonals from a point just below the circle out to
+    // the splayed feet at the base.
+    int mast_top_y = top_y + circle_r;
+    pax_simple_line(&fb, col, cx, mast_top_y, cx - base_dx, base_y);
+    pax_simple_line(&fb, col, cx, mast_top_y, cx + base_dx, base_y);
+
+    // Cross-bar about 60% down the tower.
+    int cross_y  = mast_top_y + (base_y - mast_top_y) * 6 / 10;
+    int cross_dx = base_dx * 6 / 10;
+    pax_simple_line(&fb, col, cx - cross_dx, cross_y, cx + cross_dx, cross_y);
+
+    // Two pairs of concentric arcs around the transmitter circle: opening
+    // left on the left side, opening right on the right side.
+    float r1 = (float)(half - circle_r) * 0.55f;
+    float r2 = (float)(half - circle_r) * 0.85f;
+    float pi = 3.14159265f;
+    // Left side: arc spans from upper-left around to lower-left of the tip.
+    pax_outline_arc(&fb, col, cx, top_y, r1, 3.0f * pi / 4.0f, 5.0f * pi / 4.0f);
+    pax_outline_arc(&fb, col, cx, top_y, r2, 3.0f * pi / 4.0f, 5.0f * pi / 4.0f);
+    // Right side: arc spans from upper-right around to lower-right.
+    pax_outline_arc(&fb, col, cx, top_y, r1, -pi / 4.0f, pi / 4.0f);
+    pax_outline_arc(&fb, col, cx, top_y, r2, -pi / 4.0f, pi / 4.0f);
 }
 
 static void icon_settings(int cx, int cy, int sz, pax_col_t col) {
@@ -136,7 +176,7 @@ static const home_tile_t home_tiles[HOME_TILE_COUNT] = {
     { "DM",       VIEW_CHAT,     icon_dm,       HOME_ACTION_NONE,        contact_unread_total  },
     { "Channel",  VIEW_CHANNEL,  icon_channel,  HOME_ACTION_NONE,        channel_unread_total  },
     { "Map",      VIEW_HOME,     icon_map,      HOME_ACTION_NONE,        NULL                  },  // TODO: VIEW_MAP
-    { "Advert",   VIEW_HOME,     icon_advert,   HOME_ACTION_SEND_ADVERT, NULL                  },
+    { "Advert",   VIEW_SETTINGS, icon_antenna,  HOME_ACTION_OPEN_ADVERT, NULL                  },
     { "Settings", VIEW_SETTINGS, icon_settings, HOME_ACTION_NONE,        NULL                  },
     { "About",    VIEW_ABOUT,    icon_about,    HOME_ACTION_NONE,        NULL                  },
     { "QR",       VIEW_NODES,    icon_advert,   HOME_ACTION_OPEN_QR,     NULL                  },
@@ -254,8 +294,8 @@ void render_home(void) {
         }
 
         // Disabled (TBD) placeholders: target stays on VIEW_HOME *and* there's
-        // no inline action either (so e.g. the Advert tile, target=VIEW_HOME +
-        // HOME_ACTION_SEND_ADVERT, is live and reads as such).
+        // no inline action either (e.g. live tiles like Advert have a real
+        // target/action and read as such, so they're not greyed).
         bool tbd = (home_tiles[i].target == VIEW_HOME) &&
                    (home_tiles[i].action == HOME_ACTION_NONE);
         if (tbd && !focused) fg = COL_GRAY;
@@ -352,7 +392,7 @@ void render_home(void) {
     // panel with an accent stripe so it reads as a confirmation, not an error.
     if (toast_text[0]) {
         uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        if (now_ms - toast_start_ms < 2000) {
+        if (now_ms - toast_start_ms < toast_duration_ms) {
             pax_vec2f tsz = pax_text_size(FONT, TXT_TITLE, toast_text);
             int box_w = (int)tsz.x + 60;
             int box_h = TXT_TITLE + 40;
@@ -365,6 +405,7 @@ void render_home(void) {
                           box_x + 30, box_y + 20, toast_text);
         } else {
             toast_text[0] = 0;
+            toast_duration_ms = 2000;  // restore default for the next toast
         }
     }
 }

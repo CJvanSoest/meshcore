@@ -73,6 +73,9 @@ void radio_start_tasks(void);
 // ── TX entry points (called from UI input) ───────────────────────────────────
 // Broadcast a signed ADVERT (FLOOD) with our pub_key + role + name.
 void send_advert(void);
+// Same advert, route=DIRECT + path_length=0. Reaches LoRa neighbours only
+// (no repeater forwarding), low-traffic alternative to flood.
+void send_advert_direct(void);
 
 // Send an encrypted DM (TXT_MSG) to a specific node by pub_key.
 // If ack_crc_out != NULL, returns the 4-byte CRC the receiver will echo back

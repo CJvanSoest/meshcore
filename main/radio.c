@@ -14,6 +14,7 @@
 #include "mbedtls/sha256.h"
 
 #include "ed25519.h"
+#include "sounds.h"
 #include "meshcore/packet.h"
 #include "meshcore/payload/advert.h"
 #include "meshcore/payload/grp_txt.h"
@@ -203,7 +204,52 @@ static void dc_record_tx(uint32_t airtime_ms) {
 }
 
 // ── ADVERT TX ────────────────────────────────────────────────────────────────
-void send_advert(void) {
+// Helper: build + tx the self-advert.
+//   direct_route = false -> route=FLOOD, path empty
+//   direct_route = true  -> route=DIRECT; if dst_hash is non-NULL we copy
+//                           the first `bph` bytes into msg.path so stock
+//                           receivers can match the destination, otherwise
+//                           we send with an empty path (broadcast direct;
+//                           upstream receivers will likely drop it, which
+//                           is fine as a "no known peers" fallback).
+static void send_advert_internal(bool direct_route, const uint8_t *dst_hash, uint8_t bph);
+
+void send_advert(void) { send_advert_internal(false, NULL, 0); }
+
+// DIRECT advert: stock MeshCore receivers drop direct packets with no
+// destination match, so we iterate node_list[] and send one direct-route
+// advert per known node, addressed by sha256(pub_key)[0..bph-1]. This is
+// upstream's "sendSelfAdvertDirect" pattern minus the per-contact path
+// memory (we don't store out_path yet -- repeaters that don't already
+// route via our path simply won't forward, which is the intent).
+void send_advert_direct(void) {
+    if (!c6_available || !identity_is_ready()) return;
+    uint8_t bph = path_hash_size ? path_hash_size : 1;
+    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        // Couldn't grab the lock; fall back to a single no-dst direct so
+        // the user still sees an emit + toast confirms the action ran.
+        send_advert_internal(true, NULL, 0);
+        return;
+    }
+    int sent = 0;
+    for (int i = 0; i < MAX_NODES; i++) {
+        if (!node_list[i].active) continue;
+        uint8_t hash[32];
+        mbedtls_sha256(node_list[i].pub_key, MESHCORE_PUB_KEY_SIZE, hash, 0);
+        send_advert_internal(true, hash, bph);
+        sent++;
+        // Small inter-packet gap so the radio TX queue + duty-cycle
+        // accounting stay healthy when there are many known nodes.
+        vTaskDelay(pdMS_TO_TICKS(150));
+    }
+    xSemaphoreGive(node_mutex);
+    if (sent == 0) {
+        // No known peers yet -- still emit one so the user gets feedback.
+        send_advert_internal(true, NULL, 0);
+    }
+}
+
+static void send_advert_internal(bool direct_route, const uint8_t *dst_hash, uint8_t bph) {
     if (!c6_available || !identity_is_ready()) return;
 
     meshcore_advert_t advert = {0};
@@ -250,8 +296,17 @@ void send_advert(void) {
 
     meshcore_message_t msg = {0};
     msg.type           = MESHCORE_PAYLOAD_TYPE_ADVERT;
-    msg.route          = MESHCORE_ROUTE_TYPE_FLOOD;
+    msg.route          = direct_route ? MESHCORE_ROUTE_TYPE_DIRECT
+                                       : MESHCORE_ROUTE_TYPE_FLOOD;
     msg.bytes_per_hop  = path_hash_size;
+    if (direct_route && dst_hash && bph > 0) {
+        // Populate path with dst hash so upstream receivers match this as
+        // a direct-routed packet addressed to them (or to a peer they
+        // route for).
+        uint8_t cap = bph > MESHCORE_MAX_PATH_SIZE ? MESHCORE_MAX_PATH_SIZE : bph;
+        memcpy(msg.path, dst_hash, cap);
+        msg.path_length = cap;
+    }
     msg.payload_length = payload_len;
     memcpy(msg.payload, payload, payload_len);
     apply_region_scope(&msg);
@@ -495,14 +550,35 @@ bool send_chat_message(const char *text) {
 }
 
 // ── ADVERT broadcast task ────────────────────────────────────────────────────
+// Honours both flood + direct interval settings. Value 0 on either = that
+// schedule is off. Manual sends via the Advert UI keep working in both
+// cases. Re-reads the interval each second so retuning in Settings takes
+// effect immediately.
 static void advert_task(void *arg) {
-    // Initial delay so the radio is fully up before first advert.
     vTaskDelay(pdMS_TO_TICKS(5000));
+    uint32_t flood_elapsed_ms  = 0;
+    uint32_t direct_elapsed_ms = 0;
     while (1) {
-        send_advert();
-        uint32_t ms = (uint32_t)advert_interval_s * 1000u;
-        if (ms < 5000u) ms = 5000u;
-        vTaskDelay(pdMS_TO_TICKS(ms));
+        uint16_t flood_int  = flood_advert_interval_s;
+        uint16_t direct_int = direct_advert_interval_s;
+
+        if (flood_int > 0 && flood_elapsed_ms >= (uint32_t)flood_int * 1000u) {
+            send_advert();
+            flood_elapsed_ms = 0;
+        }
+        if (direct_int > 0 && direct_elapsed_ms >= (uint32_t)direct_int * 1000u) {
+            send_advert_direct();
+            direct_elapsed_ms = 0;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        flood_elapsed_ms  += 1000;
+        direct_elapsed_ms += 1000;
+
+        // Reset elapsed counters when their schedule is off so re-enabling
+        // doesn't trigger an immediate emit.
+        if (flood_int  == 0) flood_elapsed_ms  = 0;
+        if (direct_int == 0) direct_elapsed_ms = 0;
     }
 }
 
@@ -551,415 +627,468 @@ static void noise_floor_task(void *arg) {
 }
 
 // ── LoRa RX task ─────────────────────────────────────────────────────────────
+// Receive loop + per-packet-type handlers. The task itself is a thin
+// dispatch shell; each MESHCORE_PAYLOAD_TYPE_* gets its own handler so
+// crypto, UI side-effects, and outgoing TX live close together but are
+// otherwise scoped to one packet variant.
+
+// Locate a sender by 1-byte src_hash (truncated pubkey). Always searches
+// node_list first; if include_contacts is true and node_list misses, falls
+// back to the contacts[] table. out_name + out_role may be NULL when the
+// caller (PATH handler) only needs the pubkey.
+static bool find_sender_by_hash(uint8_t src_hash, bool include_contacts,
+                                uint8_t out_pub[32],
+                                char *out_name, size_t name_cap,
+                                meshcore_device_role_t *out_role) {
+    bool found = false;
+    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        for (int ni = 0; ni < MAX_NODES; ni++) {
+            if (node_list[ni].active && node_list[ni].pub_key[0] == src_hash) {
+                memcpy(out_pub, node_list[ni].pub_key, 32);
+                if (out_name && name_cap > 0) {
+                    strncpy(out_name, node_list[ni].name, name_cap - 1);
+                    out_name[name_cap - 1] = '\0';
+                }
+                if (out_role) *out_role = node_list[ni].role;
+                found = true;
+                break;
+            }
+        }
+        xSemaphoreGive(node_mutex);
+    }
+    if (!found && include_contacts) {
+        for (int ci = 0; ci < contact_count; ci++) {
+            if (contacts[ci].pub_key[0] == src_hash) {
+                memcpy(out_pub, contacts[ci].pub_key, 32);
+                if (out_name && name_cap > 0) {
+                    strncpy(out_name, contacts[ci].alias, name_cap - 1);
+                    out_name[name_cap - 1] = '\0';
+                }
+                if (out_role) *out_role = (meshcore_device_role_t)contacts[ci].role;
+                found = true;
+                break;
+            }
+        }
+    }
+    return found;
+}
+
+// Decrypt a DM payload from a known sender. Derives both ed25519 variants
+// of the shared secret and tries 4 HMAC combinations (conv/raw × 16/32-byte
+// key) until one matches the on-wire 2-byte MAC. On success, AES-128-ECB
+// decrypts the ciphertext into out_plaintext (caller-allocated; must hold
+// at least ciphertext-length bytes), sets *out_text_len = ct_len - 5 (the
+// timestamp[4] + flags[1] header is included in the buffer), and copies
+// the winning secret to out_good_secret so the caller can reuse it for
+// PATH_RETURN encryption.
+static bool dm_decrypt(const meshcore_message_t *msg, const uint8_t sender_pub[32],
+                       uint8_t *out_plaintext, int *out_text_len,
+                       uint8_t out_good_secret[32]) {
+    const uint8_t *mac_ct     = &msg->payload[2];
+    int            mac_ct_len = msg->payload_length - 2;
+    if (mac_ct_len < MESHCORE_CIPHER_MAC_SIZE + 16) return false;
+
+    const uint8_t *ciphertext = mac_ct + MESHCORE_CIPHER_MAC_SIZE;
+    int            ct_len     = mac_ct_len - MESHCORE_CIPHER_MAC_SIZE;
+
+    uint8_t secret[32], secret_raw[32];
+    ed25519_key_exchange    (secret,     sender_pub, node_prv_key);
+    ed25519_key_exchange_raw(secret_raw, sender_pub, node_prv_key);
+
+    uint8_t hmac_conv[32], hmac_raw[32], hmac_conv16[32], hmac_raw16[32];
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                    secret,     32, ciphertext, ct_len, hmac_conv);
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                    secret_raw, 32, ciphertext, ct_len, hmac_raw);
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                    secret,     16, ciphertext, ct_len, hmac_conv16);
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                    secret_raw, 16, ciphertext, ct_len, hmac_raw16);
+
+    uint8_t exp0 = mac_ct[0], exp1 = mac_ct[1];
+    const uint8_t *good = NULL;
+    if      (hmac_conv  [0]==exp0 && hmac_conv  [1]==exp1) good = secret;
+    else if (hmac_raw   [0]==exp0 && hmac_raw   [1]==exp1) good = secret_raw;
+    else if (hmac_conv16[0]==exp0 && hmac_conv16[1]==exp1) good = secret;
+    else if (hmac_raw16 [0]==exp0 && hmac_raw16 [1]==exp1) good = secret_raw;
+    if (!good) return false;
+
+    mbedtls_aes_context aes_ctx;
+    mbedtls_aes_init(&aes_ctx);
+    mbedtls_aes_setkey_dec(&aes_ctx, good, 128);
+    for (int bi = 0; bi + 16 <= ct_len; bi += 16) {
+        mbedtls_aes_crypt_ecb(&aes_ctx, MBEDTLS_AES_DECRYPT,
+                              ciphertext + bi, out_plaintext + bi);
+    }
+    mbedtls_aes_free(&aes_ctx);
+
+    *out_text_len = ct_len - 5;
+    memcpy(out_good_secret, good, 32);
+    return true;
+}
+
+// Build + transmit the PATH_RETURN packet that acknowledges a received DM.
+// Layout (createPathReturn approach):
+//   inner (AES-ECB, 16 or 32 B): path_len_byte | type=ACK | crc[4] | path_bytes[hops*bph] | zero-pad
+//   outer payload:               dst[1] | src[1] | mac[2] | path_cipher[...]
+// Inner is encrypted with the shared secret; outer MAC = HMAC-SHA256(secret, cipher)[0..1].
+// Subject to the duty-cycle budget — dropped (with a log warning) when air-time would overflow.
+static void dm_send_path_return(const meshcore_message_t *msg, uint8_t src_hash,
+                                const uint8_t good_secret[32],
+                                const uint8_t *plaintext, int text_len,
+                                const char *dm_text,
+                                const uint8_t sender_pub[32]) {
+    (void)text_len;  // dm_text already carries the NUL boundary via plaintext[5+text_len-1]=0
+
+    // 1. ACK CRC = SHA256(timestamp+flags | text | sender_pub)[0..3]
+    uint8_t sha_out[32];
+    {
+        mbedtls_sha256_context sha_ctx;
+        mbedtls_sha256_init(&sha_ctx);
+        mbedtls_sha256_starts(&sha_ctx, 0);
+        mbedtls_sha256_update(&sha_ctx, plaintext, 5);
+        mbedtls_sha256_update(&sha_ctx, (const uint8_t *)dm_text, strlen(dm_text));
+        mbedtls_sha256_update(&sha_ctx, sender_pub, 32);
+        mbedtls_sha256_finish(&sha_ctx, sha_out);
+        mbedtls_sha256_free(&sha_ctx);
+    }
+
+    // 2. Build inner block. Reverse incoming hops so the receiver learns the
+    // sequence of repeaters back to us. Cap so the inner buffer stays within
+    // 2 AES blocks (32 B); longer paths fall back to 0 hops.
+    uint8_t ret_bph        = msg->bytes_per_hop ? msg->bytes_per_hop : 1;
+    uint8_t ret_hop_count  = (ret_bph > 0) ? (msg->path_length / ret_bph) : 0;
+    uint8_t ret_path_bytes = ret_hop_count * ret_bph;
+    if (ret_path_bytes > 26) {
+        ret_hop_count  = 0;
+        ret_path_bytes = 0;
+    }
+
+    size_t inner_size = ((6 + (size_t)ret_path_bytes + 15) / 16) * 16;
+    if (inner_size < 16) inner_size = 16;
+    if (inner_size > 32) inner_size = 32;
+
+    uint8_t inner[32]       = {0};
+    uint8_t path_cipher[32] = {0};
+    inner[0] = ((uint8_t)((ret_bph - 1) & 0x03) << 6) | (ret_hop_count & 0x3F);
+    inner[1] = MESHCORE_PAYLOAD_TYPE_ACK;
+    inner[2] = sha_out[0];
+    inner[3] = sha_out[1];
+    inner[4] = sha_out[2];
+    inner[5] = sha_out[3];
+    for (uint8_t h = 0; h < ret_hop_count; h++) {
+        uint8_t src_hop = ret_hop_count - 1 - h;
+        memcpy(&inner[6 + h * ret_bph], &msg->path[src_hop * ret_bph], ret_bph);
+    }
+
+    {
+        mbedtls_aes_context aes2;
+        mbedtls_aes_init(&aes2);
+        mbedtls_aes_setkey_enc(&aes2, good_secret, 128);
+        for (size_t bi = 0; bi < inner_size; bi += 16) {
+            mbedtls_aes_crypt_ecb(&aes2, MBEDTLS_AES_ENCRYPT,
+                                  &inner[bi], &path_cipher[bi]);
+        }
+        mbedtls_aes_free(&aes2);
+    }
+
+    // 3. Outer MAC + assemble PATH packet (still flood-routed).
+    uint8_t path_mac[32];
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                    good_secret, 32, path_cipher, inner_size, path_mac);
+
+    meshcore_message_t path_msg = {0};
+    path_msg.type           = MESHCORE_PAYLOAD_TYPE_PATH;
+    path_msg.route          = MESHCORE_ROUTE_TYPE_FLOOD;
+    path_msg.version        = 0;
+    path_msg.bytes_per_hop  = path_hash_size;
+    path_msg.path_length    = 0;
+    path_msg.payload[0]     = src_hash;
+    path_msg.payload[1]     = node_pub_key[0];
+    path_msg.payload[2]     = path_mac[0];
+    path_msg.payload[3]     = path_mac[1];
+    memcpy(&path_msg.payload[4], path_cipher, inner_size);
+    path_msg.payload_length = 4 + inner_size;
+    apply_region_scope(&path_msg);
+
+    ESP_LOGI(TAG, "PATH_RETURN: hops=%u bph=%u inner_size=%u",
+             (unsigned)ret_hop_count, (unsigned)ret_bph, (unsigned)inner_size);
+
+    uint8_t path_data[MESHCORE_MAX_TRANS_UNIT];
+    uint8_t path_sz = 0;
+    if (meshcore_serialize(&path_msg, path_data, &path_sz) == 0) {
+        lora_protocol_lora_packet_t lora_pkt = {0};
+        lora_pkt.length = path_sz;
+        memcpy(lora_pkt.data, path_data, path_sz);
+        uint32_t air_ms = compute_airtime_ms(path_sz);
+        if (dc_budget_available(air_ms)) {
+            if (lora_send_packet(&lora_handle, &lora_pkt) == ESP_OK) {
+                dc_record_tx(air_ms);
+            }
+        } else {
+            dc_last_tx_blocked = true;
+            ESP_LOGW(TAG, "PATH_RETURN skipped: duty-cycle exhausted");
+        }
+    }
+}
+
+// ── Per-packet-type handlers ────────────────────────────────────────────────
+
+static void rx_handle_advert(const meshcore_message_t *msg, uint32_t now_ms,
+                              const lora_packet_stats_t *stats) {
+    meshcore_advert_t advert;
+    if (meshcore_advert_deserialize(msg->payload, msg->payload_length, &advert) >= 0) {
+        update_node(&advert, now_ms, stats);
+    }
+}
+
+static void rx_handle_grp_txt(const meshcore_message_t *msg) {
+    meshcore_grp_txt_t grp = {0};
+    if (meshcore_grp_txt_deserialize(msg->payload, msg->payload_length, &grp) < 0) return;
+
+    // Brute-force over all configured channels. The wire channel_hash is
+    // only an optimisation hint — we use the matching channel index to pick
+    // the secret, but accept on MAC verify only. If the hash doesn't match
+    // anything we still try every key (some senders set hash=0 even when
+    // encrypting with a real key).
+    int  hit       = channels_find_by_hash(grp.channel_hash);
+    int  start     = (hit >= 0) ? hit : 0;
+    int  end       = (hit >= 0) ? hit + 1 : channel_count;
+    bool decrypted = false;
+    for (int ci = start; ci < end; ci++) {
+        if (!channels[ci].active) continue;
+        meshcore_grp_txt_t attempt = grp;  // structcopy: keep original mac+data for next try
+        if (decrypt_grp_txt(&attempt, channels[ci].secret)) {
+            ESP_LOGI(TAG, "Channel RX [%s]: %s",
+                     channels[ci].name, attempt.decrypted.text);
+            // Routes to channel ci's own history; only hits the visible ring
+            // if ci is the active channel.
+            bool added = ch_add_message_for(ci, attempt.decrypted.text, false);
+            if (added) {
+                uint8_t bph  = msg->bytes_per_hop ? msg->bytes_per_hop : 1;
+                uint8_t hops = (uint8_t)(msg->path_length / bph);
+                chat_set_meta_channel(hops);
+            }
+            if (!(added && current_view == VIEW_CHANNEL)) {
+                led_channel_pending = true;
+                channel_unread[ci]++;
+                update_notification_led();
+                sounds_play_channel();
+            }
+            decrypted = true;
+            break;
+        }
+    }
+    if (!decrypted && hit >= 0) {
+        // Hash claimed a known channel but MAC didn't verify — fall back to
+        // trying everything else. (No sound on this path: it's a recovery
+        // case, not a normal channel arrival.)
+        for (int ci = 0; ci < channel_count; ci++) {
+            if (ci == hit || !channels[ci].active) continue;
+            meshcore_grp_txt_t attempt = grp;
+            if (decrypt_grp_txt(&attempt, channels[ci].secret)) {
+                ESP_LOGI(TAG, "Channel RX [%s] (hash mismatch): %s",
+                         channels[ci].name, attempt.decrypted.text);
+                bool added = ch_add_message_for(ci, attempt.decrypted.text, false);
+                if (added) {
+                    uint8_t bph  = msg->bytes_per_hop ? msg->bytes_per_hop : 1;
+                    uint8_t hops = (uint8_t)(msg->path_length / bph);
+                    chat_set_meta_channel(hops);
+                }
+                if (!(added && current_view == VIEW_CHANNEL)) {
+                    led_channel_pending = true;
+                    channel_unread[ci]++;
+                    update_notification_led();
+                }
+                break;
+            }
+        }
+    }
+}
+
+static void rx_handle_dm(const meshcore_message_t *msg) {
+    if (!identity_is_ready() || msg->payload_length < 6) {
+        chat_add_message("DM: not ready/short", false);
+        return;
+    }
+    uint8_t dest_hash = msg->payload[0];
+    uint8_t src_hash  = msg->payload[1];
+    if (dest_hash != node_pub_key[0]) {
+        ESP_LOGD(TAG, "DM not for us (dst=%02X us=%02X)", dest_hash, node_pub_key[0]);
+        return;
+    }
+    if (msg->payload_length < 2 + MESHCORE_CIPHER_MAC_SIZE + 16) {
+        chat_add_message("DM: payload too short", false);
+        return;
+    }
+
+    uint8_t sender_pub[32] = {0};
+    char    sender_name[MESHCORE_MAX_ADVERT_DATA_SIZE + 1] = {0};
+    meshcore_device_role_t sender_role = MESHCORE_DEVICE_ROLE_CHAT_NODE;
+    if (!find_sender_by_hash(src_hash, false, sender_pub,
+                             sender_name, sizeof(sender_name), &sender_role)) {
+        // Sender pubkey unknown (e.g. missed advert after reboot). Can't
+        // decrypt without pubkey — surface the truncated hash and wait for
+        // the next advert.
+        char unknown_msg[48];
+        snprintf(unknown_msg, sizeof(unknown_msg),
+                 "[?%02X] DM received (sender unknown)", src_hash);
+        chat_add_message(unknown_msg, false);
+        return;
+    }
+
+    uint8_t plaintext[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
+    int     text_len  = 0;
+    uint8_t good_secret[32];
+    if (!dm_decrypt(msg, sender_pub, plaintext, &text_len, good_secret)) {
+        ESP_LOGW(TAG, "DM HMAC mismatch from %02X — wrong key or unsupported variant", src_hash);
+        char dbg[48];
+        snprintf(dbg, sizeof(dbg), "[?%02X] DM decrypt failed", src_hash);
+        chat_add_message(dbg, false);
+        return;
+    }
+    if (text_len <= 0) {
+        chat_add_message("DM: no text", false);
+        return;
+    }
+
+    // plaintext layout: timestamp[4] | flags[1] | text[...]
+    plaintext[5 + text_len - 1] = '\0';
+    char *dm_text = (char *)&plaintext[5];
+
+    char display[256];
+    if (sender_name[0])
+        snprintf(display, sizeof(display), "[%s] %s", sender_name, dm_text);
+    else
+        snprintf(display, sizeof(display), "[?%02X] %s", src_hash, dm_text);
+
+    ESP_LOGI(TAG, "DM RX: %s", display);
+    chat_add_dm(display, false, sender_pub);
+    {
+        uint8_t bph  = msg->bytes_per_hop ? msg->bytes_per_hop : 1;
+        uint8_t hops = (uint8_t)(msg->path_length / bph);
+        chat_set_meta_dm(hops);
+    }
+    contact_ensure(sender_pub, sender_name, (uint8_t)sender_role);
+
+    bool viewing_sender = (current_view == VIEW_CHAT && !dm_inbox_mode &&
+                           dm_target_set &&
+                           memcmp(sender_pub, dm_target_pub, MESHCORE_PUB_KEY_SIZE) == 0);
+    if (!viewing_sender) {
+        led_dm_pending = true;
+        contact_mark_unread(sender_pub);
+        update_notification_led();
+        sounds_play_dm();
+    }
+
+    dm_send_path_return(msg, src_hash, good_secret, plaintext, text_len, dm_text, sender_pub);
+}
+
+static void rx_handle_path(const meshcore_message_t *msg) {
+    // Incoming PATH_RETURN. We only care about it when it carries an ACK
+    // for one of our outgoing DMs — match by ack_crc[4] inside the encrypted
+    // inner block.
+    if (msg->payload_length < 4 + 16) return;
+    uint8_t dest_hash = msg->payload[0];
+    uint8_t src_hash  = msg->payload[1];
+    if (dest_hash != node_pub_key[0]) return;
+
+    uint8_t sender_pub[32] = {0};
+    if (!find_sender_by_hash(src_hash, true, sender_pub, NULL, 0, NULL)) return;
+
+    // Derive shared secret (only ed25519 conv variant; PATH never used the
+    // raw fallback in the original flow). Decrypt one or two AES blocks and
+    // see if inner[1] = ACK and inner[2..5] matches a recent own DM's CRC.
+    uint8_t secret[32];
+    ed25519_key_exchange(secret, sender_pub, node_prv_key);
+
+    size_t ct_len = msg->payload_length - 4;
+    if (ct_len > 32) ct_len = 32;
+    ct_len = (ct_len / 16) * 16;
+    if (ct_len < 16) return;
+
+    uint8_t inner[32]      = {0};
+    uint8_t ciphertext[32] = {0};
+    memcpy(ciphertext, &msg->payload[4], ct_len);
+    mbedtls_aes_context aes_ctx;
+    mbedtls_aes_init(&aes_ctx);
+    mbedtls_aes_setkey_dec(&aes_ctx, secret, 128);
+    for (size_t bi = 0; bi + 16 <= ct_len; bi += 16) {
+        mbedtls_aes_crypt_ecb(&aes_ctx, MBEDTLS_AES_DECRYPT,
+                              ciphertext + bi, inner + bi);
+    }
+    mbedtls_aes_free(&aes_ctx);
+
+    // inner[0] = path_len_byte, inner[1] = payload type.
+    if (inner[1] != MESHCORE_PAYLOAD_TYPE_ACK) return;
+    uint8_t ack_crc[4] = { inner[2], inner[3], inner[4], inner[5] };
+    if (chat_mark_ack_by_crc(ack_crc)) {
+        ESP_LOGI(TAG, "ACK matched: %02X%02X%02X%02X from %02X",
+                 ack_crc[0], ack_crc[1], ack_crc[2], ack_crc[3], src_hash);
+    }
+}
+
+// ── Task dispatch shell ────────────────────────────────────────────────────
+
 static void lora_rx_task(void *arg) {
+    (void)arg;
     ESP_LOGI(TAG, "LoRa RX task started");
     while (1) {
         lora_protocol_lora_packet_t pkt = {0};
         esp_err_t res = lora_receive_packet(&lora_handle, &pkt, pdMS_TO_TICKS(10000));
-        if (res == ESP_OK && pkt.length > 0) {
-            uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        if (res != ESP_OK || pkt.length <= 0) continue;
 
-            int rssi_dbm        = -(int)pkt.stats.rssi_pkt_raw / 2;
-            int signal_rssi_dbm = -(int)pkt.stats.signal_rssi_pkt_raw / 2;
-            if (rssi_dbm < -127)        rssi_dbm = -127;
-            if (signal_rssi_dbm < -127) signal_rssi_dbm = -127;
-            last_rx_rssi_dbm        = (int8_t)rssi_dbm;
-            last_rx_snr_db_x4       = pkt.stats.snr_pkt_raw;
-            last_rx_signal_rssi_dbm = (int8_t)signal_rssi_dbm;
-            last_rx_stats_ms        = now_ms;
-            last_rx_stats_valid     = true;
+        uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
-            ESP_LOGI(TAG, "RX %d bytes: %02X %02X %02X %02X (rssi=%d snr=%d/4)",
-                     pkt.length,
-                     pkt.length > 0 ? pkt.data[0] : 0,
-                     pkt.length > 1 ? pkt.data[1] : 0,
-                     pkt.length > 2 ? pkt.data[2] : 0,
-                     pkt.length > 3 ? pkt.data[3] : 0,
-                     -(int)pkt.stats.rssi_pkt_raw / 2,
-                     (int)pkt.stats.snr_pkt_raw);
+        int rssi_dbm        = -(int)pkt.stats.rssi_pkt_raw / 2;
+        int signal_rssi_dbm = -(int)pkt.stats.signal_rssi_pkt_raw / 2;
+        if (rssi_dbm < -127)        rssi_dbm = -127;
+        if (signal_rssi_dbm < -127) signal_rssi_dbm = -127;
+        last_rx_rssi_dbm        = (int8_t)rssi_dbm;
+        last_rx_snr_db_x4       = pkt.stats.snr_pkt_raw;
+        last_rx_signal_rssi_dbm = (int8_t)signal_rssi_dbm;
+        last_rx_stats_ms        = now_ms;
+        last_rx_stats_valid     = true;
 
-            if (xSemaphoreTake(rx_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-                rx_buf[rx_head].pkt          = pkt;
-                rx_buf[rx_head].timestamp_ms = now_ms;
-                rx_head  = (rx_head + 1) % RX_BUF_SIZE;
-                if (rx_count < RX_BUF_SIZE) rx_count++;
-                xSemaphoreGive(rx_mutex);
-            }
+        ESP_LOGI(TAG, "RX %d bytes: %02X %02X %02X %02X (rssi=%d snr=%d/4)",
+                 pkt.length,
+                 pkt.length > 0 ? pkt.data[0] : 0,
+                 pkt.length > 1 ? pkt.data[1] : 0,
+                 pkt.length > 2 ? pkt.data[2] : 0,
+                 pkt.length > 3 ? pkt.data[3] : 0,
+                 -(int)pkt.stats.rssi_pkt_raw / 2,
+                 (int)pkt.stats.snr_pkt_raw);
 
-            meshcore_message_t mc_msg;
-            if (meshcore_deserialize(pkt.data, pkt.length, &mc_msg) >= 0) {
-                if (rx_is_duplicate(mc_msg.payload, mc_msg.payload_length)) {
-                    ESP_LOGI(TAG, "Dedup: drop flood retransmit (type=%d)", mc_msg.type);
-                    continue;
-                }
-                if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_ADVERT) {
-                    meshcore_advert_t advert;
-                    if (meshcore_advert_deserialize(mc_msg.payload, mc_msg.payload_length, &advert) >= 0) {
-                        update_node(&advert, now_ms, &pkt.stats);
-                    }
-                } else if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_GRP_TXT) {
-                    meshcore_grp_txt_t grp = {0};
-                    if (meshcore_grp_txt_deserialize(mc_msg.payload, mc_msg.payload_length, &grp) >= 0) {
-                        // Brute-force over all configured channels. The wire
-                        // channel_hash is only an optimisation hint — we use
-                        // the matching channel index to pick the secret, but
-                        // accept on MAC verify only. If hash doesn't match
-                        // anything we still try every key (some senders set
-                        // hash=0x00 even though they encrypt with a real key).
-                        int hit = channels_find_by_hash(grp.channel_hash);
-                        int start = (hit >= 0) ? hit : 0;
-                        int end   = (hit >= 0) ? hit + 1 : channel_count;
-                        bool decrypted = false;
-                        for (int ci = start; ci < end; ci++) {
-                            if (!channels[ci].active) continue;
-                            meshcore_grp_txt_t attempt = grp;  // structcopy: keep original mac+data for next try
-                            if (decrypt_grp_txt(&attempt, channels[ci].secret)) {
-                                ESP_LOGI(TAG, "Channel RX [%s]: %s",
-                                         channels[ci].name, attempt.decrypted.text);
-                                // Channel context lives in the chat header; no
-                                // inline [#name] prefix on the message body.
-                                // Routes to channel ci's own history; only hits
-                                // the visible ring if ci is the active channel.
-                                bool added = ch_add_message_for(ci, attempt.decrypted.text, false);
-                                if (added) {
-                                    uint8_t bph  = mc_msg.bytes_per_hop ? mc_msg.bytes_per_hop : 1;
-                                    uint8_t hops = (uint8_t)(mc_msg.path_length / bph);
-                                    chat_set_meta_channel(hops);
-                                }
-                                if (!(added && current_view == VIEW_CHANNEL)) {
-                                    led_channel_pending = true;
-                                    channel_unread[ci]++;
-                                    update_notification_led();
-                                }
-                                decrypted = true;
-                                break;
-                            }
-                        }
-                        if (!decrypted && hit >= 0) {
-                            // Hash claimed a known channel but MAC didn't verify —
-                            // fall back to trying everything else.
-                            for (int ci = 0; ci < channel_count; ci++) {
-                                if (ci == hit || !channels[ci].active) continue;
-                                meshcore_grp_txt_t attempt = grp;
-                                if (decrypt_grp_txt(&attempt, channels[ci].secret)) {
-                                    ESP_LOGI(TAG, "Channel RX [%s] (hash mismatch): %s",
-                                             channels[ci].name, attempt.decrypted.text);
-                                    bool added = ch_add_message_for(ci, attempt.decrypted.text, false);
-                                    if (added) {
-                                        uint8_t bph  = mc_msg.bytes_per_hop ? mc_msg.bytes_per_hop : 1;
-                                        uint8_t hops = (uint8_t)(mc_msg.path_length / bph);
-                                        chat_set_meta_channel(hops);
-                                    }
-                                    if (!(added && current_view == VIEW_CHANNEL)) {
-                                        led_channel_pending = true;
-                                        channel_unread[ci]++;
-                                        update_notification_led();
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                } else if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_TXT_MSG) {
-                    // Payload: dest_hash[1] | src_hash[1] | HMAC[2] | ciphertext[...]
-                    // Use do{}while(0) so 'break' exits this block, not the rx while(1).
-                    do {
-                        char dbg[48];
-                        if (!identity_is_ready() || mc_msg.payload_length < 6) {
-                            chat_add_message("DM: not ready/short", false); break;
-                        }
-                        uint8_t dest_hash = mc_msg.payload[0];
-                        uint8_t src_hash  = mc_msg.payload[1];
+        if (xSemaphoreTake(rx_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            rx_buf[rx_head].pkt          = pkt;
+            rx_buf[rx_head].timestamp_ms = now_ms;
+            rx_head  = (rx_head + 1) % RX_BUF_SIZE;
+            if (rx_count < RX_BUF_SIZE) rx_count++;
+            xSemaphoreGive(rx_mutex);
+        }
 
-                        if (dest_hash != node_pub_key[0]) {
-                            ESP_LOGD(TAG, "DM not for us (dst=%02X us=%02X)", dest_hash, node_pub_key[0]);
-                            break;
-                        }
+        meshcore_message_t mc_msg;
+        if (meshcore_deserialize(pkt.data, pkt.length, &mc_msg) < 0) continue;
+        if (rx_is_duplicate(mc_msg.payload, mc_msg.payload_length)) {
+            ESP_LOGI(TAG, "Dedup: drop flood retransmit (type=%d)", mc_msg.type);
+            continue;
+        }
 
-                        uint8_t sender_pub[32] = {0};
-                        char    sender_name[MESHCORE_MAX_ADVERT_DATA_SIZE + 1] = {0};
-                        meshcore_device_role_t sender_role = MESHCORE_DEVICE_ROLE_CHAT_NODE;
-                        bool    sender_found = false;
-                        if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                            for (int ni = 0; ni < MAX_NODES; ni++) {
-                                if (node_list[ni].active && node_list[ni].pub_key[0] == src_hash) {
-                                    memcpy(sender_pub, node_list[ni].pub_key, 32);
-                                    strncpy(sender_name, node_list[ni].name, sizeof(sender_name) - 1);
-                                    sender_role = node_list[ni].role;
-                                    sender_found = true;
-                                    break;
-                                }
-                            }
-                            xSemaphoreGive(node_mutex);
-                        }
-                        if (!sender_found) {
-                            // Sender pubkey unknown (e.g. missed advert after reboot).
-                            // Can't decrypt without pubkey — show notification, then wait
-                            // for their next advert broadcast.
-                            char unknown_msg[48];
-                            snprintf(unknown_msg, sizeof(unknown_msg),
-                                     "[?%02X] DM received (sender unknown)", src_hash);
-                            chat_add_message(unknown_msg, false);
-                            break;
-                        }
-
-                        // ECDH shared secret — try both with and without Edwards→Montgomery.
-                        uint8_t secret[32];
-                        ed25519_key_exchange(secret, sender_pub, node_prv_key);
-
-                        uint8_t secret_raw[32];
-                        ed25519_key_exchange_raw(secret_raw, sender_pub, node_prv_key);
-
-                        const uint8_t *mac_ct     = &mc_msg.payload[2];
-                        int            mac_ct_len = mc_msg.payload_length - 2;
-                        if (mac_ct_len < MESHCORE_CIPHER_MAC_SIZE + 16) {
-                            chat_add_message("DM: payload too short", false); break;
-                        }
-
-                        const uint8_t *ciphertext = mac_ct + MESHCORE_CIPHER_MAC_SIZE;
-                        int            ct_len     = mac_ct_len - MESHCORE_CIPHER_MAC_SIZE;
-
-                        uint8_t hmac_conv[32], hmac_raw[32];
-                        mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                                        secret, 32, ciphertext, ct_len, hmac_conv);
-                        mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                                        secret_raw, 32, ciphertext, ct_len, hmac_raw);
-                        uint8_t hmac_conv16[32], hmac_raw16[32];
-                        mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                                        secret, 16, ciphertext, ct_len, hmac_conv16);
-                        mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                                        secret_raw, 16, ciphertext, ct_len, hmac_raw16);
-
-                        uint8_t exp0 = mac_ct[0], exp1 = mac_ct[1];
-                        bool mac_ok = false;
-                        uint8_t *good_secret = NULL;
-                        if (hmac_conv[0]==exp0 && hmac_conv[1]==exp1)   { mac_ok=true; good_secret=secret; }
-                        else if (hmac_raw[0]==exp0 && hmac_raw[1]==exp1) { mac_ok=true; good_secret=secret_raw; }
-                        else if (hmac_conv16[0]==exp0 && hmac_conv16[1]==exp1) { mac_ok=true; good_secret=secret; }
-                        else if (hmac_raw16[0]==exp0 && hmac_raw16[1]==exp1)   { mac_ok=true; good_secret=secret_raw; }
-
-                        if (!mac_ok) {
-                            ESP_LOGW(TAG, "DM HMAC mismatch from %02X — wrong key or unsupported variant", src_hash);
-                            snprintf(dbg, sizeof(dbg), "[?%02X] DM decrypt failed", src_hash);
-                            chat_add_message(dbg, false);
-                            break;
-                        }
-
-                        // AES-128-ECB decrypt (key = good_secret[0..15]).
-                        uint8_t plaintext[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
-                        mbedtls_aes_context aes_ctx;
-                        mbedtls_aes_init(&aes_ctx);
-                        mbedtls_aes_setkey_dec(&aes_ctx, good_secret, 128);
-                        for (int bi = 0; bi + 16 <= ct_len; bi += 16) {
-                            mbedtls_aes_crypt_ecb(&aes_ctx, MBEDTLS_AES_DECRYPT,
-                                                  ciphertext + bi, plaintext + bi);
-                        }
-                        mbedtls_aes_free(&aes_ctx);
-
-                        // plaintext: timestamp[4] | flags[1] | text[...]
-                        int text_len = ct_len - 5;
-                        if (text_len <= 0) { chat_add_message("DM: no text", false); break; }
-                        plaintext[5 + text_len - 1] = '\0';
-                        char *dm_text = (char *)&plaintext[5];
-
-                        char display[256];
-                        if (sender_name[0])
-                            snprintf(display, sizeof(display), "[%s] %s", sender_name, dm_text);
-                        else
-                            snprintf(display, sizeof(display), "[?%02X] %s", src_hash, dm_text);
-
-                        ESP_LOGI(TAG, "DM RX: %s", display);
-                        chat_add_dm(display, false, sender_pub);
-                        {
-                            uint8_t bph  = mc_msg.bytes_per_hop ? mc_msg.bytes_per_hop : 1;
-                            uint8_t hops = (uint8_t)(mc_msg.path_length / bph);
-                            chat_set_meta_dm(hops);
-                        }
-                        contact_ensure(sender_pub, sender_name, (uint8_t)sender_role);
-                        bool viewing_sender = (current_view == VIEW_CHAT && !dm_inbox_mode &&
-                                               dm_target_set &&
-                                               memcmp(sender_pub, dm_target_pub, MESHCORE_PUB_KEY_SIZE) == 0);
-                        if (!viewing_sender) {
-                            led_dm_pending = true;
-                            contact_mark_unread(sender_pub);
-                            update_notification_led();
-                        }
-
-                        // Send PATH_RETURN with embedded ACK (createPathReturn approach).
-                        // For FLOOD DMs, MeshCore sends PAYLOAD_TYPE_PATH (0x08), not a bare ACK.
-                        // Inner data (16 bytes, AES-ECB encrypted):
-                        //   path_len=0 | PAYLOAD_TYPE_ACK | ack_crc[4] | padding[10]
-                        // Outer payload:
-                        //   dest_hash[1] | src_hash[1] | HMAC[2] | ciphertext[16]
-                        {
-                            // 1. Compute ACK CRC.
-                            uint8_t sha_out[32];
-                            {
-                                mbedtls_sha256_context sha_ctx;
-                                mbedtls_sha256_init(&sha_ctx);
-                                mbedtls_sha256_starts(&sha_ctx, 0);
-                                mbedtls_sha256_update(&sha_ctx, plaintext, 5);
-                                mbedtls_sha256_update(&sha_ctx, (uint8_t*)dm_text, strlen(dm_text));
-                                mbedtls_sha256_update(&sha_ctx, sender_pub, 32);
-                                mbedtls_sha256_finish(&sha_ctx, sha_out);
-                                mbedtls_sha256_free(&sha_ctx);
-                            }
-
-                            // 2. Build and encrypt inner data.
-                            // Layout: path_len_byte | type | ack_crc[4] | path_bytes[hops*bph] | zero-pad
-                            // path_len_byte encodes bytes-per-hop in upper 2 bits, hop count in lower 6.
-                            // Reverse incoming hops so the receiver learns the sequence of repeaters
-                            // back to us. Cap so the inner buffer stays within 2 AES blocks (32B);
-                            // longer paths fall back to 0 hops.
-                            uint8_t ret_bph        = mc_msg.bytes_per_hop ? mc_msg.bytes_per_hop : 1;
-                            uint8_t ret_hop_count  = (ret_bph > 0) ? (mc_msg.path_length / ret_bph) : 0;
-                            uint8_t ret_path_bytes = ret_hop_count * ret_bph;
-                            if (ret_path_bytes > 26) {
-                                ret_hop_count  = 0;
-                                ret_path_bytes = 0;
-                            }
-
-                            size_t  inner_size = ((6 + (size_t)ret_path_bytes + 15) / 16) * 16;
-                            if (inner_size < 16) inner_size = 16;
-                            if (inner_size > 32) inner_size = 32;
-
-                            uint8_t inner[32]       = {0};
-                            uint8_t path_cipher[32] = {0};
-                            inner[0] = ((uint8_t)((ret_bph - 1) & 0x03) << 6) | (ret_hop_count & 0x3F);
-                            inner[1] = MESHCORE_PAYLOAD_TYPE_ACK;
-                            inner[2] = sha_out[0];
-                            inner[3] = sha_out[1];
-                            inner[4] = sha_out[2];
-                            inner[5] = sha_out[3];
-                            for (uint8_t h = 0; h < ret_hop_count; h++) {
-                                uint8_t src_hop = ret_hop_count - 1 - h;
-                                memcpy(&inner[6 + h * ret_bph],
-                                       &mc_msg.path[src_hop * ret_bph],
-                                       ret_bph);
-                            }
-
-                            {
-                                mbedtls_aes_context aes2;
-                                mbedtls_aes_init(&aes2);
-                                mbedtls_aes_setkey_enc(&aes2, good_secret, 128);
-                                for (size_t bi = 0; bi < inner_size; bi += 16) {
-                                    mbedtls_aes_crypt_ecb(&aes2, MBEDTLS_AES_ENCRYPT,
-                                                          &inner[bi], &path_cipher[bi]);
-                                }
-                                mbedtls_aes_free(&aes2);
-                            }
-
-                            // 3. MAC = HMAC-SHA256(good_secret[32], ciphertext)[0:2].
-                            uint8_t path_mac[32];
-                            mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                                            good_secret, 32, path_cipher, inner_size, path_mac);
-
-                            // 4. Build PATH packet (outer still floods).
-                            meshcore_message_t path_msg = {0};
-                            path_msg.type          = MESHCORE_PAYLOAD_TYPE_PATH;
-                            path_msg.route         = MESHCORE_ROUTE_TYPE_FLOOD;
-                            path_msg.version       = 0;
-                            path_msg.bytes_per_hop = path_hash_size;
-                            path_msg.path_length   = 0;
-                            path_msg.payload[0]    = src_hash;
-                            path_msg.payload[1]    = node_pub_key[0];
-                            path_msg.payload[2]    = path_mac[0];
-                            path_msg.payload[3]    = path_mac[1];
-                            memcpy(&path_msg.payload[4], path_cipher, inner_size);
-                            path_msg.payload_length = 4 + inner_size;
-                            apply_region_scope(&path_msg);
-
-                            ESP_LOGI(TAG, "PATH_RETURN: hops=%u bph=%u inner_size=%u",
-                                     (unsigned)ret_hop_count, (unsigned)ret_bph,
-                                     (unsigned)inner_size);
-
-                            uint8_t path_data[MESHCORE_MAX_TRANS_UNIT];
-                            uint8_t path_sz = 0;
-                            if (meshcore_serialize(&path_msg, path_data, &path_sz) == 0) {
-                                lora_protocol_lora_packet_t lora_pkt = {0};
-                                lora_pkt.length = path_sz;
-                                memcpy(lora_pkt.data, path_data, path_sz);
-                                uint32_t air_ms = compute_airtime_ms(path_sz);
-                                if (dc_budget_available(air_ms)) {
-                                    if (lora_send_packet(&lora_handle, &lora_pkt) == ESP_OK) {
-                                        dc_record_tx(air_ms);
-                                    }
-                                } else {
-                                    dc_last_tx_blocked = true;
-                                    ESP_LOGW(TAG, "PATH_RETURN skipped: duty-cycle exhausted");
-                                }
-                            }
-                        }
-                    } while (0);
-                } else if (mc_msg.type == MESHCORE_PAYLOAD_TYPE_PATH) {
-                    // Incoming PATH_RETURN. We only care about it when it
-                    // carries an ACK for one of our outgoing DMs — match by
-                    // ack_crc[4] inside the encrypted inner block. The same
-                    // do{}while(0) pattern lets us bail out cleanly.
-                    do {
-                        if (mc_msg.payload_length < 4 + 16) break;
-                        uint8_t dest_hash = mc_msg.payload[0];
-                        uint8_t src_hash  = mc_msg.payload[1];
-                        if (dest_hash != node_pub_key[0]) break;  // not for us
-
-                        // Find sender by src_hash among live nodes + contacts.
-                        uint8_t sender_pub[32] = {0};
-                        bool    sender_found  = false;
-                        if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                            for (int ni = 0; ni < MAX_NODES; ni++) {
-                                if (node_list[ni].active && node_list[ni].pub_key[0] == src_hash) {
-                                    memcpy(sender_pub, node_list[ni].pub_key, 32);
-                                    sender_found = true;
-                                    break;
-                                }
-                            }
-                            xSemaphoreGive(node_mutex);
-                        }
-                        if (!sender_found) {
-                            for (int ci = 0; ci < contact_count; ci++) {
-                                if (contacts[ci].pub_key[0] == src_hash) {
-                                    memcpy(sender_pub, contacts[ci].pub_key, 32);
-                                    sender_found = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (!sender_found) break;
-
-                        // Derive shared secret (try both ed25519 variants, same
-                        // as the DM path does). Decrypt one or two AES blocks
-                        // and see if inner[1] = ACK and inner[2..5] matches a
-                        // recent own DM's CRC.
-                        uint8_t secret[32];
-                        ed25519_key_exchange(secret, sender_pub, node_prv_key);
-
-                        size_t ct_len = mc_msg.payload_length - 4;
-                        if (ct_len > 32) ct_len = 32;
-                        ct_len = (ct_len / 16) * 16;
-                        if (ct_len < 16) break;
-
-                        uint8_t inner[32]      = {0};
-                        uint8_t ciphertext[32] = {0};
-                        memcpy(ciphertext, &mc_msg.payload[4], ct_len);
-                        mbedtls_aes_context aes_ctx;
-                        mbedtls_aes_init(&aes_ctx);
-                        mbedtls_aes_setkey_dec(&aes_ctx, secret, 128);
-                        for (size_t bi = 0; bi + 16 <= ct_len; bi += 16) {
-                            mbedtls_aes_crypt_ecb(&aes_ctx, MBEDTLS_AES_DECRYPT,
-                                                  ciphertext + bi, inner + bi);
-                        }
-                        mbedtls_aes_free(&aes_ctx);
-
-                        // inner[0] = path_len_byte, inner[1] = payload type.
-                        if (inner[1] != MESHCORE_PAYLOAD_TYPE_ACK) break;
-                        uint8_t ack_crc[4] = { inner[2], inner[3], inner[4], inner[5] };
-                        if (chat_mark_ack_by_crc(ack_crc)) {
-                            ESP_LOGI(TAG, "ACK matched: %02X%02X%02X%02X from %02X",
-                                     ack_crc[0], ack_crc[1], ack_crc[2], ack_crc[3], src_hash);
-                        }
-                    } while (0);
-                }
-            }
+        switch (mc_msg.type) {
+            case MESHCORE_PAYLOAD_TYPE_ADVERT:
+                rx_handle_advert(&mc_msg, now_ms, &pkt.stats);
+                break;
+            case MESHCORE_PAYLOAD_TYPE_GRP_TXT:
+                rx_handle_grp_txt(&mc_msg);
+                break;
+            case MESHCORE_PAYLOAD_TYPE_TXT_MSG:
+                rx_handle_dm(&mc_msg);
+                break;
+            case MESHCORE_PAYLOAD_TYPE_PATH:
+                rx_handle_path(&mc_msg);
+                break;
+            default:
+                break;
         }
     }
 }

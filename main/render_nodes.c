@@ -85,6 +85,11 @@ void render_nodes(void) {
             if (node_cursor < node_scroll)              node_scroll = node_cursor;
             if (node_cursor >= node_scroll + rows_vis)  node_scroll = node_cursor - rows_vis + 1;
 
+            // Orange divider between the contact (favorite) section at the
+            // top and the discovered-nodes section below. We draw it at the
+            // top edge of the first non-contact row, but only if at least
+            // one contact row precedes it in the visible window.
+            bool divider_drawn = false;
             for (int row = 0; row < rows_vis; row++) {
                 int list_idx = row + node_scroll;
                 if (list_idx >= idx_count) break;
@@ -93,6 +98,20 @@ void render_nodes(void) {
 
                 int y = list_y0 + row * NODES_ROW_H;
                 bool is_cursor = (list_idx == node_cursor);
+
+                if (!divider_drawn && !d->is_contact) {
+                    // First non-contact row in the visible window. Only
+                    // draw if the previous visible row was a contact, OR
+                    // this row is not the very top (i.e. contacts were
+                    // scrolled off but did exist).
+                    bool prev_was_contact = (row > 0 && rows_dl[list_idx - 1].is_contact);
+                    bool scrolled_past_contacts = (node_scroll > 0 && contact_count > 0
+                                                   && list_idx <= contact_count);
+                    if (prev_was_contact || scrolled_past_contacts) {
+                        pax_simple_rect(&fb, COL_AMBER, 6, y - 2, w - 12, 2);
+                    }
+                    divider_drawn = true;
+                }
 
                 if (is_cursor) {
                     pax_simple_rect(&fb, COL_PANEL, 0, y, w, NODES_ROW_H);

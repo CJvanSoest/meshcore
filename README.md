@@ -17,7 +17,7 @@ A [MeshCore](https://meshcore.co.uk) LoRa mesh communication app for the
 | **Application processor** | ESP32-P4 |
 | **Radio co-processor** | ESP32-C6 |
 | **Radio chip** | SX1262 (LoRa, 868 MHz EU band) |
-| **Display** | 4" MIPI DSI, 800×1280 px |
+| **Display** | 4" MIPI DSI ST7701, native 480×800 — rendered as **800×480 landscape** (rotation 270°) |
 | **Framework** | ESP-IDF v5.5.1 |
 
 ---
@@ -33,9 +33,9 @@ the launcher.
 | **Nodes** | Live list of heard nodes — role, RSSI/SNR, distance, last seen; saved contacts starred |
 | **DM** | Inbox + per-contact end-to-end encrypted conversations (carries an unread badge on the tile itself) |
 | **Channel** | Public channel chat (AES-128-ECB), per-channel rings, unread badge on the tile |
-| **Map** | Reserved — slots in once GPS via the companion-radio protocol lands |
+| **Map** | Reserved — slots in once an on-device map view lands |
 | **Advert** | Sends a flood advert inline + 2-second toast; stays on home |
-| **Settings** | Two-level menu: tile-grid of categories (Identity / Regulatory / Radio / Network / Region & Location / **Brightness**) → drill into the fields for one category |
+| **Settings** | Two-level menu: tile-grid of categories (Identity / Regulatory / Radio / Network / Region & Location / **Brightness** / **Sounds**) → drill into the fields for one category. Advert config is reached via the Home → Advert tile. |
 | **About** | App version, build date, author, upstream credits, MIT license, source URL |
 | **QR** | Opens the "add me as contact" QR overlay rooted at home |
 
@@ -67,8 +67,24 @@ views (Settings → Nodes → DM → Channel) for keyboard power users.
 - **Per-app brightness** — independent display backlight, keyboard backlight
   and RGB LED brightness sliders (5/10/25/50/75/100 %, NVS-persisted) that
   override the launcher globals while MeshCore is running
-- **Manual GPS coords** (×1e6 upstream scale) for Nodes-view Dist column +
-  advert position field
+- **GPS coordinates from multiple sources** — Manual entry, PA1010D module
+  on the QWIIC bus (one-press auto-fill), USB-CDC push from a companion,
+  BLE companion (iPhone MeshCore app), or HTTPS `/ping` (MeshMapper /
+  iOS Shortcuts / OwnTracks). The active source is surfaced in Settings;
+  full details in [GPS sources](docs/wiki/GPS-Sources.md).
+- **Notification sounds** — drop your own WAVs on `/sd/meshcore/sounds/{1..4}.wav`,
+  pick one per event (DM / Channel / Error / Boot) in Settings → Sounds.
+  Volume + on/off per event, all NVS-persisted.
+  See [Sounds](docs/wiki/Sounds.md) for the WAV format, recommended free
+  catalogues, and the `ffmpeg` + `badgelink` upload recipe.
+- **On-device HTTPS** — each badge generates its own ECDSA P-256
+  self-signed cert on first boot, persisted to NVS. mDNS publishes
+  `tanmatsu.local:8443`; iOS installs the cert once and `/ping` accepts
+  GPS pushes from OwnTracks, iOS Shortcuts and MeshMapper without per-IP
+  cert juggling.
+- **BLE companion radio** (toggle in Settings) — pair with the official
+  MeshCore iPhone app to use the badge as its radio while the iPhone
+  drives the UI.
 - **Twemoji-based emoji picker** — 8 base smileys, UTF-8 round-trip with
   other MeshCore clients
 - **QR contact sharing** — show a QR that the mobile app can scan directly
@@ -162,54 +178,41 @@ Full per-country table and the data schema live in
 
 ## Screenshots
 
-<table>
-  <tr>
-    <td align="center"><b>Home (tile grid)</b></td>
-    <td align="center"><b>About</b></td>
-  </tr>
-  <tr>
-    <td><img src="docs/screen-home.svg" width="360"></td>
-    <td><img src="docs/screen-about.svg" width="360"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Settings (category tiles)</b></td>
-    <td align="center"><b>Settings → Brightness (drill-in)</b></td>
-  </tr>
-  <tr>
-    <td><img src="docs/screen-settings-tiles.svg" width="360"></td>
-    <td><img src="docs/screen-settings-brightness.svg" width="360"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Settings → Radio (drill-in)</b></td>
-    <td align="center"><b>Nodes</b></td>
-  </tr>
-  <tr>
-    <td><img src="docs/screen-settings.svg" width="360"></td>
-    <td><img src="docs/screen-nodes.svg" width="360"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>DM inbox</b></td>
-    <td align="center"><b>DM conversation</b></td>
-  </tr>
-  <tr>
-    <td><img src="docs/screen-dm-inbox.svg" width="360"></td>
-    <td><img src="docs/screen-dm.svg" width="360"></td>
-  </tr>
-  <tr>
-    <td align="center"><b>Channel</b></td>
-    <td align="center"><b>QR contact card</b></td>
-  </tr>
-  <tr>
-    <td><img src="docs/screen-channel.svg" width="360"></td>
-    <td><img src="docs/screen-qr.svg" width="360"></td>
-  </tr>
-  <tr>
-    <td align="center" colspan="2"><b>Boot diagnostics</b></td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center"><img src="docs/screen-boot.svg" width="360"></td>
-  </tr>
-</table>
+Mock-ups of every view in landscape proportions (800×480), stacked vertically
+so each one renders at a usable width regardless of viewport.
+
+**Home — tile grid**
+<p><img src="docs/screen-home.svg" width="480"></p>
+
+**Settings — category tiles**
+<p><img src="docs/screen-settings-tiles.svg" width="480"></p>
+
+**Settings → Radio (drill-in)**
+<p><img src="docs/screen-settings.svg" width="480"></p>
+
+**Settings → Brightness (drill-in)**
+<p><img src="docs/screen-settings-brightness.svg" width="480"></p>
+
+**Nodes**
+<p><img src="docs/screen-nodes.svg" width="480"></p>
+
+**DM inbox**
+<p><img src="docs/screen-dm-inbox.svg" width="480"></p>
+
+**DM conversation**
+<p><img src="docs/screen-dm.svg" width="480"></p>
+
+**Channel**
+<p><img src="docs/screen-channel.svg" width="480"></p>
+
+**QR contact card**
+<p><img src="docs/screen-qr.svg" width="480"></p>
+
+**About**
+<p><img src="docs/screen-about.svg" width="480"></p>
+
+**Boot diagnostics**
+<p><img src="docs/screen-boot.svg" width="480"></p>
 
 ---
 
@@ -258,6 +261,8 @@ firmware flashing are documented in
 | [MeshCore protocol](docs/wiki/MeshCore-Protocol.md) | Packet types, ADVERT/DM/Channel/PATH, encryption, ACK, SNTP |
 | [UI / UX](docs/wiki/UI-UX.md) | Tabs, key bindings, edit-mode state machine, QR overlay |
 | [Settings / NVS](docs/wiki/Settings-NVS.md) | Persistent keys, defaults, ranges, presets |
+| [GPS sources](docs/wiki/GPS-Sources.md) | All 5 input paths, what's tested vs preview, how to wire OwnTracks / iOS Shortcuts / MeshMapper |
+| [Sounds](docs/wiki/Sounds.md) | WAV format, recommended free sources, `ffmpeg` + `badgelink` setup |
 | [SD card layout](docs/wiki/SD-Card-Layout.md) | `/sd/meshcore/`, encryption, self-heal |
 | [C6 radio](docs/wiki/C6-Radio.md) | `lora_rpc`, RSSI/SNR patches, firmware update workflow |
 | [Build / Deploy](docs/wiki/Build-Deploy.md) | IDF env, badgelink, launcher dependency, partition layout |
@@ -268,6 +273,21 @@ firmware flashing are documented in
 
 Read about the development journey and lessons learned on Medium:
 [Building a MeshCore Client on the Tanmatsu Badge](https://medium.com/@cjvansoest/building-a-meshcore-client-on-the-tanmatsu-badge-cfc46f02227f)
+
+---
+
+## Bug reports & feature requests
+
+This is a community build of MeshCore for the Tanmatsu badge, **not the
+official MeshCore iOS/Android app**. For issues, questions, or feature ideas
+that are specific to this app, please open a ticket so they don't get lost in
+chat threads:
+
+→ **[github.com/CJvanSoest/meshcore/issues](https://github.com/CJvanSoest/meshcore/issues)**
+
+If you're chatting on the MeshCore Discord and the question is specific to
+the Tanmatsu app, please open a ticket here too — it makes the history
+searchable for the next person hitting the same thing.
 
 ---
 

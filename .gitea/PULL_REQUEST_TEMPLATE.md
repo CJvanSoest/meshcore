@@ -1,17 +1,17 @@
 ## What
-<!-- 1-3 zinnen wat er verandert -->
+<!-- 1-3 sentences describing what changes. -->
 
 ## Why
-<!-- Reden: bug / feature / refactor / docs / etc. Link issues als die er zijn. -->
+<!-- Reason: bug / feature / refactor / docs / etc. Link issues if applicable. -->
 
 ## Test plan
-- [ ] Lokaal gebouwd (`make build DEVICE=tanmatsu`)
-- [ ] Op device getest — flow:
-- [ ] Privacy: geen LAN-IP / Infisical secret names / persoonlijke paden in files die de GitHub-mirror raken (zie `.github/workflows/privacy.yml`)
+- [ ] Built locally (`make build DEVICE=tanmatsu`)
+- [ ] Tested on device — flow:
+- [ ] Privacy: no LAN IPs / Infisical secret names / personal paths in files that reach the GitHub mirror (see `.github/workflows/privacy.yml`)
 
 ## Breaking changes
-<!-- Geen, of: beschrijf wat er breekt en wat een gebruiker moet doen
-     (NVS-keys, wire-format, radio-versie-eis, app-versie-bump nodig?). -->
+<!-- None, or: describe what breaks and what a user must do
+     (NVS keys, wire format, radio version requirement, app version bump needed?). -->
 
 ## Screenshots
-<!-- Bij UI-werk: voor/na. Weglaten als niet van toepassing. -->
+<!-- For UI work: before/after. Omit when not applicable. -->

@@ -3,6 +3,7 @@
 
 #include "render.h"
 #include "render_internal.h"
+#include "render_settings_icons.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -14,8 +15,12 @@
 #include "pax_text.h"
 
 #include "app_config.h"
+#include "cert_gen.h"
+#include "gps.h"
+#include "http_server.h"
 #include "identity.h"
 #include "nodes.h"
+#include "wifi_connection.h"
 #include "radio.h"
 #include "radio_system_protocol_client.h"
 #include "region_limits.h"
@@ -33,17 +38,44 @@ typedef struct {
     field_t     first;
     const char *title;
     const char *subtitle;
+    bool        hidden_from_grid;  // true = drilldown reachable, but tile not on the Settings grid
 } settings_category_t;
 
 static const settings_category_t s_categories[] = {
-    { FIELD_RADIO_FW,     "Identity",          "Owner name, advert name, radio firmware"      },
-    { FIELD_COUNTRY,      "Regulatory",        "Country, antenna gain, duty cycle"            },
-    { FIELD_FREQ,         "Radio",             "Freq, SF, BW, CR, power, sync, preamble, ..." },
-    { FIELD_ADVERT_INT,   "Network",           "Advert interval, role, path hash"             },
-    { FIELD_REGION_SCOPE, "Region &\nLocation","Region scope, GPS coordinates"                },
-    { FIELD_DISPLAY_BL,   "Brightness",        "Display, keyboard, RGB LED, auto-blank"       },
+    { FIELD_RADIO_FW,          "Identity",          "Owner name, advert name, radio firmware",      false },
+    { FIELD_COUNTRY,           "Regulatory",        "Country, antenna gain, duty cycle",            false },
+    { FIELD_FREQ,              "Radio",             "Freq, SF, BW, CR, power, sync, preamble, ...", false },
+    // Advert is reached only via the Home -> Advert tile (the tile drills in
+    // directly). Hidden here so the Settings grid doesn't have a duplicate.
+    { FIELD_FLOOD_ADVERT_INT,  "Advert",            "Flood + direct intervals, manual send",        true  },
+    { FIELD_ROLE,              "Network",           "Role, path hash, WiFi, HTTP endpoint",         false },
+    { FIELD_REGION_SCOPE,      "Region &\nLocation","Region scope, GPS coordinates",                false },
+    { FIELD_DISPLAY_BL,        "Brightness",        "Display, keyboard, RGB LED, auto-blank",       false },
+    { FIELD_SOUND_VOLUME,      "Sounds",            "Volume + per-event toggles + previews",        false },
 };
 #define S_CATEGORY_COUNT ((int)(sizeof(s_categories) / sizeof(s_categories[0])))
+
+// Visible categories = those without hidden_from_grid. Grid render + grid
+// navigation work in visible-slot space; drilldown logic still uses the
+// real s_categories index via settings_category_active. The Home -> Advert
+// tile drives the drilldown directly so the hidden Advert category is
+// still reachable.
+static int s_visible_count(void) {
+    int n = 0;
+    for (int i = 0; i < S_CATEGORY_COUNT; i++) if (!s_categories[i].hidden_from_grid) n++;
+    return n;
+}
+static int s_visible_real_idx(int slot) {
+    int seen = 0;
+    for (int i = 0; i < S_CATEGORY_COUNT; i++) {
+        if (s_categories[i].hidden_from_grid) continue;
+        if (seen == slot) return i;
+        seen++;
+    }
+    return -1;
+}
+int settings_visible_category_count(void) { return s_visible_count(); }
+int settings_visible_category_real_idx(int slot) { return s_visible_real_idx(slot); }
 
 int settings_category_count(void) { return S_CATEGORY_COUNT; }
 
@@ -71,73 +103,101 @@ int settings_category_for_field(int f) {
     return 0;
 }
 
-// ── Tile-grid icons for the category screen ──────────────────────────────────
-// Drawn at the centre of each tile in the Pager-style category grid; same
-// primitive style as render_home.c so the two screens read as siblings.
-static void cat_icon_identity(int cx, int cy, int sz, pax_col_t col) {
-    pax_outline_circle(&fb, col, cx, cy - sz / 6, sz / 4);  // head
-    pax_outline_circle(&fb, col, cx, cy + sz / 3, sz / 2);  // shoulders (cropped)
-}
+// ── Field registry (R6) ─────────────────────────────────────────────────────
+// Single source of truth: per-field label + NVS-save callback. Replaces the
+// earlier two parallel tables (per-category build_rows_X[] + input.c's
+// s_field_savers[]) so adding a settings row is one designated-init entry
+// here plus one case in fmt_field() below.
+//
+// `save = NULL` means: don't persist on edit-mode exit. Persistable fields
+// without a dedicated save_*() fall through to save_lora_config() via
+// field_save() — same fallback the old s_field_savers cascade had.
+typedef struct {
+    const char *label;
+    void      (*save)(void);
+} field_def_t;
 
-static void cat_icon_regulatory(int cx, int cy, int sz, pax_col_t col) {
-    int s = sz / 2;
-    pax_simple_line(&fb, col, cx,     cy - s, cx + s, cy - s / 3);
-    pax_simple_line(&fb, col, cx + s, cy - s / 3, cx + s, cy + s / 3);
-    pax_simple_line(&fb, col, cx + s, cy + s / 3, cx,     cy + s);
-    pax_simple_line(&fb, col, cx,     cy + s, cx - s, cy + s / 3);
-    pax_simple_line(&fb, col, cx - s, cy + s / 3, cx - s, cy - s / 3);
-    pax_simple_line(&fb, col, cx - s, cy - s / 3, cx,     cy - s);
-}
-
-static void cat_icon_radio(int cx, int cy, int sz, pax_col_t col) {
-    int q = sz / 2;
-    pax_outline_circle(&fb, col, cx, cy, q / 4);  // node
-    pax_outline_hollow_circle(&fb, col, cx, cy, q / 2 - 2, q / 2);
-    pax_outline_hollow_circle(&fb, col, cx, cy, q     - 2, q);
-}
-
-static void cat_icon_network(int cx, int cy, int sz, pax_col_t col) {
-    int s = sz / 3;
-    pax_simple_circle(&fb, col, cx,      cy - s, sz / 12);
-    pax_simple_circle(&fb, col, cx - s,  cy + s, sz / 12);
-    pax_simple_circle(&fb, col, cx + s,  cy + s, sz / 12);
-    pax_simple_line  (&fb, col, cx,      cy - s, cx - s, cy + s);
-    pax_simple_line  (&fb, col, cx,      cy - s, cx + s, cy + s);
-    pax_simple_line  (&fb, col, cx - s,  cy + s, cx + s, cy + s);
-}
-
-static void cat_icon_region(int cx, int cy, int sz, pax_col_t col) {
-    // Map-pin-ish: tear-drop outline + small dot in the bell.
-    int r = sz / 3;
-    pax_outline_circle(&fb, col, cx, cy - r / 2, r);
-    pax_simple_line(&fb, col, cx - r * 7 / 10, cy - r / 8, cx, cy + r * 5 / 4);
-    pax_simple_line(&fb, col, cx + r * 7 / 10, cy - r / 8, cx, cy + r * 5 / 4);
-    pax_simple_circle(&fb, col, cx, cy - r / 2, r / 3);
-}
-
-static void cat_icon_brightness(int cx, int cy, int sz, pax_col_t col) {
-    int r = sz / 5;
-    pax_simple_circle(&fb, col, cx, cy, r);
-    // 8 rays evenly around the sun.
-    for (int a = 0; a < 8; a++) {
-        float t  = (float)a * 3.14159f / 4.0f;
-        float r0 = (float)r + sz / 14.0f;
-        float r1 = (float)sz / 2.0f;
-        pax_simple_line(&fb, col,
-                        cx + r0 * cosf(t), cy + r0 * sinf(t),
-                        cx + r1 * cosf(t), cy + r1 * sinf(t));
-    }
-}
-
-typedef void (*cat_icon_fn)(int cx, int cy, int sz, pax_col_t col);
-static const cat_icon_fn s_category_icons[] = {
-    cat_icon_identity,
-    cat_icon_regulatory,
-    cat_icon_radio,
-    cat_icon_network,
-    cat_icon_region,
-    cat_icon_brightness,
+static const field_def_t s_fields[FIELD_COUNT] = {
+    // ── Identity ──
+    [FIELD_RADIO_FW]          = { "Radio ID",            NULL                   },
+    [FIELD_RADIO_FW_APP]      = { "Radio firmware",      NULL                   },
+    [FIELD_OWNER]             = { "Owner name",          save_owner_name        },
+    [FIELD_ADV_NAME]          = { "Advert name",         save_lora_advert_name  },
+    // ── Regulatory ──
+    [FIELD_COUNTRY]           = { "Country",             save_country_code      },
+    [FIELD_ANTENNA_GAIN]      = { "Antenna gain",        save_antenna_gain      },
+    [FIELD_DUTY_CYCLE]        = { "Duty cycle (1h)",     NULL                   },
+    // ── Radio ──
+    [FIELD_FREQ]              = { "Frequency",           NULL                   },
+    [FIELD_SF]                = { "Spreading factor",    NULL                   },
+    [FIELD_BW]                = { "Bandwidth",           NULL                   },
+    [FIELD_CR]                = { "Coding rate",         NULL                   },
+    [FIELD_POWER]             = { "TX power",            NULL                   },
+    [FIELD_SYNC]              = { "Sync word",           NULL                   },
+    [FIELD_PREAMBLE]          = { "Preamble length",     NULL                   },
+    [FIELD_PRESET]            = { "LoRa preset",         NULL                   },
+    [FIELD_SENSITIVITY]       = { "RX sensitivity",      NULL                   },
+    // ── Advert ──
+    [FIELD_FLOOD_ADVERT_INT]  = { "Flood interval",      NULL                   },
+    [FIELD_DIRECT_ADVERT_INT] = { "Direct interval",     NULL                   },
+    [FIELD_SEND_FLOOD_NOW]    = { "Send flood now",      NULL                   },
+    [FIELD_SEND_DIRECT_NOW]   = { "Send direct now",     NULL                   },
+    // ── Network ──
+    [FIELD_ROLE]              = { "Role",                NULL                   },
+    [FIELD_PATH_HASH_SIZE]    = { "Path hash size",      NULL                   },
+    [FIELD_WIFI_SSID]         = { "WiFi SSID",           save_wifi              },
+    [FIELD_WIFI_PASSWORD]     = { "WiFi password",       save_wifi              },
+    [FIELD_WIFI_CONNECT]      = { "WiFi connect",        NULL                   },
+    [FIELD_WIFI_STATUS]       = { "WiFi status",         NULL                   },
+    [FIELD_HTTP_URL]          = { "HTTPS endpoint",      NULL                   },
+    [FIELD_HTTP_API_KEY]      = { "API key",             NULL                   },
+    [FIELD_HTTP_KEY_REGEN]    = { "Regenerate API key",  NULL                   },
+    [FIELD_HTTPS_CERT_FP]     = { "HTTPS cert FP",       NULL                   },
+    [FIELD_HTTPS_CERT_REGEN]  = { "Regenerate cert",     NULL                   },
+    // ── Region & Location ──
+    [FIELD_REGION_SCOPE]      = { "Region scope",        save_region_scope      },
+    [FIELD_GPS_LAT]           = { "GPS latitude",        save_gps_coords        },
+    [FIELD_GPS_LON]           = { "GPS longitude",       save_gps_coords        },
+    [FIELD_GPS_SOURCE]        = { "GPS source",          NULL                   },
+    [FIELD_GPS_AUTOFILL]      = { "Auto-fill from GPS",  NULL                   },
+    [FIELD_BLE_ENABLED]       = { "BLE companion",       save_ble_enabled       },
+    // ── Brightness ──
+    [FIELD_DISPLAY_BL]        = { "Display backlight",   save_brightness        },
+    [FIELD_KB_BL]             = { "Keyboard backlight",  save_brightness        },
+    [FIELD_LED_BR]            = { "RGB LED brightness",  save_brightness        },
+    [FIELD_BLANK_AFTER]       = { "Auto-blank display",  save_brightness        },
+    // ── Sounds ──
+    [FIELD_SOUND_VOLUME]      = { "Volume",              save_sound_prefs       },
+    [FIELD_SOUND_DM]          = { "DM sound",            save_sound_prefs       },
+    [FIELD_SOUND_CHANNEL]     = { "Channel sound",       save_sound_prefs       },
+    [FIELD_SOUND_ERROR]       = { "Error sound",         save_sound_prefs       },
+    [FIELD_SOUND_BOOT]        = { "Boot sound",          save_sound_prefs       },
+    [FIELD_SOUND_TEST_DM]     = { "Preview DM",          NULL                   },
+    [FIELD_SOUND_TEST_CHANNEL]= { "Preview channel",     NULL                   },
+    [FIELD_SOUND_TEST_ERROR]  = { "Preview error",       NULL                   },
+    [FIELD_SOUND_TEST_BOOT]   = { "Preview boot",        NULL                   },
 };
+
+// Public save dispatch — replaces input.c's s_field_savers + persist_field_change.
+// Fields without a dedicated save_*() fall back to save_lora_config(), which is
+// the catch-all NVS-write for the radio/mesh registry.
+void field_save(field_t f) {
+    if (f < 0 || f >= FIELD_COUNT) return;
+    if (s_fields[f].save) s_fields[f].save();
+    else                  save_lora_config();
+}
+
+// row_t is the label/value pair rendered on one drilldown row. Label is
+// copied from s_fields[f].label; value is produced by fmt_field() below.
+typedef struct { const char *label; char value[64]; } row_t;
+
+// Forward decl — implementation lives near the bottom of this file so the
+// switch sits next to the rendering code that consumes it.
+static void fmt_field(field_t f, char *out, size_t cap);
+
+// Category tile-grid icons live in render_settings_icons.c so this file
+// stays focused on layout + per-field rendering. Index order in
+// settings_category_icons[] must match s_categories[] above.
 
 // ── Category-list renderer ───────────────────────────────────────────────────
 // 4-column Pager-style tile grid (same proportions as render_home.c), one
@@ -152,19 +212,22 @@ static void render_settings_category_list(int w, int h) {
     int area_h  = h - area_y0 - S_GRID_V_MARG - S_GRID_FOOTER;
     int area_w  = w - S_GRID_H_MARG * 2;
 
-    int rows    = (S_CATEGORY_COUNT + S_GRID_COLS - 1) / S_GRID_COLS;
+    int visible = s_visible_count();
+    int rows    = (visible + S_GRID_COLS - 1) / S_GRID_COLS;
     if (rows < 1) rows = 1;
 
     int tile_w  = (area_w - S_GRID_H_MARG * (S_GRID_COLS - 1)) / S_GRID_COLS;
     int tile_h  = (area_h - S_GRID_V_MARG * (rows - 1)) / rows;
 
-    for (int i = 0; i < S_CATEGORY_COUNT; i++) {
-        int col = i % S_GRID_COLS;
-        int row = i / S_GRID_COLS;
+    for (int slot = 0; slot < visible; slot++) {
+        int i = s_visible_real_idx(slot);
+        if (i < 0) continue;
+        int col = slot % S_GRID_COLS;
+        int row = slot / S_GRID_COLS;
         int tx  = S_GRID_H_MARG + col * (tile_w + S_GRID_H_MARG);
         int ty  = area_y0       + row * (tile_h + S_GRID_V_MARG);
 
-        bool focused  = (i == settings_category_cursor);
+        bool focused  = (slot == settings_category_cursor);
         pax_col_t bg  = focused ? COL_PAGER_ACCENT : COL_PAGER_TILE;
         pax_col_t fg  = focused ? COL_HEADER       : COL_PAGER_TEXT;
 
@@ -180,9 +243,8 @@ static void render_settings_category_list(int w, int h) {
         if (icon_sz > tile_h * 2 / 5) icon_sz = tile_h * 2 / 5;
         int icon_cx = tx + tile_w / 2;
         int icon_cy = ty + tile_h * 2 / 5;
-        if (i < (int)(sizeof(s_category_icons) / sizeof(s_category_icons[0])) &&
-            s_category_icons[i]) {
-            s_category_icons[i](icon_cx, icon_cy, icon_sz, fg);
+        if (i < settings_category_icons_count && settings_category_icons[i]) {
+            settings_category_icons[i](icon_cx, icon_cy, icon_sz, fg);
         }
 
         // Render label centered; support an embedded '\n' so labels that
@@ -237,157 +299,14 @@ static void render_settings_drilldown(int w, int h) {
                       (TAB_BAR_H - TXT_SMALL) / 2, mode_str);
     }
 
-    typedef struct { const char *label; char value[64]; } row_t;
-    row_t rows[FIELD_COUNT];
-
-    rows[FIELD_RADIO_FW].label = "Radio ID";
-    snprintf(rows[FIELD_RADIO_FW].value, sizeof(rows[FIELD_RADIO_FW].value), "%s",
-             radio_fw_version[0] ? radio_fw_version : "?");
-
-    rows[FIELD_RADIO_FW_APP].label = "Radio firmware";
-    snprintf(rows[FIELD_RADIO_FW_APP].value, sizeof(rows[FIELD_RADIO_FW_APP].value),
-             "%s", radio_fw_app_version[0] ? radio_fw_app_version : TANMATSU_RADIO_FW_LABEL);
-
-    snprintf(rows[FIELD_OWNER].value, sizeof(rows[FIELD_OWNER].value), "%s", owner_name);
-    rows[FIELD_OWNER].label = "Owner name";
-
-    rows[FIELD_ADV_NAME].label = "Advert name";
-    snprintf(rows[FIELD_ADV_NAME].value, sizeof(rows[FIELD_ADV_NAME].value), "%s",
-             lora_advert_name[0] ? lora_advert_name : "(use owner)");
-
-    rows[FIELD_COUNTRY].label = "Country";
-    {
-        const regulatory_country_t *rc = region_get_country(country_code);
-        if (!rc || rc->n_subbands == 0) {
-            snprintf(rows[FIELD_COUNTRY].value, sizeof(rows[FIELD_COUNTRY].value),
-                     "(not set)");
-        } else {
-            const regulatory_subband_t *sb = region_match_subband(
-                rc, (float)lora_cfg.frequency / 1000000.0f);
-            if (sb) {
-                snprintf(rows[FIELD_COUNTRY].value, sizeof(rows[FIELD_COUNTRY].value),
-                         "%s [%s]", rc->display_name, sb->label);
-            } else {
-                snprintf(rows[FIELD_COUNTRY].value, sizeof(rows[FIELD_COUNTRY].value),
-                         "%s [!off-band]", rc->display_name);
-            }
-        }
-    }
-
-    rows[FIELD_ANTENNA_GAIN].label = "Antenna gain";
-    if (country_code[0] == '-' || country_code[0] == '\0') {
-        snprintf(rows[FIELD_ANTENNA_GAIN].value, sizeof(rows[FIELD_ANTENNA_GAIN].value),
-                 "(set country)");
-    } else {
-        snprintf(rows[FIELD_ANTENNA_GAIN].value, sizeof(rows[FIELD_ANTENNA_GAIN].value),
-                 "%d dBi", (int)antenna_gain_dbi);
-    }
-
-    rows[FIELD_FREQ].label = "Frequency";
-    snprintf(rows[FIELD_FREQ].value, sizeof(rows[FIELD_FREQ].value),
-             "%.3f MHz", (double)lora_cfg.frequency / 1000000.0);
-
-    rows[FIELD_SF].label = "Spreading factor";
-    snprintf(rows[FIELD_SF].value, sizeof(rows[FIELD_SF].value), "SF%d", lora_cfg.spreading_factor);
-
-    rows[FIELD_BW].label = "Bandwidth";
-    snprintf(rows[FIELD_BW].value, sizeof(rows[FIELD_BW].value), "%d kHz", (int)lora_cfg.bandwidth);
-
-    rows[FIELD_CR].label = "Coding rate";
-    snprintf(rows[FIELD_CR].value, sizeof(rows[FIELD_CR].value), "4/%d", lora_cfg.coding_rate);
-
-    rows[FIELD_POWER].label = "TX power";
-    snprintf(rows[FIELD_POWER].value, sizeof(rows[FIELD_POWER].value), "%d dBm", (int)lora_cfg.power);
-
-    rows[FIELD_SYNC].label = "Sync word";
-    snprintf(rows[FIELD_SYNC].value, sizeof(rows[FIELD_SYNC].value), "0x%02X", (unsigned)lora_cfg.sync_word);
-
-    rows[FIELD_PREAMBLE].label = "Preamble length";
-    snprintf(rows[FIELD_PREAMBLE].value, sizeof(rows[FIELD_PREAMBLE].value), "%d", (int)lora_cfg.preamble_length);
-
-    rows[FIELD_ADVERT_INT].label = "Advert interval";
-    if (advert_interval_s < 60) {
-        snprintf(rows[FIELD_ADVERT_INT].value, sizeof(rows[FIELD_ADVERT_INT].value), "%us", (unsigned)advert_interval_s);
-    } else {
-        snprintf(rows[FIELD_ADVERT_INT].value, sizeof(rows[FIELD_ADVERT_INT].value), "%umin", (unsigned)(advert_interval_s / 60));
-    }
-
-    rows[FIELD_PRESET].label = "LoRa preset";
-    {
-        int pidx = lora_preset_match();
-        if (pidx >= 0) {
-            snprintf(rows[FIELD_PRESET].value, sizeof(rows[FIELD_PRESET].value), "%s", LORA_PRESETS[pidx].name);
-        } else {
-            snprintf(rows[FIELD_PRESET].value, sizeof(rows[FIELD_PRESET].value), "(custom)");
-        }
-    }
-
-    rows[FIELD_ROLE].label = "Role";
-    snprintf(rows[FIELD_ROLE].value, sizeof(rows[FIELD_ROLE].value), "%s", role_label(lora_role));
-
-    rows[FIELD_PATH_HASH_SIZE].label = "Path hash size";
-    {
-        static const char *hops[] = {"64 hops", "32 hops", "21 hops"};
-        int hi = (path_hash_size >= 1 && path_hash_size <= 3) ? (path_hash_size - 1) : 0;
-        snprintf(rows[FIELD_PATH_HASH_SIZE].value, sizeof(rows[FIELD_PATH_HASH_SIZE].value),
-                 "%u byte (%s)", path_hash_size, hops[hi]);
-    }
-
-    rows[FIELD_SENSITIVITY].label = "RX sensitivity";
-    snprintf(rows[FIELD_SENSITIVITY].value, sizeof(rows[FIELD_SENSITIVITY].value),
-             "%s", lora_cfg.rx_boost ? "High (+3dB)" : "Power save");
-
-    rows[FIELD_REGION_SCOPE].label = "Region scope";
-    snprintf(rows[FIELD_REGION_SCOPE].value, sizeof(rows[FIELD_REGION_SCOPE].value),
-             "%s", region_scope[0] ? region_scope : "(not set)");
-
-    rows[FIELD_GPS_LAT].label = "GPS latitude";
-    if (gps_position_valid) {
-        snprintf(rows[FIELD_GPS_LAT].value, sizeof(rows[FIELD_GPS_LAT].value),
-                 "%.6f", (double)gps_lat_e6 / 1e6);
-    } else {
-        snprintf(rows[FIELD_GPS_LAT].value, sizeof(rows[FIELD_GPS_LAT].value), "(not set)");
-    }
-    rows[FIELD_GPS_LON].label = "GPS longitude";
-    if (gps_position_valid) {
-        snprintf(rows[FIELD_GPS_LON].value, sizeof(rows[FIELD_GPS_LON].value),
-                 "%.6f", (double)gps_lon_e6 / 1e6);
-    } else {
-        snprintf(rows[FIELD_GPS_LON].value, sizeof(rows[FIELD_GPS_LON].value), "(not set)");
-    }
-
-    rows[FIELD_DUTY_CYCLE].label = "Duty cycle (1h)";
-    if (dc_budget_ms == 0 || dc_budget_ms >= 3600000u) {
-        snprintf(rows[FIELD_DUTY_CYCLE].value, sizeof(rows[FIELD_DUTY_CYCLE].value),
-                 "%lus used (no limit)", (unsigned long)(dc_used_ms / 1000u));
-    } else {
-        unsigned pct_x10 = (unsigned)(((uint64_t)dc_used_ms * 1000u) / dc_budget_ms);
-        snprintf(rows[FIELD_DUTY_CYCLE].value, sizeof(rows[FIELD_DUTY_CYCLE].value),
-                 "%u.%u%% (%lus / %lus)%s",
-                 pct_x10 / 10u, pct_x10 % 10u,
-                 (unsigned long)(dc_used_ms / 1000u),
-                 (unsigned long)(dc_budget_ms / 1000u),
-                 dc_last_tx_blocked ? " BLOCKED" : "");
-    }
-
-    rows[FIELD_DISPLAY_BL].label = "Display backlight";
-    snprintf(rows[FIELD_DISPLAY_BL].value, sizeof(rows[FIELD_DISPLAY_BL].value),
-             "%u%%", (unsigned)display_brightness);
-    rows[FIELD_KB_BL].label = "Keyboard backlight";
-    snprintf(rows[FIELD_KB_BL].value, sizeof(rows[FIELD_KB_BL].value),
-             "%u%%", (unsigned)keyboard_brightness);
-    rows[FIELD_LED_BR].label = "RGB LED brightness";
-    snprintf(rows[FIELD_LED_BR].value, sizeof(rows[FIELD_LED_BR].value),
-             "%u%%", (unsigned)led_brightness);
-    rows[FIELD_BLANK_AFTER].label = "Auto-blank display";
-    if (display_blank_after_s == 0) {
-        snprintf(rows[FIELD_BLANK_AFTER].value, sizeof(rows[FIELD_BLANK_AFTER].value), "Off");
-    } else if (display_blank_after_s < 60) {
-        snprintf(rows[FIELD_BLANK_AFTER].value, sizeof(rows[FIELD_BLANK_AFTER].value),
-                 "%us", (unsigned)display_blank_after_s);
-    } else {
-        snprintf(rows[FIELD_BLANK_AFTER].value, sizeof(rows[FIELD_BLANK_AFTER].value),
-                 "%umin", (unsigned)(display_blank_after_s / 60));
+    row_t rows[FIELD_COUNT] = {0};
+    // Build only the rows belonging to the active category. Label comes
+    // from the registry, value from fmt_field(). Everything outside
+    // [first_field, last_field] stays at the zero-init default and is
+    // never touched by the renderer.
+    for (int i = first_field; i <= last_field && i < FIELD_COUNT; i++) {
+        rows[i].label = s_fields[i].label;
+        fmt_field((field_t)i, rows[i].value, sizeof(rows[i].value));
     }
 
     const int row_h    = 44;
@@ -395,8 +314,20 @@ static void render_settings_drilldown(int w, int h) {
     const int footer_h = 60;
     const int y0       = TAB_BAR_H + 6;
 
-    pax_draw_text(&fb, COL_AMBER, FONT, TXT_TITLE, 18, y0,
-                  settings_category_title(settings_category_active));
+    // Category title carries a '\n' for the 2-line grid-tile rendering
+    // ("Region &\nLocation"). The drilldown header is a single-line bar,
+    // so flatten the newline to a space here -- otherwise pax_draw_text
+    // wraps and "Location" ends up under "Region &".
+    {
+        const char *src = settings_category_title(settings_category_active);
+        char flat[40];
+        size_t j = 0;
+        for (size_t i = 0; src[i] && j + 1 < sizeof(flat); i++) {
+            flat[j++] = (src[i] == '\n') ? ' ' : src[i];
+        }
+        flat[j] = '\0';
+        pax_draw_text(&fb, COL_AMBER, FONT, TXT_TITLE, 18, y0, flat);
+    }
     pax_simple_rect(&fb, COL_AMBER, 18, y0 + TXT_TITLE + 4, w - 36, 1);
 
     int list_y0 = y0 + title_h;
@@ -465,7 +396,8 @@ static void render_settings_drilldown(int w, int h) {
         char val_disp[80];
         bool is_text_field = (f == FIELD_OWNER || f == FIELD_ADV_NAME ||
                               f == FIELD_REGION_SCOPE ||
-                              f == FIELD_GPS_LAT || f == FIELD_GPS_LON);
+                              f == FIELD_GPS_LAT || f == FIELD_GPS_LON ||
+                              f == FIELD_WIFI_SSID || f == FIELD_WIFI_PASSWORD);
         if (is_sel && edit_mode && field_editing_text && is_text_field) {
             snprintf(val_disp, sizeof(val_disp), "%s_", field_edit_buf);
         } else if (is_sel && edit_mode && !is_text_field) {
@@ -525,8 +457,14 @@ static void render_settings_drilldown(int w, int h) {
         hint = "Sync word: 0x12 = public MeshCore. A different value = separate net.";
     } else if (selected == FIELD_PREAMBLE) {
         hint = "Preamble (default 8): longer = better weak-signal detect, +airtime.";
-    } else if (selected == FIELD_ADVERT_INT) {
-        hint = "Advert interval: longer = lower duty cycle, saves battery";
+    } else if (selected == FIELD_FLOOD_ADVERT_INT) {
+        hint = "Flood advert interval: 0 = off. Longer = less mesh traffic + battery.";
+    } else if (selected == FIELD_DIRECT_ADVERT_INT) {
+        hint = "Direct advert interval: 0 = off. Periodic direct send (vs flood)";
+    } else if (selected == FIELD_SEND_FLOOD_NOW) {
+        hint = "Press OK to emit a single flood advert right now";
+    } else if (selected == FIELD_SEND_DIRECT_NOW) {
+        hint = "Press OK: direct advert (1-hop, only LoRa neighbours)";
     } else if (selected == FIELD_PRESET) {
         hint = "Preset overwrites SF/BW/CR. MeshCore = default net.";
     } else if (selected == FIELD_ROLE) {
@@ -564,6 +502,275 @@ static void render_settings_drilldown(int w, int h) {
         const char *unsaved = "* unsaved";
         pax_vec2f usz = pax_text_size(FONT, TXT_BODY, unsaved);
         pax_draw_text(&fb, COL_AMBER, FONT, TXT_BODY, w - (int)usz.x - 10, fy + 6, unsaved);
+    }
+}
+
+
+// ── fmt_field: central value-string formatter ──────────────────────────────
+// One switch per field — replaces the 8 build_rows_* functions. Adding a new
+// settings row means: one entry in s_fields[] (label/save) + one case here
+// (value formatting). Labels live in the registry; only the dynamic value
+// string is produced here.
+static void fmt_field(field_t f, char *out, size_t cap) {
+    switch (f) {
+        // ── Identity ──
+        case FIELD_RADIO_FW:
+            snprintf(out, cap, "%s", radio_fw_version[0] ? radio_fw_version : "?");
+            break;
+        case FIELD_RADIO_FW_APP:
+            snprintf(out, cap, "%s",
+                     radio_fw_app_version[0] ? radio_fw_app_version : TANMATSU_RADIO_FW_LABEL);
+            break;
+        case FIELD_OWNER:
+            snprintf(out, cap, "%s", owner_name);
+            break;
+        case FIELD_ADV_NAME:
+            snprintf(out, cap, "%s", lora_advert_name[0] ? lora_advert_name : "(use owner)");
+            break;
+
+        // ── Regulatory ──
+        case FIELD_COUNTRY: {
+            const regulatory_country_t *rc = region_get_country(country_code);
+            if (!rc || rc->n_subbands == 0) {
+                snprintf(out, cap, "(not set)");
+            } else {
+                const regulatory_subband_t *sb = region_match_subband(
+                    rc, (float)lora_cfg.frequency / 1000000.0f);
+                snprintf(out, cap,
+                         sb ? "%s [%s]" : "%s [!off-band]",
+                         rc->display_name, sb ? sb->label : "");
+            }
+            break;
+        }
+        case FIELD_ANTENNA_GAIN:
+            if (country_code[0] == '-' || country_code[0] == '\0') {
+                snprintf(out, cap, "(set country)");
+            } else {
+                snprintf(out, cap, "%d dBi", (int)antenna_gain_dbi);
+            }
+            break;
+        case FIELD_DUTY_CYCLE:
+            if (dc_budget_ms == 0 || dc_budget_ms >= 3600000u) {
+                snprintf(out, cap, "%lus used (no limit)", (unsigned long)(dc_used_ms / 1000u));
+            } else {
+                unsigned pct_x10 = (unsigned)(((uint64_t)dc_used_ms * 1000u) / dc_budget_ms);
+                snprintf(out, cap, "%u.%u%% (%lus / %lus)%s",
+                         pct_x10 / 10u, pct_x10 % 10u,
+                         (unsigned long)(dc_used_ms / 1000u),
+                         (unsigned long)(dc_budget_ms / 1000u),
+                         dc_last_tx_blocked ? " BLOCKED" : "");
+            }
+            break;
+
+        // ── Radio ──
+        case FIELD_FREQ:
+            snprintf(out, cap, "%.3f MHz", (double)lora_cfg.frequency / 1000000.0);
+            break;
+        case FIELD_SF:
+            snprintf(out, cap, "SF%d", lora_cfg.spreading_factor);
+            break;
+        case FIELD_BW:
+            snprintf(out, cap, "%d kHz", (int)lora_cfg.bandwidth);
+            break;
+        case FIELD_CR:
+            snprintf(out, cap, "4/%d", lora_cfg.coding_rate);
+            break;
+        case FIELD_POWER:
+            snprintf(out, cap, "%d dBm", (int)lora_cfg.power);
+            break;
+        case FIELD_SYNC:
+            snprintf(out, cap, "0x%02X", (unsigned)lora_cfg.sync_word);
+            break;
+        case FIELD_PREAMBLE:
+            snprintf(out, cap, "%d", (int)lora_cfg.preamble_length);
+            break;
+        case FIELD_PRESET: {
+            int pidx = lora_preset_match();
+            snprintf(out, cap, "%s", pidx >= 0 ? LORA_PRESETS[pidx].name : "(custom)");
+            break;
+        }
+        case FIELD_SENSITIVITY:
+            snprintf(out, cap, "%s", lora_cfg.rx_boost ? "High (+3dB)" : "Power save");
+            break;
+
+        // ── Advert ──
+        // Format an interval in s/min/h depending on magnitude. "off" when
+        // zero (the default for both flood + direct on a fresh badge).
+        case FIELD_FLOOD_ADVERT_INT:
+        case FIELD_DIRECT_ADVERT_INT: {
+            unsigned secs = (f == FIELD_FLOOD_ADVERT_INT)
+                            ? flood_advert_interval_s : direct_advert_interval_s;
+            if      (secs == 0)        snprintf(out, cap, "off");
+            else if (secs < 60)        snprintf(out, cap, "%us", secs);
+            else if (secs < 3600)      snprintf(out, cap, "%umin", secs / 60);
+            else                       snprintf(out, cap, "%uh", secs / 3600);
+            break;
+        }
+        case FIELD_SEND_FLOOD_NOW:
+        case FIELD_SEND_DIRECT_NOW:
+            snprintf(out, cap, "press OK");
+            break;
+
+        // ── Network ──
+        case FIELD_ROLE:
+            snprintf(out, cap, "%s", role_label(lora_role));
+            break;
+        case FIELD_PATH_HASH_SIZE: {
+            static const char *hops[] = {"64 hops", "32 hops", "21 hops"};
+            int hi = (path_hash_size >= 1 && path_hash_size <= 3) ? (path_hash_size - 1) : 0;
+            snprintf(out, cap, "%u byte (%s)", path_hash_size, hops[hi]);
+            break;
+        }
+        case FIELD_WIFI_SSID:
+            snprintf(out, cap, "%s", wifi_ssid[0] ? wifi_ssid : "(not set)");
+            break;
+        case FIELD_WIFI_PASSWORD:
+            if (wifi_password[0]) {
+                size_t plen = strlen(wifi_password);
+                snprintf(out, cap, "%.*s (%zu chars)",
+                         (int)(plen > 3 ? 3 : plen), wifi_password, plen);
+            } else {
+                snprintf(out, cap, "(not set)");
+            }
+            break;
+        case FIELD_WIFI_CONNECT:
+            snprintf(out, cap, "%s",
+                     wifi_ssid[0] ? "press OK to connect" : "(enter SSID first)");
+            break;
+        case FIELD_WIFI_STATUS:
+            if (wifi_connection_is_connected()) {
+                esp_netif_ip_info_t *ip = wifi_get_ip_info();
+                // The SSID we're actually on can differ from wifi_ssid when
+                // the launcher slot is still associated. Surfacing it makes
+                // the "edit didn't stick" case obvious instead of silent.
+                wifi_ap_record_t ap = {0};
+                const char *cur = (esp_wifi_sta_get_ap_info(&ap) == ESP_OK && ap.ssid[0])
+                                  ? (const char *)ap.ssid : "?";
+                if (ip && ip->ip.addr) snprintf(out, cap, "%s @ " IPSTR, cur, IP2STR(&ip->ip));
+                else                   snprintf(out, cap, "%s (no IP yet)", cur);
+            } else {
+                snprintf(out, cap, "Disconnected");
+            }
+            break;
+        case FIELD_HTTP_URL:
+            if (wifi_connection_is_connected()) {
+                esp_netif_ip_info_t *ip = wifi_get_ip_info();
+                if (ip && ip->ip.addr) snprintf(out, cap, "https://" IPSTR ":8443/ping", IP2STR(&ip->ip));
+                else                   snprintf(out, cap, "(no IP yet)");
+            } else {
+                snprintf(out, cap, "(WiFi disconnected)");
+            }
+            break;
+        case FIELD_HTTP_API_KEY:
+            // First 8 + last 4 chars only -- enough to visually confirm a match
+            // without exposing the full secret on every glance. Full key still
+            // grabbable from serial log.
+            if (http_api_key[0]) snprintf(out, cap, "%.8s...%.4s", http_api_key, http_api_key + 60);
+            else                 snprintf(out, cap, "(not set)");
+            break;
+        case FIELD_HTTP_KEY_REGEN:
+            snprintf(out, cap, "press OK to roll");
+            break;
+        case FIELD_HTTPS_CERT_FP: {
+            const char *cert_pem = http_server_cert_pem();
+            if (cert_pem) {
+                char fp[65] = {0};
+                if (cert_gen_fingerprint_hex(cert_pem, fp, sizeof(fp)) == ESP_OK) {
+                    snprintf(out, cap, "%.8s...%.4s", fp, fp + 60);
+                } else {
+                    snprintf(out, cap, "(parse error)");
+                }
+            } else {
+                snprintf(out, cap, "(not yet generated)");
+            }
+            break;
+        }
+        case FIELD_HTTPS_CERT_REGEN:
+            snprintf(out, cap, "press OK (~2 s)");
+            break;
+
+        // ── Region & Location ──
+        case FIELD_REGION_SCOPE:
+            snprintf(out, cap, "%s", region_scope[0] ? region_scope : "(not set)");
+            break;
+        case FIELD_GPS_LAT:
+            if (gps_position_valid) snprintf(out, cap, "%.6f", (double)gps_lat_e6 / 1e6);
+            else                    snprintf(out, cap, "(not set)");
+            break;
+        case FIELD_GPS_LON:
+            if (gps_position_valid) snprintf(out, cap, "%.6f", (double)gps_lon_e6 / 1e6);
+            else                    snprintf(out, cap, "(not set)");
+            break;
+        case FIELD_GPS_SOURCE: {
+            const char *src_str = "(none)";
+            switch (gps_last_source) {
+                case GPS_SRC_MANUAL:  src_str = "Manual";        break;
+                case GPS_SRC_PA1010D: src_str = "PA1010D GPS";   break;
+                case GPS_SRC_CDC:     src_str = "USB-CDC push";  break;
+                case GPS_SRC_BLE:     src_str = "BLE companion"; break;
+                case GPS_SRC_HTTP:    src_str = "HTTPS /ping";   break;
+                case GPS_SRC_NONE:    break;
+            }
+            snprintf(out, cap, "%s", src_str);
+            break;
+        }
+        case FIELD_GPS_AUTOFILL: {
+            // After the first scan this session show a compact summary of
+            // the latest fix so the result survives the toast fade-out.
+            gps_status_t last;
+            if (gps_last_status(&last)) {
+                if (last.fix_valid) {
+                    snprintf(out, cap, "Last: %d sats, HDOP %.1f",
+                             last.fix_used_sats, (double)last.hdop);
+                } else {
+                    int sats_view = last.gps_sats_view + last.glo_sats_view;
+                    snprintf(out, cap, "No fix - %d sats seen", sats_view);
+                }
+            } else {
+                snprintf(out, cap, "press OK to scan");
+            }
+            break;
+        }
+        case FIELD_BLE_ENABLED:
+            snprintf(out, cap, "%s", ble_enabled ? "On" : "Off");
+            break;
+
+        // ── Brightness ──
+        case FIELD_DISPLAY_BL: snprintf(out, cap, "%u%%", (unsigned)display_brightness);  break;
+        case FIELD_KB_BL:      snprintf(out, cap, "%u%%", (unsigned)keyboard_brightness); break;
+        case FIELD_LED_BR:     snprintf(out, cap, "%u%%", (unsigned)led_brightness);      break;
+        case FIELD_BLANK_AFTER:
+            if (display_blank_after_s == 0)        snprintf(out, cap, "Off");
+            else if (display_blank_after_s < 60)   snprintf(out, cap, "%us", (unsigned)display_blank_after_s);
+            else                                    snprintf(out, cap, "%umin", (unsigned)(display_blank_after_s / 60));
+            break;
+
+        // ── Sounds ──
+        case FIELD_SOUND_VOLUME:
+            snprintf(out, cap, "%u%%", (unsigned)sound_volume_pct);
+            break;
+        case FIELD_SOUND_DM:
+        case FIELD_SOUND_CHANNEL:
+        case FIELD_SOUND_ERROR:
+        case FIELD_SOUND_BOOT: {
+            uint8_t slot = (f == FIELD_SOUND_DM)      ? sound_dm_slot
+                         : (f == FIELD_SOUND_CHANNEL) ? sound_channel_slot
+                         : (f == FIELD_SOUND_ERROR)   ? sound_error_slot
+                                                      : sound_boot_slot;
+            if (slot == 0) snprintf(out, cap, "Off");
+            else           snprintf(out, cap, "Sound %u", (unsigned)slot);
+            break;
+        }
+        case FIELD_SOUND_TEST_DM:
+        case FIELD_SOUND_TEST_CHANNEL:
+        case FIELD_SOUND_TEST_ERROR:
+        case FIELD_SOUND_TEST_BOOT:
+            snprintf(out, cap, "press OK");
+            break;
+
+        case FIELD_COUNT:
+            // Not a real field; guards the switch's exhaustiveness warning.
+            break;
     }
 }
 

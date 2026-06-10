@@ -19,7 +19,11 @@ sdkconfig_*
 REPOLAYOUT.md
 CLAUDE.md
 components/badgeteam__badgelink/
+badgelink/
 .vscode
 badgelink.DS_Store
 .DS_Store
 **/.DS_Store
+tests/test_ed25519
+tests/test_gps_nmea
+tests/test_companion_protocol

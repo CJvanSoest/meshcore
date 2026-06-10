@@ -50,7 +50,9 @@
 #include "freertos/semphr.h"
 #include "lora.h"
 #include "radio_system_protocol_client.h"
+#include "http_server.h"
 #include "wifi_connection.h"
+#include "wifi_keepalive.h"
 #include "meshcore/packet.h"
 #include "meshcore/payload/advert.h"
 #include "meshcore/payload/grp_txt.h"
@@ -70,6 +72,7 @@
 #include "history.h"
 #include "input.h"
 #include "settings_nvs.h"
+#include "sounds.h"
 
 static char const TAG[] = "main";
 
@@ -97,6 +100,8 @@ app_view_t current_view = VIEW_HOME;
 // ── Contacts (favorites) ──────────────────────────────────────────────────────
 // State + NVS persistence live in contacts.c/h.
 #include "contacts.h"
+#include "ble_companion.h"
+#include "companion_transport.h"
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
 // chat_msg_t, ring buffers, DM target, public-channel key, notification LED,
@@ -107,8 +112,8 @@ app_view_t current_view = VIEW_HOME;
 // field_t lives in ui_state.h (shared with input.c and render.c).
 
 // LoRa defaults, BW choices, presets, NVS load/save, owner_name / advert_name /
-// region_scope / lora_cfg / advert_interval_s / lora_role / path_hash_size all
-// live in settings_nvs.c/h.
+// region_scope / lora_cfg / flood+direct advert interval / lora_role /
+// path_hash_size all live in settings_nvs.c/h.
 #define NVS_LAST_TIME  "last_time_s"  // int64 SNTP timestamp (also defined in identity.c)
 
 // ── Node identity ─────────────────────────────────────────────────────────────
@@ -134,6 +139,7 @@ int  settings_scroll       = 0;
 int  home_cursor           = 0;  // VIEW_HOME tile-grid focus (0..HOME_TILE_COUNT-1)
 bool qr_from_home          = false;
 char     toast_text[64]    = {0};
+uint32_t toast_duration_ms  = 2000;
 uint32_t toast_start_ms    = 0;
 bool settings_category_list_mode = true;   // start in list when entering Settings
 int  settings_category_cursor    = 0;
@@ -226,7 +232,9 @@ void app_main(void) {
     identity_init();
     emoji_init();
 
-    int  diag_y    = 50;
+    // Splash header is title (TXT_TITLE=24) + attribution (TXT_SMALL=16).
+    // Start diag output below both so they don't overlap.
+    int  diag_y    = 74;
     int  diag_line = 22;
 #define DIAG(col, fmt, ...) do { \
         char _buf[80]; \
@@ -244,6 +252,10 @@ void app_main(void) {
         snprintf(title, sizeof(title), "MeshCore %s",
                  (desc && desc->version[0]) ? desc->version : "?");
         pax_draw_text(&fb, COL_AMBER, FONT, TXT_TITLE, 14, 16, title);
+        // Boot-splash attribution so users see at a glance this is the
+        // community app, not the official MeshCore iOS/Android client.
+        pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL, 14, 16 + TXT_TITLE + 4,
+                      "Community app by CJ van Soest");
     }
     blit();
     vTaskDelay(pdMS_TO_TICKS(1500));
@@ -296,8 +308,36 @@ void app_main(void) {
     load_country_code();
     load_antenna_gain();
     load_gps_coords();
+    load_ble_enabled();
+    load_ble_gps_pref();
+    load_advert_loc_policy();
+    load_wifi();
+    load_or_init_http_api_key();
+    // Auto-connect to the saved WiFi network at boot, if creds are present.
+    // Non-blocking: wifi_connect_try_all returns immediately on failure;
+    // the Settings WiFi rows show current state.
+    if (wifi_ssid[0]) {
+        ESP_LOGI(TAG, "WiFi auto-connect: ssid=\"%s\"", wifi_ssid);
+        wifi_connect_try_all();
+    }
+    // Supervisor task starts/stops the gateway-ping keepalive whenever the
+    // WiFi link comes up or drops -- works for both our own auto-connect
+    // and the launcher-inherited connection that happens before main.c
+    // runs. Defensive: ESP-Hosted SDIO traffic alone seems to keep iOS
+    // hotspots from suspending, but stricter networks (or future iOS
+    // changes) might need explicit packets.
+    wifi_keepalive_supervisor_start();
+    http_server_supervisor_start();
+    companion_transport_init();
+    if (ble_enabled) {
+        ble_companion_init();
+    } else {
+        ESP_LOGI(TAG, "BLE companion disabled in settings -- skipping NimBLE init");
+    }
     load_brightness();
     apply_brightness();  // override launcher globals with our per-app NVS values
+    load_sound_prefs();
+    sounds_init();
     contacts_load();
 
     DIAG(COL_GRAY, "SD mount...");
@@ -306,6 +346,14 @@ void app_main(void) {
     // DM history is loaded per peer in dm_select_target — no boot-time DM load.
     // Channel history is per-channel; load the active channel (Public at boot).
     if (history_is_ready()) { ch_select_channel(active_channel_idx); }
+
+    // Restore previously-discovered nodes so the user can see + promote
+    // entries from earlier sessions. Persistence task writes back every
+    // ~30 s when something changed.
+    if (history_is_ready()) {
+        nodes_load_from_sd();
+        nodes_start_save_task();
+    }
 
     DIAG(COL_GRAY, "lora_init_remote(16)...");
     res = lora_init_remote(&lora_handle, 16);
@@ -381,6 +429,10 @@ void app_main(void) {
 
     vTaskDelay(pdMS_TO_TICKS(3000));
 #undef DIAG
+
+    // Boot chime (no-op if user disabled it). Fires after the init
+    // diagnostics + 3 s settle so the codec is fully ready.
+    sounds_play_boot();
 
     render();
 

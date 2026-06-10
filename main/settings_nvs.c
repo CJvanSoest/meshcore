@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "nvs_helpers.h"
 
 #include "radio.h"  // lora_handle (radio v3.0.0 handle-based API)
 
@@ -16,13 +17,25 @@
 #include "bsp/input.h"
 #include "bsp/led.h"
 
+#include "esp_random.h"     // esp_fill_random for the API-key entropy
+#include "wifi_settings.h"  // wifi_settings_get/set, slot-0 persistence
+
+#define NVS_HTTP_API_KEY "http.api_key"
+
 // ── NVS keys — same namespace/keys as launcher so settings are shared ────────
 #define NVS_LORA_FREQ       "lora.freq"
 #define NVS_LORA_SF         "lora.sf"
 #define NVS_LORA_BW         "lora.bandwidth"
 #define NVS_LORA_CR         "lora.codingrate"
 #define NVS_LORA_POWER      "lora.power"
-#define NVS_LORA_ADVERT_INT "lora.advint_s"
+#define NVS_LORA_ADVERT_INT "lora.advint_s"   // legacy (pre-PR-B): single advert interval
+#define NVS_LORA_FLOOD_INT  "lora.fldadv_s"   // periodic flood advert (replaces legacy)
+#define NVS_LORA_DIRECT_INT "lora.diradv_s"   // periodic direct advert (new)
+#define NVS_SOUND_VOLUME    "snd.vol"
+#define NVS_SOUND_DM        "snd.dm"     // uint8: 0 off, 1..N slot
+#define NVS_SOUND_CHANNEL   "snd.ch"
+#define NVS_SOUND_ERROR     "snd.err"
+#define NVS_SOUND_BOOT      "snd.boot"
 #define NVS_LORA_ROLE       "lora.role"
 #define NVS_LORA_PATHHASH   "lora.pathhash"
 #define NVS_LORA_PREAMBLE   "lora.preamble"
@@ -38,6 +51,10 @@
 // user to re-enter once. save_gps_coords always writes this to current value.
 #define NVS_GPS_SCALE_VER   "lora.gps.sv"
 #define GPS_SCALE_VER_CUR   2
+#define NVS_GPS_SRC         "lora.gps.src"
+#define NVS_BLE_ENABLED     "ble.en"
+#define NVS_BLE_GPS_PREF    "ble.gps.pref"
+#define NVS_ADVERT_LOC_POL  "ble.advloc"
 #define NVS_UI_DISP_BL      "ui.disp_bl"
 #define NVS_UI_KB_BL        "ui.kb_bl"
 #define NVS_UI_LED_BR       "ui.led_br"
@@ -72,12 +89,31 @@ char                          owner_name[33]       = {0};
 char                          lora_advert_name[33] = {0};
 char                          region_scope[33]     = {0};
 lora_protocol_config_params_t lora_cfg             = {0};
-uint16_t                      advert_interval_s    = LORA_DEF_ADVERT_INT;
+uint16_t                      flood_advert_interval_s  = LORA_DEF_FLOOD_ADVERT_INT;
+uint16_t                      direct_advert_interval_s = LORA_DEF_DIRECT_ADVERT_INT;
+
+// Sound prefs: 0 = off; otherwise the WAV-file slot number under
+// /sd/meshcore/sounds/<n>.wav. Defaults match the ffmpeg-converted
+// Pixabay starter pack we ship: slot 1 = DM tweet, 2 = channel whistle,
+// 3 = error, 4 = boot. Boot defaults OFF because every flash-cycle
+// would re-fire it.
+uint8_t                       sound_volume_pct    = 40;
+uint8_t                       sound_dm_slot       = 1;
+uint8_t                       sound_channel_slot  = 2;
+uint8_t                       sound_error_slot    = 3;
+uint8_t                       sound_boot_slot     = 0;
 meshcore_device_role_t        lora_role            = MESHCORE_DEVICE_ROLE_CHAT_NODE;
 uint8_t                       path_hash_size       = LORA_DEF_PATHHASH;
 bool                          gps_position_valid   = false;
 int32_t                       gps_lat_e6           = 0;
 int32_t                       gps_lon_e6           = 0;
+gps_source_t                  gps_last_source      = GPS_SRC_NONE;
+bool                          ble_enabled          = true;  // default ON
+bool                          ble_gps_pref         = true;  // iPhone "GPS Mode = Enabled"
+uint8_t                       advert_loc_policy    = 0;     // ADVERT_LOC_NONE
+char                          wifi_ssid[33]        = {0};
+char                          wifi_password[65]    = {0};
+char                          http_api_key[65]     = {0};
 char                          country_code[4]      = "--";
 int8_t                        antenna_gain_dbi     = 0;
 uint8_t                       display_brightness   = UI_DEF_DISP_BL;
@@ -182,24 +218,18 @@ void save_country_code(void) {
 
 // ── Antenna gain (dBi) ───────────────────────────────────────────────────────
 void load_antenna_gain(void) {
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
-    int8_t v = 0;
-    if (nvs_get_i8(handle, NVS_LORA_ANT_GAIN, &v) == ESP_OK) {
+    int8_t v;
+    if (nvs_load_i8("system", NVS_LORA_ANT_GAIN, &v)) {
         if (v < -3) v = -3;
         if (v > 15) v = 15;
         antenna_gain_dbi = v;
     }
-    nvs_close(handle);
 }
 
 void save_antenna_gain(void) {
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
-    nvs_set_i8(handle, NVS_LORA_ANT_GAIN, antenna_gain_dbi);
-    nvs_commit(handle);
-    nvs_close(handle);
-    ESP_LOGI(TAG, "Antenna gain saved: %d dBi", (int)antenna_gain_dbi);
+    if (nvs_save_i8("system", NVS_LORA_ANT_GAIN, antenna_gain_dbi)) {
+        ESP_LOGI(TAG, "Antenna gain saved: %d dBi", (int)antenna_gain_dbi);
+    }
 }
 
 // ── Region scope ─────────────────────────────────────────────────────────────
@@ -238,6 +268,7 @@ void load_gps_coords(void) {
     gps_position_valid = false;
     gps_lat_e6         = 0;
     gps_lon_e6         = 0;
+    gps_last_source    = GPS_SRC_NONE;
 
     nvs_handle_t handle;
     if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
@@ -246,6 +277,8 @@ void load_gps_coords(void) {
     bool have_lon = (nvs_get_i32(handle, NVS_GPS_LON, &lon) == ESP_OK);
     uint8_t scale_ver = 0;
     nvs_get_u8(handle, NVS_GPS_SCALE_VER, &scale_ver);
+    uint8_t src = GPS_SRC_NONE;
+    nvs_get_u8(handle, NVS_GPS_SRC, &src);
     nvs_close(handle);
 
     if (!have_lat || !have_lon) return;
@@ -269,24 +302,147 @@ void load_gps_coords(void) {
     gps_lat_e6         = lat;
     gps_lon_e6         = lon;
     gps_position_valid = true;
+    // Tolerate forward-incompat values: anything > HTTP keeps GPS_SRC_NONE so
+    // we don't show garbled labels if a newer firmware wrote a source enum we
+    // don't recognise yet.
+    if (src <= GPS_SRC_HTTP) gps_last_source = (gps_source_t)src;
 }
 
 void save_gps_coords(void) {
+    // Source must reflect the active position. Cleared coords always read back
+    // as GPS_SRC_NONE so the UI doesn't show a stale "PA1010D" tag next to
+    // "(not set)".
+    if (!gps_position_valid) gps_last_source = GPS_SRC_NONE;
+
     nvs_handle_t handle;
     if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
     if (gps_position_valid) {
         nvs_set_i32(handle, NVS_GPS_LAT, gps_lat_e6);
         nvs_set_i32(handle, NVS_GPS_LON, gps_lon_e6);
+        nvs_set_u8(handle, NVS_GPS_SRC, (uint8_t)gps_last_source);
     } else {
         nvs_erase_key(handle, NVS_GPS_LAT);
         nvs_erase_key(handle, NVS_GPS_LON);
+        nvs_erase_key(handle, NVS_GPS_SRC);
     }
     nvs_set_u8(handle, NVS_GPS_SCALE_VER, GPS_SCALE_VER_CUR);
     nvs_commit(handle);
     nvs_close(handle);
-    ESP_LOGI(TAG, "GPS coords saved: %s (lat=%ld lon=%ld)",
+    ESP_LOGI(TAG, "GPS coords saved: %s (lat=%ld lon=%ld src=%u)",
              gps_position_valid ? "valid" : "(cleared)",
-             (long)gps_lat_e6, (long)gps_lon_e6);
+             (long)gps_lat_e6, (long)gps_lon_e6, (unsigned)gps_last_source);
+}
+
+// ── BLE companion on/off ────────────────────────────────────────────────────
+// Missing key reads as default (true) so a fresh device boots advertising.
+void load_ble_enabled(void) {
+    uint8_t v;
+    if (nvs_load_u8("system", NVS_BLE_ENABLED, &v)) ble_enabled = (v != 0);
+}
+
+void save_ble_enabled(void) {
+    if (nvs_save_u8("system", NVS_BLE_ENABLED, ble_enabled ? 1 : 0)) {
+        ESP_LOGI(TAG, "BLE enabled saved: %s", ble_enabled ? "on" : "off");
+    }
+}
+
+// ── HTTP API key (shared secret for the /ping endpoint) ─────────────────────
+static void fill_random_hex(char *out_64chars_plus_nul) {
+    uint8_t raw[32];
+    esp_fill_random(raw, sizeof(raw));
+    static const char hex[] = "0123456789abcdef";
+    for (size_t i = 0; i < sizeof(raw); i++) {
+        out_64chars_plus_nul[2 * i]     = hex[raw[i] >> 4];
+        out_64chars_plus_nul[2 * i + 1] = hex[raw[i] & 0x0F];
+    }
+    out_64chars_plus_nul[64] = '\0';
+}
+
+void load_or_init_http_api_key(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) {
+        // NVS dead -- generate ephemeral so /ping isn't open
+        fill_random_hex(http_api_key);
+        ESP_LOGW(TAG, "NVS open failed; using ephemeral API key");
+        return;
+    }
+    size_t len = sizeof(http_api_key);
+    esp_err_t r = nvs_get_str(handle, NVS_HTTP_API_KEY, http_api_key, &len);
+    if (r != ESP_OK || http_api_key[0] == '\0') {
+        fill_random_hex(http_api_key);
+        nvs_set_str(handle, NVS_HTTP_API_KEY, http_api_key);
+        nvs_commit(handle);
+        ESP_LOGI(TAG, "HTTP API key auto-generated + persisted");
+    } else {
+        ESP_LOGI(TAG, "HTTP API key loaded from NVS");
+    }
+    nvs_close(handle);
+    // Dev convenience: emit the full key on boot so testers can grab it
+    // for curl / MeshMapper config without poking around Settings. Acceptable
+    // because the serial console is local-only on these dev boards; a
+    // production build should drop this line.
+    ESP_LOGI(TAG, "HTTP API key (full): %s", http_api_key);
+}
+
+void regenerate_http_api_key(void) {
+    fill_random_hex(http_api_key);
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    nvs_set_str(handle, NVS_HTTP_API_KEY, http_api_key);
+    nvs_commit(handle);
+    nvs_close(handle);
+    ESP_LOGI(TAG, "HTTP API key regenerated + persisted");
+}
+
+// ── BLE GPS preference (iPhone companion-app GPS Mode toggle) ───────────────
+void load_ble_gps_pref(void) {
+    uint8_t v;
+    if (nvs_load_u8("system", NVS_BLE_GPS_PREF, &v)) ble_gps_pref = (v != 0);
+}
+
+void save_ble_gps_pref(void) {
+    if (nvs_save_u8("system", NVS_BLE_GPS_PREF, ble_gps_pref ? 1 : 0)) {
+        ESP_LOGI(TAG, "BLE gps pref saved: %s", ble_gps_pref ? "on" : "off");
+    }
+}
+
+// ── Advert location policy (iPhone "Share my position" toggle) ──────────────
+void load_advert_loc_policy(void) {
+    uint8_t v;
+    if (nvs_load_u8("system", NVS_ADVERT_LOC_POL, &v)) advert_loc_policy = v;
+}
+
+void save_advert_loc_policy(void) {
+    if (nvs_save_u8("system", NVS_ADVERT_LOC_POL, advert_loc_policy)) {
+        ESP_LOGI(TAG, "Advert loc policy saved: %u", (unsigned)advert_loc_policy);
+    }
+}
+
+// ── WiFi creds (delegated to wifi-manager's slot 0 NVS) ─────────────────────
+void load_wifi(void) {
+    wifi_settings_t ws = {0};
+    if (wifi_settings_get(0, &ws) == ESP_OK) {
+        strncpy(wifi_ssid,     ws.ssid,     sizeof(wifi_ssid)     - 1);
+        strncpy(wifi_password, ws.password, sizeof(wifi_password) - 1);
+        wifi_ssid[sizeof(wifi_ssid) - 1] = '\0';
+        wifi_password[sizeof(wifi_password) - 1] = '\0';
+    } else {
+        wifi_ssid[0]     = '\0';
+        wifi_password[0] = '\0';
+    }
+    ESP_LOGI(TAG, "WiFi creds loaded: ssid=\"%s\"", wifi_ssid);
+}
+
+void save_wifi(void) {
+    wifi_settings_t ws = {0};
+    strncpy(ws.ssid,     wifi_ssid,     sizeof(ws.ssid)     - 1);
+    strncpy(ws.password, wifi_password, sizeof(ws.password) - 1);
+    // Force WPA2-PSK regardless of what may have been there before -- open
+    // networks aren't useful for our HTTPS-only use case anyway.
+    ws.authmode = WIFI_AUTH_WPA2_PSK;
+    esp_err_t res = wifi_settings_set(0, &ws);
+    if (res != ESP_OK) ESP_LOGE(TAG, "wifi_settings_set rc=%d", res);
+    else               ESP_LOGI(TAG, "WiFi creds saved: ssid=\"%s\"", wifi_ssid);
 }
 
 // ── LoRa config ──────────────────────────────────────────────────────────────
@@ -314,8 +470,22 @@ void load_lora_from_nvs(void) {
     if (nvs_get_u16(handle, NVS_LORA_BW,    &bw)    == ESP_OK && bw    != 0) lora_cfg.bandwidth        = bw;
     if (nvs_get_u8 (handle, NVS_LORA_CR,    &cr)    == ESP_OK && cr    != 0) lora_cfg.coding_rate      = cr;
     if (nvs_get_u8 (handle, NVS_LORA_POWER, &power) == ESP_OK)               lora_cfg.power            = power;
-    uint16_t advint = 0;
-    if (nvs_get_u16(handle, NVS_LORA_ADVERT_INT, &advint) == ESP_OK && advint != 0) advert_interval_s = advint;
+    // Advert intervals (PR-B): two separate fields. Migrate the legacy
+    // single advert-interval key one-shot into the new flood key when no
+    // new-key value is yet present, so an upgrading badge keeps its old
+    // setting until the user explicitly retunes via the Advert menu.
+    uint16_t fld = 0, dir = 0, legacy = 0;
+    bool have_fld = (nvs_get_u16(handle, NVS_LORA_FLOOD_INT,  &fld) == ESP_OK);
+    bool have_dir = (nvs_get_u16(handle, NVS_LORA_DIRECT_INT, &dir) == ESP_OK);
+    bool have_lgy = (nvs_get_u16(handle, NVS_LORA_ADVERT_INT, &legacy) == ESP_OK);
+    if (have_fld) {
+        flood_advert_interval_s = fld;
+    } else if (have_lgy) {
+        flood_advert_interval_s = legacy;   // one-shot migration
+    }
+    if (have_dir) {
+        direct_advert_interval_s = dir;
+    }
     uint8_t role = 0;
     if (nvs_get_u8(handle, NVS_LORA_ROLE, &role) == ESP_OK && role <= MESHCORE_DEVICE_ROLE_SENSOR) {
         lora_role = (meshcore_device_role_t)role;
@@ -347,7 +517,8 @@ void save_lora_to_nvs(void) {
     nvs_set_u16(handle, NVS_LORA_BW,    (uint16_t)lora_cfg.bandwidth);
     nvs_set_u8 (handle, NVS_LORA_CR,    lora_cfg.coding_rate);
     nvs_set_u8 (handle, NVS_LORA_POWER, lora_cfg.power);
-    nvs_set_u16(handle, NVS_LORA_ADVERT_INT, advert_interval_s);
+    nvs_set_u16(handle, NVS_LORA_FLOOD_INT,  flood_advert_interval_s);
+    nvs_set_u16(handle, NVS_LORA_DIRECT_INT, direct_advert_interval_s);
     nvs_set_u8 (handle, NVS_LORA_ROLE,  (uint8_t)lora_role);
     nvs_set_u8 (handle, NVS_LORA_PATHHASH, path_hash_size);
     nvs_set_u8 (handle, NVS_LORA_RX_BOOST, lora_cfg.rx_boost ? 1 : 0);
@@ -432,4 +603,31 @@ void apply_brightness(void) {
     bsp_display_set_backlight_brightness(display_brightness);
     bsp_input_set_backlight_brightness(keyboard_brightness);
     bsp_led_set_brightness(led_brightness);
+}
+
+// ── Sound prefs ─────────────────────────────────────────────────────────────
+// Volume in NVS as uint8 %, flags in NVS as a uint8 bitmask:
+//   bit0 = DM enabled, bit1 = Channel, bit2 = Error, bit3 = Boot.
+void load_sound_prefs(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
+    uint8_t v;
+    if (nvs_get_u8(handle, NVS_SOUND_VOLUME,  &v) == ESP_OK) sound_volume_pct  = clamp_pct(v);
+    if (nvs_get_u8(handle, NVS_SOUND_DM,      &v) == ESP_OK) sound_dm_slot     = v;
+    if (nvs_get_u8(handle, NVS_SOUND_CHANNEL, &v) == ESP_OK) sound_channel_slot= v;
+    if (nvs_get_u8(handle, NVS_SOUND_ERROR,   &v) == ESP_OK) sound_error_slot  = v;
+    if (nvs_get_u8(handle, NVS_SOUND_BOOT,    &v) == ESP_OK) sound_boot_slot   = v;
+    nvs_close(handle);
+}
+
+void save_sound_prefs(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    nvs_set_u8(handle, NVS_SOUND_VOLUME,  sound_volume_pct);
+    nvs_set_u8(handle, NVS_SOUND_DM,      sound_dm_slot);
+    nvs_set_u8(handle, NVS_SOUND_CHANNEL, sound_channel_slot);
+    nvs_set_u8(handle, NVS_SOUND_ERROR,   sound_error_slot);
+    nvs_set_u8(handle, NVS_SOUND_BOOT,    sound_boot_slot);
+    nvs_commit(handle);
+    nvs_close(handle);
 }

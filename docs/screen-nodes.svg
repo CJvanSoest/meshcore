@@ -1,90 +1,103 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Nodes view — Pager-style top strip (view name + RX/TX/battery),
-     then header row, then up to ~12 visible node rows with role tag,
-     name, RSSI, SNR, packet count, distance, age. Contacts marked '*'. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640">
+<!-- VIEW_NODES — landscape 800×480 at half-scale. Pager-style tab bar then
+     a single header row + list of heard nodes / saved contacts. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240">
   <defs>
     <style type="text/css"><![CDATA[
       text { font-family: 'Saira', 'Helvetica Neue', sans-serif; }
     ]]></style>
   </defs>
 
-  <rect width="400" height="640" fill="#1A1B26" rx="4"/>
-  <rect x="0.5" y="0.5" width="399" height="639" fill="none" stroke="#24283B" stroke-width="1" rx="4"/>
+  <rect width="400" height="240" fill="#0E141B" rx="4"/>
+  <rect x="0.5" y="0.5" width="399" height="239" fill="none" stroke="#16161E" stroke-width="1" rx="4"/>
 
-  <!-- Pager header -->
+  <!-- Tab bar -->
   <rect x="0" y="0" width="400" height="22" fill="#0E141B"/>
   <rect x="0" y="21" width="400" height="1" fill="#FAA61A"/>
-  <text x="6" y="15" fill="#C0C8D0" font-size="11" font-weight="500">Nodes</text>
-  <!-- Other-tab unread badges inline (DM 3, # 1) -->
-  <rect x="65" y="5" width="22" height="12" fill="#F7768E"/>
-  <text x="76" y="14" text-anchor="middle" fill="#0E141B" font-size="8" font-weight="500">DM 3</text>
-  <rect x="92" y="5" width="20" height="12" fill="#F7768E"/>
-  <text x="102" y="14" text-anchor="middle" fill="#0E141B" font-size="8" font-weight="500"># 1</text>
-  <text x="285" y="15" fill="#9ECE6A" font-size="10">RX:42</text>
-  <text x="322" y="15" fill="#C0C8D0" font-size="10">TX:0.4%</text>
-  <text x="362" y="15" fill="#9ECE6A" font-size="10">87%+</text>
+  <text x="6" y="15" fill="#FAA61A" font-size="11" font-weight="600">Nodes</text>
+  <text x="54" y="15" fill="#F7768E" font-size="9">DM:3</text>
+  <text x="84" y="15" fill="#7AA2F7" font-size="9">#:1</text>
+  <text x="296" y="15" fill="#9ECE6A" font-size="10">RX:42</text>
+  <text x="334" y="15" fill="#C0C8D0" font-size="10">TX:0.4%</text>
+  <text x="370" y="15" fill="#9ECE6A" font-size="10">87%+</text>
 
-  <!-- Column header strip -->
-  <rect x="0" y="26" width="400" height="13" fill="#16161E"/>
-  <text x="4"  y="36" fill="#565F89" font-size="8">Role</text>
-  <text x="48" y="36" fill="#565F89" font-size="8">Name</text>
-  <text x="245" y="36" fill="#565F89" font-size="8">RSSI</text>
-  <text x="278" y="36" fill="#565F89" font-size="8">SNR</text>
-  <text x="307" y="36" fill="#565F89" font-size="8">#Pkt</text>
-  <text x="336" y="36" fill="#565F89" font-size="8">Dist</text>
-  <text x="367" y="36" fill="#565F89" font-size="8">Seen</text>
+  <!-- Column header row -->
+  <g font-size="9" fill="#565F89">
+    <text x="6"   y="34">Name</text>
+    <text x="118" y="34">Role</text>
+    <text x="160" y="34">RSSI</text>
+    <text x="200" y="34">SNR</text>
+    <text x="232" y="34">Dist</text>
+    <text x="270" y="34">Last seen</text>
+    <text x="370" y="34" text-anchor="end">Hops</text>
+  </g>
+  <line x1="0" y1="37" x2="400" y2="37" stroke="#16161E" stroke-width="0.5"/>
 
-  <!-- Rows (row_h = 22 here) -->
-  <!-- Row 0 (focused, panel + blue accent) -->
-  <rect x="0" y="40" width="400" height="22" fill="#24283B"/>
-  <rect x="0" y="40" width="3" height="22" fill="#7AA2F7"/>
-  <text x="4"   y="55" fill="#9ECE6A" font-size="9">CHAT</text>
-  <text x="48"  y="55" fill="#C0CAF5" font-size="10">CJvS</text>
-  <text x="245" y="55" fill="#9ECE6A" font-size="10">-72</text>
-  <text x="278" y="55" fill="#9ECE6A" font-size="10">+5</text>
-  <text x="307" y="55" fill="#565F89" font-size="10">#18</text>
-  <text x="336" y="55" fill="#565F89" font-size="10">1.2km</text>
-  <text x="367" y="55" fill="#565F89" font-size="10">3m</text>
+  <!-- Rows. Star = saved contact. Focused row is amber. -->
+  <g font-size="10">
+    <!-- Focused -->
+    <rect x="0" y="40" width="400" height="14" fill="#1A1F26"/>
+    <text x="6"   y="50" fill="#FAA61A" font-weight="500">★ EvB-pager</text>
+    <text x="118" y="50" fill="#FAA61A">chat</text>
+    <text x="160" y="50" fill="#FAA61A">-82</text>
+    <text x="200" y="50" fill="#FAA61A">+7</text>
+    <text x="232" y="50" fill="#FAA61A">1.2km</text>
+    <text x="270" y="50" fill="#FAA61A">2 min</text>
+    <text x="370" y="50" text-anchor="end" fill="#FAA61A">2</text>
 
-  <!-- Row 1 -->
-  <text x="4"   y="77" fill="#7AA2F7" font-size="9">REPT</text>
-  <text x="48"  y="77" fill="#C0CAF5" font-size="10">repeater-zh</text>
-  <text x="245" y="77" fill="#9ECE6A" font-size="10">-78</text>
-  <text x="278" y="77" fill="#9ECE6A" font-size="10">+2</text>
-  <text x="307" y="77" fill="#565F89" font-size="10">#142</text>
-  <text x="336" y="77" fill="#565F89" font-size="10">8km</text>
-  <text x="367" y="77" fill="#565F89" font-size="10">12s</text>
+    <text x="6"   y="64" fill="#C0C8D0">★ Renze</text>
+    <text x="118" y="64" fill="#C0C8D0">chat</text>
+    <text x="160" y="64" fill="#9ECE6A">-91</text>
+    <text x="200" y="64" fill="#9ECE6A">+3</text>
+    <text x="232" y="64" fill="#9ECE6A">3.8km</text>
+    <text x="270" y="64" fill="#9ECE6A">8 min</text>
+    <text x="370" y="64" text-anchor="end" fill="#9ECE6A">3</text>
 
-  <!-- Row 2 (contact marker) -->
-  <text x="4"   y="99" fill="#9ECE6A" font-size="9">CHAT</text>
-  <text x="40"  y="99" fill="#E0AF68" font-size="10">*</text>
-  <text x="48"  y="99" fill="#C0CAF5" font-size="10">alice</text>
-  <text x="245" y="99" fill="#E0AF68" font-size="10">-95</text>
-  <text x="278" y="99" fill="#E0AF68" font-size="10">-3</text>
-  <text x="307" y="99" fill="#565F89" font-size="10">#7</text>
-  <text x="336" y="99" fill="#565F89" font-size="10">3.4km</text>
-  <text x="367" y="99" fill="#565F89" font-size="10">1m</text>
+    <text x="6"   y="78" fill="#C0C8D0">  EU-Repeater-NL01</text>
+    <text x="118" y="78" fill="#C0C8D0">rep</text>
+    <text x="160" y="78" fill="#9ECE6A">-78</text>
+    <text x="200" y="78" fill="#9ECE6A">+8</text>
+    <text x="232" y="78" fill="#9ECE6A">5.4km</text>
+    <text x="270" y="78" fill="#9ECE6A">1 min</text>
+    <text x="370" y="78" text-anchor="end" fill="#9ECE6A">1</text>
 
-  <!-- Row 3 -->
-  <text x="4"   y="121" fill="#E0AF68" font-size="9">SENS</text>
-  <text x="48"  y="121" fill="#C0CAF5" font-size="10">temp-rotterdam</text>
-  <text x="245" y="121" fill="#E0AF68" font-size="10">-102</text>
-  <text x="278" y="121" fill="#E0AF68" font-size="10">-7</text>
-  <text x="307" y="121" fill="#565F89" font-size="10">#3</text>
-  <text x="336" y="121" fill="#565F89" font-size="10">15km</text>
-  <text x="367" y="121" fill="#565F89" font-size="10">8m</text>
+    <text x="6"   y="92" fill="#C0C8D0">  AnonNode-D9</text>
+    <text x="118" y="92" fill="#C0C8D0">chat</text>
+    <text x="160" y="92" fill="#9ECE6A">-103</text>
+    <text x="200" y="92" fill="#9ECE6A">-2</text>
+    <text x="232" y="92" fill="#9ECE6A">-</text>
+    <text x="270" y="92" fill="#9ECE6A">12 min</text>
+    <text x="370" y="92" text-anchor="end" fill="#9ECE6A">4</text>
 
-  <!-- Annotation -->
-  <text x="14" y="430" fill="#7AA2F7" font-size="10" font-style="italic">Header pulls double duty: shows the active</text>
-  <text x="14" y="443" fill="#7AA2F7" font-size="10" font-style="italic">view name and inline unread badges so a</text>
-  <text x="14" y="456" fill="#7AA2F7" font-size="10" font-style="italic">DM arriving while you're here is glanceable.</text>
-  <text x="14" y="476" fill="#565F89" font-size="9">Q: open QR overlay  ·  A: send advert</text>
-  <text x="14" y="488" fill="#565F89" font-size="9">F: fav  ·  L: cycle role filter</text>
+    <text x="6"   y="106" fill="#C0C8D0">  THE-AMSTROOMSERVER</text>
+    <text x="118" y="106" fill="#C0C8D0">room</text>
+    <text x="160" y="106" fill="#9ECE6A">-95</text>
+    <text x="200" y="106" fill="#9ECE6A">+0</text>
+    <text x="232" y="106" fill="#9ECE6A">7.1km</text>
+    <text x="270" y="106" fill="#9ECE6A">22 min</text>
+    <text x="370" y="106" text-anchor="end" fill="#9ECE6A">2</text>
+
+    <text x="6"   y="120" fill="#C0C8D0">  SX1262-Test</text>
+    <text x="118" y="120" fill="#C0C8D0">sensor</text>
+    <text x="160" y="120" fill="#9ECE6A">-88</text>
+    <text x="200" y="120" fill="#9ECE6A">+5</text>
+    <text x="232" y="120" fill="#9ECE6A">2.3km</text>
+    <text x="270" y="120" fill="#9ECE6A">31 min</text>
+    <text x="370" y="120" text-anchor="end" fill="#9ECE6A">1</text>
+
+    <text x="6"   y="134" fill="#565F89">  StaleNode-X1</text>
+    <text x="118" y="134" fill="#565F89">chat</text>
+    <text x="160" y="134" fill="#565F89">-110</text>
+    <text x="200" y="134" fill="#565F89">-5</text>
+    <text x="232" y="134" fill="#565F89">-</text>
+    <text x="270" y="134" fill="#565F89">2 h</text>
+    <text x="370" y="134" text-anchor="end" fill="#565F89">5</text>
+  </g>
 
   <!-- Footer -->
-  <rect x="0" y="610" width="400" height="30" fill="#16161E"/>
-  <rect x="0" y="610" width="400" height="1" fill="#FAA61A"/>
-  <text x="5"  y="624" fill="#C0CAF5" font-size="10">Nodes:4  Contacts:1</text>
-  <text x="5"  y="635" fill="#565F89" font-size="8">W/S nav   A:advert   F:fav   L:filter   Q:QR</text>
+  <rect x="0" y="200" width="400" height="40" fill="#16161E"/>
+  <rect x="0" y="200" width="400" height="1" fill="#FAA61A"/>
+  <text x="6" y="213" fill="#565F89" font-size="8">Filter: chat   Visible: 6/12   Saved: 2</text>
+  <text x="6" y="225" fill="#565F89" font-size="8">W/S: row   Enter: DM   A: send advert   F: favorite   L: filter   Q: QR   ESC: home</text>
+  <text x="394" y="234" text-anchor="end" fill="#565F89" font-size="8">RX:-78  SNR:+8  N:-110</text>
 </svg>

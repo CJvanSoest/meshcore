@@ -25,17 +25,37 @@ LDLIBS    += -lmbedcrypto
 # names in source (forward-compatible) and silence the warning here.
 
 # Source files from main/ that the tests link against.
-SRC_ED25519 = ../main/ed25519_mpi.c
+SRC_ED25519     = ../main/ed25519_mpi.c
+SRC_GPS_NMEA    = ../main/gps_parser.c
+SRC_COMP_PROTO  = ../main/companion-radio-protocol/mc_companion_command_parser.c \
+                  ../main/companion-radio-protocol/mc_companion_serial_interface.c
 
 .PHONY: all test clean
 
-all: test_ed25519
+all: test_ed25519 test_gps_nmea test_companion_protocol
 
 test_ed25519: test_ed25519.c $(SRC_ED25519)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
-test: test_ed25519
+# Pure-C parser test -- no libmbedcrypto link needed. Catches NMEA regressions
+# (checksum gate, DDMM→decimal conversion, talker-agnostic match) before merge.
+test_gps_nmea: test_gps_nmea.c $(SRC_GPS_NMEA)
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+# Companion-radio-protocol parser test. Links against the upstream-vendored
+# parser + framer translation units that ship in the firmware. Verifies that
+# opcode 14 (SET_ADVERT_LATLON) survives full-frame, chunked, and byte-by-byte
+# feeds, plus a direct parse_command call.
+# -Wno-unused-parameter: upstream mc_companion_write_serial_response has a
+# size_t output_buffer_size parameter it never reads. Our IDF build ignores
+# this; the host test has -Werror so suppress just for this TU.
+test_companion_protocol: test_companion_protocol.c $(SRC_COMP_PROTO)
+	$(CC) $(CFLAGS) -Wno-unused-parameter -o $@ $^
+
+test: test_ed25519 test_gps_nmea test_companion_protocol
 	./test_ed25519
+	./test_gps_nmea
+	./test_companion_protocol
 
 clean:
-	rm -f test_ed25519
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol

@@ -158,10 +158,10 @@ back to its own settings.
 ## About view (`render_about.c`)
 
 Version + build date are pulled live from `esp_app_get_description()` so
-a clean tag (e.g. `v2.2.0`) produces a clean string with no `-dirty` /
+a clean tag (e.g. `v2.4.0`) produces a clean string with no `-dirty` /
 post-tag suffix. The rest is static: author (CJ van Soest), credits
-(MeshCore by Ripple Radios; Tanmatsu + BadgeVMS by Nicolai Electronics),
-MIT license, source URL. Footer: `ESC: home`.
+(MeshCore by Ripple Radios; Tanmatsu by Nicolai Electronics), MIT
+license, source URL, issue tracker. Footer: `ESC: home`.
 
 When more items get added (commit hash, region preset, map license credits
 once maps land) prefer inline `Label: value` per line over the current

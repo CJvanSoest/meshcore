@@ -31,19 +31,46 @@ typedef enum {
     FIELD_PREAMBLE,
     FIELD_PRESET,
     FIELD_SENSITIVITY,       // RX boost on/off (radio gain vs power-save)
+    // ── Advert (own category — flood + direct intervals, manual sends) ──
+    FIELD_FLOOD_ADVERT_INT,    // periodic flood-route advert; 0 = off (default)
+    FIELD_DIRECT_ADVERT_INT,   // periodic direct-route advert; 0 = off
+    FIELD_SEND_FLOOD_NOW,      // Action row: emit a single flood advert immediately
+    FIELD_SEND_DIRECT_NOW,     // Action row: emit a single direct advert (1-hop) now
     // ── Network & behavior ──
-    FIELD_ADVERT_INT,
     FIELD_ROLE,
     FIELD_PATH_HASH_SIZE,
+    // ── WiFi (lives in the Network tile alongside mesh params) ──
+    FIELD_WIFI_SSID,
+    FIELD_WIFI_PASSWORD,
+    FIELD_WIFI_CONNECT,   // Action row: save creds + wifi_connect_try_all
+    FIELD_WIFI_STATUS,    // Read-only: "Disconnected" / "Connecting..." / "IP: x.x.x.x"
+    FIELD_HTTP_URL,       // Read-only: https://<ip>:8443/ping (for MeshMapper config)
+    FIELD_HTTP_API_KEY,   // Read-only: 64 hex chars (paste into MeshMapper)
+    FIELD_HTTP_KEY_REGEN, // Action row: press OK to roll a new API key
+    FIELD_HTTPS_CERT_FP,  // Read-only: SHA-256 fingerprint of the on-device cert
+    FIELD_HTTPS_CERT_REGEN, // Action row: wipe NVS cert + regenerate self-signed
     // ── Region & location ──
     FIELD_REGION_SCOPE,
     FIELD_GPS_LAT,
     FIELD_GPS_LON,
+    FIELD_GPS_SOURCE,         // Read-only: shows whether coords are from PA1010D / Manual / CDC / BLE
+    FIELD_GPS_AUTOFILL,       // Action-row: press OK to scan PA1010D on QWIIC and auto-fill lat/lon
+    FIELD_BLE_ENABLED,        // Toggle: BLE companion radio on/off (takes effect on next app start)
     // ── Brightness (display backlight, keyboard backlight, RGB LED) ──
     FIELD_DISPLAY_BL,
     FIELD_KB_BL,
     FIELD_LED_BR,
     FIELD_BLANK_AFTER,
+    // ── Sounds (notification beeps) ──
+    FIELD_SOUND_VOLUME,
+    FIELD_SOUND_DM,
+    FIELD_SOUND_CHANNEL,
+    FIELD_SOUND_ERROR,
+    FIELD_SOUND_BOOT,
+    FIELD_SOUND_TEST_DM,        // Action: preview DM sound
+    FIELD_SOUND_TEST_CHANNEL,   // Action: preview channel sound
+    FIELD_SOUND_TEST_ERROR,     // Action: preview error sound
+    FIELD_SOUND_TEST_BOOT,      // Action: preview boot sound
     FIELD_COUNT,
 } field_t;
 
@@ -83,4 +110,8 @@ extern int  settings_category_active;
 // when no toast is active. toast_start_ms is the tick-time the toast became
 // visible; render_home auto-clears the text after ~2 seconds.
 extern char     toast_text[64];
+// Most toasts are 2 s confirmations; the BLE passkey override sets this to
+// 60 s so the user has time to read + type on the iPhone before it vanishes.
+// Render code reads this; default re-applied when a new toast is queued.
+extern uint32_t toast_duration_ms;
 extern uint32_t toast_start_ms;
