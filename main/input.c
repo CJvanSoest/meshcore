@@ -631,6 +631,10 @@ static void nav_settings(uint32_t key) {
                      rc == ESP_OK ? "Cert regen'd — reinstall iPhone profile"
                                    : "Cert regen FAILED (rc=%d)", rc);
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        } else if (selected == FIELD_HTTP_QR) {
+            qr_overlay_mode   = QR_MODE_OWNTRACKS;
+            qr_from_settings  = true;
+            qr_overlay_active = true;
         } else if (selected == FIELD_SEND_FLOOD_NOW) {
             send_advert();
             snprintf(toast_text, sizeof(toast_text), "Flood advert sent");
@@ -697,9 +701,12 @@ static void nav_settings(uint32_t key) {
 void handle_nav(uint32_t key) {
     if (qr_overlay_active) {
         qr_overlay_active = false;
+        qr_overlay_mode   = QR_MODE_CONTACT;
         if (qr_from_home) {
             qr_from_home = false;
             current_view = VIEW_HOME;
+        } else if (qr_from_settings) {
+            qr_from_settings = false;
         }
         return;
     }
@@ -962,6 +969,10 @@ static void key_settings(char c) {
                      rc == ESP_OK ? "Cert regen'd — reinstall iPhone profile"
                                    : "Cert regen FAILED (rc=%d)", rc);
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        } else if (selected == FIELD_HTTP_QR) {
+            qr_overlay_mode   = QR_MODE_OWNTRACKS;
+            qr_from_settings  = true;
+            qr_overlay_active = true;
         } else if (selected == FIELD_SEND_FLOOD_NOW) {
             send_advert();
             snprintf(toast_text, sizeof(toast_text), "Flood advert sent");
@@ -1101,9 +1112,12 @@ void handle_key(char c) {
     if (qr_overlay_active) {
         if (c == 27) {
             qr_overlay_active = false;
+            qr_overlay_mode   = QR_MODE_CONTACT;
             if (qr_from_home) {
                 qr_from_home = false;
                 current_view = VIEW_HOME;
+            } else if (qr_from_settings) {
+                qr_from_settings = false;
             }
         }
         return;

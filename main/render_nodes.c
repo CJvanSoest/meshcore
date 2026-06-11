@@ -22,6 +22,7 @@
 #include "radio.h"
 #include "settings_nvs.h"
 #include "ui_state.h"
+#include "wifi_connection.h"
 
 #define NODES_ROW_H    44
 #define NODES_Y0       (TAB_BAR_H + 4)
@@ -266,32 +267,65 @@ void render_qr_overlay(void) {
     int w = (int)pax_buf_get_width(&fb);
     int h = (int)pax_buf_get_height(&fb);
 
-    char hex_key[65];
-    for (int i = 0; i < 32; i++) snprintf(&hex_key[i * 2], 3, "%02x", node_pub_key[i]);
-    hex_key[64] = '\0';
+    char        url[256];
+    const char *title_label = NULL;
+    char        subtitle[96] = {0};
 
-    const char *adv_src = lora_advert_name[0] ? lora_advert_name :
-                          ((owner_name[0] && owner_name[0] != '(') ? owner_name : "");
+    if (qr_overlay_mode == QR_MODE_OWNTRACKS) {
+        // The HTTPS URL keys off the live IP when WiFi is up, falling back to the
+        // mDNS name so the QR still encodes something resolvable even before the
+        // first DHCP lease. The full API key is embedded so the iPhone Camera app
+        // captures the entire URL — the user can paste it directly into OwnTracks
+        // / Shortcuts / MeshMapper without retyping 64 hex chars.
+        const char *host = "tanmatsu.local";
+        char        host_buf[24] = {0};
+        if (wifi_connection_is_connected()) {
+            esp_netif_ip_info_t *ip = wifi_get_ip_info();
+            if (ip && ip->ip.addr) {
+                snprintf(host_buf, sizeof(host_buf), IPSTR, IP2STR(&ip->ip));
+                host = host_buf;
+            }
+        }
+        snprintf(url, sizeof(url),
+                 "https://%s:8443/ping?key=%s",
+                 host, http_api_key[0] ? http_api_key : "(unset)");
+        title_label = "Scan for OwnTracks";
+        snprintf(subtitle, sizeof(subtitle), "https://%s:8443/ping", host);
+    } else {
+        char hex_key[65];
+        for (int i = 0; i < 32; i++) snprintf(&hex_key[i * 2], 3, "%02x", node_pub_key[i]);
+        hex_key[64] = '\0';
 
-    char encoded_name[64];
-    int ei = 0;
-    for (int i = 0; adv_src[i] && ei < 62; i++) {
-        char c = adv_src[i];
-        if (c == ' ') { encoded_name[ei++] = '+'; }
-        else          { encoded_name[ei++] = c; }
+        const char *adv_src = lora_advert_name[0] ? lora_advert_name :
+                              ((owner_name[0] && owner_name[0] != '(') ? owner_name : "");
+
+        char encoded_name[64];
+        int ei = 0;
+        for (int i = 0; adv_src[i] && ei < 62; i++) {
+            char c = adv_src[i];
+            if (c == ' ') { encoded_name[ei++] = '+'; }
+            else          { encoded_name[ei++] = c; }
+        }
+        encoded_name[ei] = '\0';
+
+        snprintf(url, sizeof(url),
+                 "meshcore://contact/add?name=%s&public_key=%s&type=1",
+                 encoded_name, hex_key);
+        title_label = "Scan to add contact";
+        snprintf(subtitle, sizeof(subtitle), "%s", adv_src[0] ? adv_src : "(no name)");
     }
-    encoded_name[ei] = '\0';
-
-    char url[200];
-    snprintf(url, sizeof(url),
-             "meshcore://contact/add?name=%s&public_key=%s&type=1",
-             encoded_name, hex_key);
 
     static uint8_t qr_data[qrcodegen_BUFFER_LEN_MAX];
     static uint8_t tmp_buf[qrcodegen_BUFFER_LEN_MAX];
+    // OwnTracks URL with embedded 64-char key is ~110 chars → needs higher
+    // version cap than the original contact QR. Drop ECC to LOW only for that
+    // mode so the cell-density stays scan-friendly at 480 px tall.
+    enum qrcodegen_Ecc ecc = (qr_overlay_mode == QR_MODE_OWNTRACKS)
+                                 ? qrcodegen_Ecc_LOW
+                                 : qrcodegen_Ecc_MEDIUM;
     bool ok = qrcodegen_encodeText(url, tmp_buf, qr_data,
-                                   qrcodegen_Ecc_MEDIUM,
-                                   qrcodegen_VERSION_MIN, 10,
+                                   ecc,
+                                   qrcodegen_VERSION_MIN, 15,
                                    qrcodegen_Mask_AUTO, true);
 
     pax_background(&fb, COL_BG);
@@ -325,23 +359,31 @@ void render_qr_overlay(void) {
         }
     }
 
-    const char *label = "Scan to add contact";
-    pax_vec2f lsz = pax_text_size(FONT, TXT_TITLE, label);
+    pax_vec2f lsz = pax_text_size(FONT, TXT_TITLE, title_label);
     pax_draw_text(&fb, COL_AMBER, FONT, TXT_TITLE,
-                  (w - (int)lsz.x) / 2, qr_y - margin - TXT_TITLE - 6, label);
+                  (w - (int)lsz.x) / 2, qr_y - margin - TXT_TITLE - 6, title_label);
 
-    char name_label[80];
-    snprintf(name_label, sizeof(name_label), "%s",
-             adv_src[0] ? adv_src : "(no name)");
-    pax_vec2f nsz = pax_text_size(FONT, TXT_SMALL, name_label);
+    pax_vec2f nsz = pax_text_size(FONT, TXT_SMALL, subtitle);
     pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL,
-                  (w - (int)nsz.x) / 2, qr_y + qr_px + margin + 6, name_label);
+                  (w - (int)nsz.x) / 2, qr_y + qr_px + margin + 6, subtitle);
 
-    // Explicit close hints below the name, so the user knows exactly which
-    // keys (and the red X on the Tanmatsu chassis) dismiss the overlay.
+    // OwnTracks mode adds a key-preview line so a user without a camera can
+    // still verify the on-device key matches what their phone captured.
+    int next_y = qr_y + qr_px + margin + 6 + TXT_SMALL + 6;
+    if (qr_overlay_mode == QR_MODE_OWNTRACKS && http_api_key[0]) {
+        char key_preview[40];
+        snprintf(key_preview, sizeof(key_preview),
+                 "key %.8s...%.4s", http_api_key, http_api_key + 60);
+        pax_vec2f ksz = pax_text_size(FONT, TXT_SMALL, key_preview);
+        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL,
+                      (w - (int)ksz.x) / 2, next_y, key_preview);
+        next_y += TXT_SMALL + 6;
+    }
+
+    // Explicit close hints, so the user knows which keys (and the red X on the
+    // Tanmatsu chassis) dismiss the overlay.
     const char *close_hint = "[ESC]   [X]   [Enter]   to close";
     pax_vec2f csz = pax_text_size(FONT, TXT_SMALL, close_hint);
     pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL,
-                  (w - (int)csz.x) / 2,
-                  qr_y + qr_px + margin + 6 + TXT_SMALL + 6, close_hint);
+                  (w - (int)csz.x) / 2, next_y, close_hint);
 }

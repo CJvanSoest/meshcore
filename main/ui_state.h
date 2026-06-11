@@ -49,6 +49,7 @@ typedef enum {
     FIELD_HTTP_KEY_REGEN, // Action row: press OK to roll a new API key
     FIELD_HTTPS_CERT_FP,  // Read-only: SHA-256 fingerprint of the on-device cert
     FIELD_HTTPS_CERT_REGEN, // Action row: wipe NVS cert + regenerate self-signed
+    FIELD_HTTP_QR,        // Action row: open QR overlay with /ping URL + key for iPhone capture
     // ── Region & location ──
     FIELD_REGION_SCOPE,
     FIELD_GPS_LAT,
@@ -88,6 +89,16 @@ extern bool qr_overlay_active;
 extern bool time_from_nvs;
 extern bool lora_ready;
 
+// QR overlay payload mode. CONTACT encodes the badge's own meshcore://contact/add
+// URL (the original use); OWNTRACKS encodes the HTTPS /ping URL + API key so the
+// user can scan it with the iPhone Camera app and paste into OwnTracks /
+// Shortcuts / MeshMapper without typing 64 hex chars by hand.
+typedef enum {
+    QR_MODE_CONTACT = 0,
+    QR_MODE_OWNTRACKS,
+} qr_mode_t;
+extern qr_mode_t qr_overlay_mode;
+
 // ── Home tile-grid cursor (VIEW_HOME) ────────────────────────────────────────
 // Index into the home tile array (0..HOME_TILE_COUNT-1). Owned + updated by
 // input.c, read by render_home.c.
@@ -97,6 +108,11 @@ extern int home_cursor;
 // nodes view). When true, closing the overlay returns to VIEW_HOME instead of
 // leaving the user stranded on the nodes list.
 extern bool qr_from_home;
+
+// QR overlay was opened from a Settings → Network row (currently the OwnTracks
+// QR action). When true, closing the overlay leaves the user in VIEW_SETTINGS
+// on the same drilldown row instead of bouncing to nodes/home.
+extern bool qr_from_settings;
 
 // Settings drilldown state. When category_list_mode is true, render_settings
 // draws the list of categories; when false, it drills into category_active

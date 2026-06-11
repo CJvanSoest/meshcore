@@ -185,7 +185,10 @@ void render(void) {
         case VIEW_CHAT:    render_chat();    break;
         case VIEW_CHANNEL: render_channel(); break;
         case VIEW_SETTINGS:
-        default:           render_settings(); break;
+        default:
+            render_settings();
+            if (qr_overlay_active) render_qr_overlay();
+            break;
     }
     if (emoji_picker_active && chat_typing &&
         (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL)) {

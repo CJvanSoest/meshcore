@@ -107,9 +107,33 @@ works for you" until they're verified.
    enable it under Settings → General → About → Certificate Trust Settings.
    The cert is per-badge and stable across reboots, so this is a one-time
    step.
-3. **Find the API key.** Settings → Network → **API key** shows the first
-   8 + last 4 hex chars; the full 64-char key lives in NVS and is printed
-   on serial at boot. You can also rotate it from **Regenerate API key**.
+3. **Get the full API key onto the iPhone.** Settings → Network → **API
+   key** shows only the first 8 + last 4 hex chars on screen. To get the
+   full 64-char key into OwnTracks / Shortcuts / MeshMapper, pick one:
+
+   - **QR (recommended, v2.5.0+ — NOT yet in the v2.4.0 store build).**
+     Settings → Network → **Show QR (OwnTracks)** opens a full-screen
+     QR encoding `https://<badge-IP>:8443/ping?key=<KEY>`. Point the
+     iPhone Camera app at it — iOS surfaces the URL as a tappable
+     banner; long-press "Copy" to grab the full string for OwnTracks'
+     "Identification → URL" field. ESC / X / Enter closes the overlay.
+     **This row only exists on the dev / main branch** (GitHub + Gitea
+     tips); the appstore-bundled v2.4.0 still requires the serial route
+     below. Lands in the v2.5.0 store update later this week.
+   - **Serial terminal.** Plug the badge's top USB-C into your Mac and
+     attach to the P4 console (`/dev/cu.usbmodem21301` on macOS, the
+     suffix `21301` identifies the P4 vs the C6's `21401`). Easiest:
+     `make monitor PORT=/dev/cu.usbmodem21301` from the meshcore-settings
+     repo, or `idf.py -B build/tanmatsu -p /dev/cu.usbmodem21301 monitor`.
+     Reboot the badge and the key prints once at boot:
+     `I (xxxx) settings: HTTP API key (full): <64 hex chars>`.
+     To grab it without scrolling, pipe through grep:
+     `make monitor PORT=/dev/cu.usbmodem21301 2>&1 | grep "API key (full)"`.
+     Press `Ctrl-]` to exit the monitor.
+   - **Regenerate.** From the same Settings row, the **Regenerate API
+     key** action rolls a fresh value and persists it; re-open the QR
+     or check serial to capture the new key, then paste it into any
+     client that's still using the old one.
 4. **Build the Shortcut**:
    - Action: *Get Current Location*
    - Action: *Get Contents of URL* —
@@ -120,7 +144,10 @@ works for you" until they're verified.
 
 ### Setting up OwnTracks
 
-OwnTracks supports HTTP mode out of the box:
+OwnTracks supports HTTP mode out of the box. Easiest flow is **Show QR
+(OwnTracks)** on the badge (Settings → Network) — point iPhone Camera at
+it, tap-and-hold the surfaced URL, copy, then split it into OwnTracks'
+fields below. Or type by hand:
 
 - **Mode**: HTTP
 - **Host**: `tanmatsu.local`

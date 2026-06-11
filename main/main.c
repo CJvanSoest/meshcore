@@ -131,6 +131,7 @@ bool lora_ready            = false;
 bool c6_available          = false;
 bool time_from_nvs         = false;
 bool qr_overlay_active     = false;
+qr_mode_t qr_overlay_mode  = QR_MODE_CONTACT;
 // Shared text-edit scratch for FIELD_OWNER / FIELD_ADV_NAME / FIELD_REGION_SCOPE.
 char field_edit_buf[33]    = {0};
 int  field_edit_len        = 0;
@@ -138,6 +139,7 @@ bool field_editing_text    = false;
 int  settings_scroll       = 0;
 int  home_cursor           = 0;  // VIEW_HOME tile-grid focus (0..HOME_TILE_COUNT-1)
 bool qr_from_home          = false;
+bool qr_from_settings      = false;
 char     toast_text[64]    = {0};
 uint32_t toast_duration_ms  = 2000;
 uint32_t toast_start_ms    = 0;

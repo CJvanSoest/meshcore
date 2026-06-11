@@ -154,6 +154,7 @@ static const field_def_t s_fields[FIELD_COUNT] = {
     [FIELD_HTTP_KEY_REGEN]    = { "Regenerate API key",  NULL                   },
     [FIELD_HTTPS_CERT_FP]     = { "HTTPS cert FP",       NULL                   },
     [FIELD_HTTPS_CERT_REGEN]  = { "Regenerate cert",     NULL                   },
+    [FIELD_HTTP_QR]           = { "Show QR (OwnTracks)", NULL                   },
     // ── Region & Location ──
     [FIELD_REGION_SCOPE]      = { "Region scope",        save_region_scope      },
     [FIELD_GPS_LAT]           = { "GPS latitude",        save_gps_coords        },
@@ -687,6 +688,9 @@ static void fmt_field(field_t f, char *out, size_t cap) {
         }
         case FIELD_HTTPS_CERT_REGEN:
             snprintf(out, cap, "press OK (~2 s)");
+            break;
+        case FIELD_HTTP_QR:
+            snprintf(out, cap, "press OK to show QR");
             break;
 
         // ── Region & Location ──
