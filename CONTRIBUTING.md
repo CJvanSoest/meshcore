@@ -24,10 +24,12 @@ live in `sdkconfigs/`.
    regression fails here.
 2. **`tests/check-arch-rules.sh` is green.** It enforces the layer rules from
    [ARCHITECTURE.md](ARCHITECTURE.md) (CI runs it too).
-3. **`make build DEVICE=tanmatsu` is green.**
-4. **`clang-format -i` on the files you touched** (`.clang-format` is the
+3. **`tests/check-cppcheck.sh` is green.** Static analysis over first-party code
+   (warning/performance/portability). Needs `cppcheck`; CI runs it too.
+4. **`make build DEVICE=tanmatsu` is green.**
+5. **`clang-format -i` on the files you touched** (`.clang-format` is the
    source of truth).
-5. **Behaviour that only shows on the badge is tested on a badge.** The host
+6. **Behaviour that only shows on the badge is tested on a badge.** The host
    tests and the IDF build cannot prove runtime behaviour on the radio or the
    display; flash it.
 

@@ -16,11 +16,14 @@ jobs:
       - name: Check architecture include rules
         run: tests/check-arch-rules.sh
 
-      - name: Install mbedtls dev headers
+      - name: Install build + analysis tooling
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            build-essential libmbedtls-dev
+            build-essential libmbedtls-dev cppcheck
+
+      - name: Static analysis (cppcheck, first-party)
+        run: tests/check-cppcheck.sh
 
       - name: Build + run RFC 8032 Ed25519 self-test
         working-directory: tests

@@ -62,7 +62,7 @@ bool gps_nmea_apply_line(const char *line, gps_status_t *st) {
     // line still work.
     char buf[128];
     size_t n = 0;
-    while (line[n] && n < sizeof(buf) - 1 && line[n] != '\r' && line[n] != '\n') {
+    while (n < sizeof(buf) - 1 && line[n] && line[n] != '\r' && line[n] != '\n') {
         buf[n] = line[n];
         n++;
     }
