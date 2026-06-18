@@ -30,6 +30,7 @@ idf_component_register(
 		"map.c"
 		"gps_task.c"
 		"emoji.c"
+		"emoji_table.c"
 		"gps.c"
 		"companion_transport.c"
 		"ble_companion.c"

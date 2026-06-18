@@ -16,7 +16,7 @@
 
 #include "channels.h"
 #include "contacts.h"
-#include "emoji.h"
+#include "emoji_table.h"  // codepoint lookup + utf8_decode (pax-free; no UI dep)
 #include "history.h"
 
 static const char *TAG = "chat";

@@ -19,28 +19,14 @@
 // a 2x4 grid; chat-render scans text for recognized codepoints and draws the
 // matching glyph instead of the Latin-1 '?' placeholder.
 
-#define EMOJI_COUNT 8
-#define EMOJI_UTF8_MAX 5  // longest sequence is 4 bytes + NUL
-
-typedef struct {
-    uint32_t    codepoint;          // Unicode scalar
-    const char *utf8;               // NUL-terminated UTF-8 form (≤4 bytes)
-    uint8_t     utf8_len;            // bytes in utf8 (without NUL)
-} emoji_entry_t;
-
-extern const emoji_entry_t EMOJI_SET[EMOJI_COUNT];
+// The emoji table, codepoint lookup and UTF-8 decode are the pax-free part and
+// live in emoji_table.h so non-UI code can use them. This header adds the
+// drawing layer on top.
+#include "emoji_table.h"
 
 // Wrap the embedded Twemoji bitmaps into pax_buf_t for pax_draw_image_sized.
 // Idempotent — safe to call from any boot path; first call does the work.
 void emoji_init(void);
-
-// Return index into EMOJI_SET for the given codepoint, or -1 if not in set.
-int emoji_lookup_by_codepoint(uint32_t cp);
-
-// Decode the UTF-8 sequence starting at `s`. Writes the codepoint to *out_cp
-// and returns the number of bytes consumed (1..4) on success. Returns 0 if the
-// first byte is NUL and -1 on a malformed sequence (no further bytes consumed).
-int utf8_decode(const char *s, uint32_t *out_cp);
 
 // Draw a single emoji (by index into EMOJI_SET) centered at (cx, cy) with the
 // given radius. Caller is responsible for clipping/positioning.
