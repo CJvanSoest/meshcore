@@ -19,6 +19,55 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-06-18
+
+### Added
+- **VIEW_MAP** — slippy-map view that renders OSM PNG tiles from SD with
+  live GPS overlay. Pan, zoom (6 → 14), crosshair, scale bar, lock toggle,
+  attribution. Status strip shows zoom / SAT count / RX state / battery.
+  Persists centre + zoom + lock to NVS so it comes back where you left it.
+- **Map style profiles** — Ripple / Carto / Cycle / Topo. Settings →
+  Region & Location → Map → Style selects which `/sd/maps/<profile>/`
+  the tile reader consumes. Profile switch clears the LRU cache.
+- **Live GPS background task** — polls a PA1010D over the QWIIC bus and
+  drives the map crosshair. Four tracking profiles (Walking, Cycling,
+  Driving, Manual) trade off update interval vs. battery.
+- **Async tile-loader task** — render task never blocks on SD I/O.
+  Producer/consumer pattern with a 128-slot queue and an LRU cache of
+  36 slots in PSRAM. Zoom changes drain the queue so a new zoom level
+  starts on a clean slate instead of waiting behind stale requests.
+- **Off-screen prefetch ring** — the renderer requests the tile ring
+  outside the visible viewport so pans land on warm tiles instead of
+  grey placeholders.
+- **Node pins with role-specific shapes** — chat=circle, repeater=square,
+  room=diamond, sensor=triangle. Contacts/favorites get a white outline
+  ring. Nearest-to-crosshair node name is labelled inline.
+- **Chat UX polish (v2.5)** — message bubbles, unread indicators per
+  conversation, network grouping in the nodes view, WAV filenames now
+  show their source slot for easier debugging.
+- **WiFi launcher-slot picker + on/off toggle** — drop the in-app
+  SSID/password editor in favour of the launcher's polished WiFi-config
+  UI. App-side responsibility: which of the stored slots to use, and
+  whether WiFi is on right now.
+
+### Changed
+- **`MAP_ZOOM_MAX` bumped 10 → 14** — street-name scale is the new ceiling.
+- **`FIELD_BLE_ENABLED` moved** from Region & Location → Network so it
+  sits next to the other connectivity toggles.
+- **Map legend moved top-right → top-left** — keeps the scale bar /
+  attribution corner clear.
+
+### Fixed
+- **Direct-advert hang** — `send_advert_direct` used to iterate the full
+  `node_list[]` (up to 200 background-discovered peers) while holding
+  `node_mutex`, which froze the UI for ~30 s and ate ~3 % duty cycle per
+  press. Now iterates `contacts[]` (max 16, ~1 % TX) from a background
+  task so the UI stays responsive.
+- **z=13 stays grey after zoom-out/in** — rapid zoom sweeps used to fill
+  the loader queue with stale requests for lower zoom levels, crowding
+  out fresh requests for the new top zoom. Queue is drained on every
+  zoom change and bumped 64 → 128 slots.
+
 ## [2.3.2] - 2026-06-06
 
 ### Fixed
