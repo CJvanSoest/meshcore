@@ -84,3 +84,10 @@ bool send_dm_message(const char *text, const uint8_t *target_pub, uint8_t ack_cr
 
 // Send an encrypted public-channel message (GRP_TXT, FLOOD).
 bool send_chat_message(const char *text);
+
+// Reconcile the LoRa config in NVS with the live C6 radio over lora_handle.
+// load_lora_config pulls from NVS then prefers/pushes against the C6; save
+// writes NVS and pushes to the C6 (re-entering RX). Moved here from
+// settings_nvs so the L1 config store has no radio dependency.
+void load_lora_config(void);
+void save_lora_config(void);

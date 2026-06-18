@@ -13,23 +13,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// Transport profiles drive both the poll interval (how often the chip is
-// read) and the commit distance threshold (how far we must have moved to
-// publish + log a new position). Heartbeat caps below guarantee SAT / HDOP
-// still refresh even when the user is stationary.
-typedef enum {
-    GPS_PROFILE_WALKING = 0,
-    GPS_PROFILE_CYCLING = 1,
-    GPS_PROFILE_DRIVING = 2,
-    GPS_PROFILE_MANUAL  = 3,
-    GPS_PROFILE_COUNT,
-} gps_profile_t;
-
-// User-tunable runtime state. The Settings UI binds these to NVS rows;
-// gps_task reads them every tick so changes take effect on the next poll.
-extern gps_profile_t gps_profile;
-extern uint16_t      gps_custom_interval_s;   // 0 = use profile default
-extern uint16_t      gps_custom_distance_m;   // 0 = use profile default
+// gps_profile_t + the user-tunable gps_profile / gps_custom_* globals and the
+// gps_profile_label helper live in the neutral config_types.h so the L1
+// settings store can read them without depending on this task module.
+#include "config_types.h"
 
 // Published fix state. Readers may grab the values directly under the
 // `gps_live_lock` critical section; writes happen only inside gps_task.
@@ -43,6 +30,3 @@ extern bool     gps_live_bus_ok;        // true after first successful bus probe
 
 // Spawn the task. Idempotent; safe to call multiple times.
 void gps_task_start(void);
-
-// Friendly label for a profile (used by the Settings fmt_field cases).
-const char *gps_profile_label(gps_profile_t p);

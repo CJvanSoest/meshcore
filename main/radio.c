@@ -1132,3 +1132,44 @@ void radio_start_tasks(void) {
     xTaskCreate(advert_task,      "lora_advert",  6144, NULL, 4, NULL);
     xTaskCreate(noise_floor_task, "noise_poll",   3072, NULL, 3, NULL);
 }
+
+// ── LoRa config reconcile (moved from settings_nvs.c) ────────────────────────
+// These own lora_handle access, so they live with the radio rather than in the
+// L1 config store. Bodies are unchanged from the originals.
+void load_lora_config(void) {
+    load_lora_from_nvs();
+    c6_available = false;
+
+    lora_protocol_config_params_t c6_cfg = {0};
+    esp_err_t res = lora_get_config(&lora_handle, &c6_cfg);
+    if (res == ESP_OK) {
+        c6_available = true;
+        if (c6_cfg.frequency != 0) {
+            lora_cfg = c6_cfg;
+            save_lora_to_nvs();
+            ESP_LOGI(TAG, "LoRa config from C6: freq=%luHz sf=%d",
+                     (unsigned long)lora_cfg.frequency, lora_cfg.spreading_factor);
+        } else {
+            ESP_LOGI(TAG, "C6 has empty config, pushing NVS values to C6");
+            lora_set_config(&lora_handle, &lora_cfg);
+        }
+    } else {
+        ESP_LOGW(TAG, "C6 unavailable (err=%d) — using NVS values", res);
+    }
+}
+
+void save_lora_config(void) {
+    save_lora_to_nvs();
+    if (!c6_available) return;
+    esp_err_t res = lora_set_config(&lora_handle, &lora_cfg);
+    if (res != ESP_OK) {
+        ESP_LOGE(TAG, "lora_set_config failed: %d", res);
+    } else {
+        ESP_LOGI(TAG, "LoRa config pushed to C6");
+        // lora_set_config resets the radio to standby — re-enter RX so we keep
+        // listening on the new frequency/SF.
+        if (lora_rx_ok) {
+            lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_RX);
+        }
+    }
+}

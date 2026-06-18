@@ -6,14 +6,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "config_types.h"  // gps_/map_ profile enums + globals + labels
 #include "esp_log.h"
-#include "gps_task.h"
-#include "map.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "nvs_helpers.h"
-
-#include "radio.h"  // lora_handle (radio v3.0.0 handle-based API)
 
 #include "bsp/display.h"
 #include "bsp/input.h"
@@ -603,43 +600,10 @@ void save_lora_to_nvs(void) {
     ESP_LOGI(TAG, "LoRa config saved to NVS");
 }
 
-void load_lora_config(void) {
-    load_lora_from_nvs();
-    c6_available = false;
-
-    lora_protocol_config_params_t c6_cfg = {0};
-    esp_err_t res = lora_get_config(&lora_handle, &c6_cfg);
-    if (res == ESP_OK) {
-        c6_available = true;
-        if (c6_cfg.frequency != 0) {
-            lora_cfg = c6_cfg;
-            save_lora_to_nvs();
-            ESP_LOGI(TAG, "LoRa config from C6: freq=%luHz sf=%d",
-                     (unsigned long)lora_cfg.frequency, lora_cfg.spreading_factor);
-        } else {
-            ESP_LOGI(TAG, "C6 has empty config, pushing NVS values to C6");
-            lora_set_config(&lora_handle, &lora_cfg);
-        }
-    } else {
-        ESP_LOGW(TAG, "C6 unavailable (err=%d) — using NVS values", res);
-    }
-}
-
-void save_lora_config(void) {
-    save_lora_to_nvs();
-    if (!c6_available) return;
-    esp_err_t res = lora_set_config(&lora_handle, &lora_cfg);
-    if (res != ESP_OK) {
-        ESP_LOGE(TAG, "lora_set_config failed: %d", res);
-    } else {
-        ESP_LOGI(TAG, "LoRa config pushed to C6");
-        // lora_set_config resets the radio to standby — re-enter RX so we keep
-        // listening on the new frequency/SF.
-        if (lora_rx_ok) {
-            lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_RX);
-        }
-    }
-}
+// load_lora_config()/save_lora_config() — which reconcile lora_cfg with the C6
+// over lora_handle — moved to radio.c so this L1 config store no longer reaches
+// up into the radio layer. The pure-NVS halves (load_lora_from_nvs /
+// save_lora_to_nvs above) stay here.
 
 // ── Brightness (display backlight, keyboard backlight, RGB LED) ──────────────
 // Per-app values that override the launcher's globals while MeshCore is

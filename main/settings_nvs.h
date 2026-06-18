@@ -228,7 +228,5 @@ void apply_brightness(void);
 void load_lora_from_nvs(void);
 void save_lora_to_nvs(void);
 
-// load_lora_config pulls from NVS, then reconciles with whatever the C6 reports.
-// save_lora_config writes NVS *and* pushes the new config to the C6 (if present).
-void load_lora_config(void);
-void save_lora_config(void);
+// load_lora_config()/save_lora_config() reconcile NVS with the C6 radio; they
+// live in radio.c (declared in radio.h) so this L1 header has no radio dep.

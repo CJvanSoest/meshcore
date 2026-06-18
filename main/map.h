@@ -14,31 +14,19 @@
 
 #include "pax_gfx.h"
 
-// SD root of the map data. The active style profile (see map_profile_t
-// below) chooses which subfolder under here is read on tile miss:
+// map_profile_t + the map_profile / map_lock_on globals and the
+// map_profile_label helper live in the neutral config_types.h so the L1
+// settings store can read them without depending on this module.
+#include "config_types.h"
+
+// SD root of the map data. The active style profile (see map_profile_t in
+// config_types.h) chooses which subfolder under here is read on tile miss:
 //   Ripple     → /sd/maps/tiles/{z}/{x}/{y}.png        (legacy, unchanged)
 //   OSM-Bright → /sd/maps/carto/tiles/{z}/{x}/{y}.png  (NAS-rendered)
 //   CyclOSM    → /sd/maps/cycle/tiles/{z}/{x}/{y}.png
 //   OpenTopo   → /sd/maps/topo/tiles/{z}/{x}/{y}.png
 #define MAP_TILE_ROOT   "/sd/maps"
 #define MAP_TILE_PX     256
-
-// Map style profiles. The default (RIPPLE) keeps the existing tile path so
-// the Ripple Radio europe-6-to-10 zip works without renaming anything; the
-// three NAS-rendered profiles live in their own subdirs so multiple styles
-// can coexist on the same SD card.
-typedef enum {
-    MAP_PROFILE_RIPPLE = 0,
-    MAP_PROFILE_CARTO  = 1,
-    MAP_PROFILE_CYCLE  = 2,
-    MAP_PROFILE_TOPO   = 3,
-    MAP_PROFILE_COUNT,
-} map_profile_t;
-
-extern map_profile_t map_profile;
-
-// Human-readable label for the slot picker + map header overlay.
-const char *map_profile_label(map_profile_t p);
 
 // Switch the active profile. Clears the tile cache so old-style PNGs don't
 // linger across the change, marks state dirty so the debounced NVS save
@@ -115,5 +103,5 @@ void map_state_tick(void);
 
 // Lock-to-position: when on, render_map() snaps the centre to the latest
 // live GPS fix before drawing. Toggled by the 'L' key inside the map view.
-extern bool map_lock_on;
+// (map_lock_on is declared in config_types.h so settings_nvs can persist it.)
 void map_state_toggle_lock(void);
