@@ -47,10 +47,8 @@ idf_component_register(
 		"http_server.c"
 		"cert_gen.c"
 		"sounds.c"
-		"meshcore/packet.c"
-		"meshcore/payload/advert.c"
-		"meshcore/payload/grp_txt.c"
 	PRIV_REQUIRES
+		mc_proto
 		esp_lcd
 		esp_app_format
 		nvs_flash
@@ -72,7 +70,6 @@ idf_component_register(
 		espressif__mdns
 	INCLUDE_DIRS
 		"."
-		"meshcore"
 )
 
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=unused-variable" APPEND)

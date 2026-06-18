@@ -64,8 +64,8 @@ test_region_limits: test_region_limits.c ../main/region_limits.c
 # discipline") and must not diverge locally, so suppress two upstream warnings
 # here instead of editing the source: -Wtype-limits fires on the uint8_t size
 # bound check and -Wsign-compare on its int/size_t length math.
-test_meshcore_packet: test_meshcore_packet.c ../main/meshcore/packet.c
-	$(CC) $(CFLAGS) -Wno-type-limits -Wno-sign-compare -o $@ $^
+test_meshcore_packet: test_meshcore_packet.c ../components/mc_proto/meshcore/packet.c
+	$(CC) $(CFLAGS) -I../components/mc_proto -Wno-type-limits -Wno-sign-compare -o $@ $^
 
 test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet
 	./test_ed25519
