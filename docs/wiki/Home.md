@@ -38,6 +38,7 @@ For end-user setup see the [README](../../README.md).
 - **[MeshCore protocol](MeshCore-Protocol.md)** — packet types, encryption, ADVERT/DM/Channel/PATH formats
 - **[UI / UX](UI-UX.md)** — tabs, input modes, QR overlay, edit-mode state machine, Settings section headings & hints
 - **[Settings / NVS](Settings-NVS.md)** — every persistent key, default, range, and the regulatory/country compliance tables
+- **[Maps](Maps.md)** — VIEW_MAP feature: tile cache, profile system, zoom advice, **server-side rendering pipeline** + hardware requirements
 - **[GPS sources](GPS-Sources.md)** — Manual / PA1010D / HTTPS `/ping` / USB-CDC / BLE, including OwnTracks + iOS Shortcuts setup and what's tested vs preview
 - **[Sounds](Sounds.md)** — WAV format, recommended free sources, `ffmpeg` + `badgelink` setup
 - **[SD card layout](SD-Card-Layout.md)** — `/sd/meshcore/` structure, encryption, self-heal
