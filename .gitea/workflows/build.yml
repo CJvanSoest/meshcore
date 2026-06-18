@@ -13,6 +13,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check architecture include rules
+        run: tests/check-arch-rules.sh
+
       - name: Install mbedtls dev headers
         run: |
           apt-get update
