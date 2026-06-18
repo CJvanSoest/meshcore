@@ -7,6 +7,8 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "gps_task.h"
+#include "map.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "nvs_helpers.h"
@@ -18,6 +20,7 @@
 #include "bsp/led.h"
 
 #include "esp_random.h"     // esp_fill_random for the API-key entropy
+#include "wifi_connection.h"
 #include "wifi_settings.h"  // wifi_settings_get/set, slot-0 persistence
 
 #define NVS_HTTP_API_KEY "http.api_key"
@@ -36,6 +39,14 @@
 #define NVS_SOUND_CHANNEL   "snd.ch"
 #define NVS_SOUND_ERROR     "snd.err"
 #define NVS_SOUND_BOOT      "snd.boot"
+#define NVS_MAP_LAT         "map.lat_e6"     // i32 — VIEW_MAP centre lat × 1e6
+#define NVS_MAP_LON         "map.lon_e6"     // i32 — VIEW_MAP centre lon × 1e6
+#define NVS_MAP_ZOOM        "map.zoom"       // u8  — VIEW_MAP zoom level (6..14)
+#define NVS_MAP_LOCK        "map.lock"       // u8  — lock-to-position toggle
+#define NVS_MAP_PROFILE     "map.profile"    // u8  — map_profile_t (style)
+#define NVS_GPS_PROFILE     "gps.profile"    // u8  — gps_profile_t
+#define NVS_GPS_INT_S       "gps.int_s"      // u16 — 0 = profile default
+#define NVS_GPS_DIST_M      "gps.dist_m"     // u16 — 0 = profile default
 #define NVS_LORA_ROLE       "lora.role"
 #define NVS_LORA_PATHHASH   "lora.pathhash"
 #define NVS_LORA_PREAMBLE   "lora.preamble"
@@ -71,6 +82,69 @@ static const char *TAG = "settings";
 // push.
 extern bool c6_available;
 extern bool lora_rx_ok;
+
+// ── WiFi connect prefs + slot-cache ─────────────────────────────────────────
+bool    wifi_enabled = true;
+uint8_t wifi_slot    = 0;
+
+#define NVS_WIFI_ENABLED  "wifi.enabled"
+#define NVS_WIFI_SLOT     "wifi.slot"
+
+typedef struct { uint8_t idx; char ssid[33]; } wifi_slot_entry_t;
+static wifi_slot_entry_t s_wifi_slot_cache[WIFI_SLOTS_SCAN_MAX] = {0};
+static int               s_wifi_slot_n = 0;
+
+void wifi_slots_refresh(void) {
+    s_wifi_slot_n = 0;
+    for (int i = 0; i < WIFI_SLOTS_SCAN_MAX && s_wifi_slot_n < WIFI_SLOTS_SCAN_MAX; i++) {
+        wifi_settings_t ws = {0};
+        if (wifi_settings_get((uint8_t)i, &ws) == ESP_OK && ws.ssid[0]) {
+            s_wifi_slot_cache[s_wifi_slot_n].idx = (uint8_t)i;
+            strncpy(s_wifi_slot_cache[s_wifi_slot_n].ssid, ws.ssid, 32);
+            s_wifi_slot_cache[s_wifi_slot_n].ssid[32] = '\0';
+            s_wifi_slot_n++;
+        }
+    }
+}
+
+int wifi_slots_count(void) { return s_wifi_slot_n; }
+
+uint8_t wifi_slot_idx_at(int list_pos) {
+    if (list_pos < 0 || list_pos >= s_wifi_slot_n) return 0;
+    return s_wifi_slot_cache[list_pos].idx;
+}
+
+const char *wifi_slot_ssid_at(int list_pos) {
+    if (list_pos < 0 || list_pos >= s_wifi_slot_n) return "";
+    return s_wifi_slot_cache[list_pos].ssid;
+}
+
+void load_wifi_prefs(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
+    uint8_t v;
+    if (nvs_get_u8(handle, NVS_WIFI_ENABLED, &v) == ESP_OK) wifi_enabled = (v != 0);
+    if (nvs_get_u8(handle, NVS_WIFI_SLOT,    &v) == ESP_OK) wifi_slot    = v;
+    nvs_close(handle);
+}
+
+void save_wifi_prefs(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    nvs_set_u8(handle, NVS_WIFI_ENABLED, wifi_enabled ? 1 : 0);
+    nvs_set_u8(handle, NVS_WIFI_SLOT,    wifi_slot);
+    nvs_commit(handle);
+    nvs_close(handle);
+    ESP_LOGI(TAG, "WiFi prefs saved: enabled=%d slot=%u",
+             (int)wifi_enabled, (unsigned)wifi_slot);
+    // Apply: tear the current association down then attempt the new one
+    // (or stay down, if the user disabled WiFi). Synchronous — the UI's
+    // "WiFi: connecting..." toast surfaces just before this kicks off.
+    wifi_connection_disconnect();
+    if (wifi_enabled && wifi_slots_count() > 0) {
+        wifi_connection_connect(wifi_slot, 5);
+    }
+}
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const uint16_t BW_OPTIONS[10] = {7, 10, 15, 20, 31, 41, 62, 125, 250, 500};
@@ -630,4 +704,90 @@ void save_sound_prefs(void) {
     nvs_set_u8(handle, NVS_SOUND_BOOT,    sound_boot_slot);
     nvs_commit(handle);
     nvs_close(handle);
+}
+
+// ── Map view state (Phase 3 + 6) ────────────────────────────────────────────
+bool load_map_state(int32_t *lat_e6, int32_t *lon_e6, uint8_t *zoom) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return false;
+    int32_t lat = 0, lon = 0;
+    uint8_t z   = 0;
+    uint8_t lock = 1;
+    bool ok =
+        nvs_get_i32(handle, NVS_MAP_LAT,  &lat) == ESP_OK &&
+        nvs_get_i32(handle, NVS_MAP_LON,  &lon) == ESP_OK &&
+        nvs_get_u8 (handle, NVS_MAP_ZOOM, &z)   == ESP_OK;
+    // Lock key is optional — falls back to the runtime default if missing.
+    if (nvs_get_u8 (handle, NVS_MAP_LOCK, &lock) == ESP_OK) {
+        map_lock_on = (lock != 0);
+    }
+    nvs_close(handle);
+    if (!ok) return false;
+    if (lat_e6) *lat_e6 = lat;
+    if (lon_e6) *lon_e6 = lon;
+    if (zoom)   *zoom   = z;
+    return true;
+}
+
+void save_map_state(int32_t lat_e6, int32_t lon_e6, uint8_t zoom) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    nvs_set_i32(handle, NVS_MAP_LAT,  lat_e6);
+    nvs_set_i32(handle, NVS_MAP_LON,  lon_e6);
+    nvs_set_u8 (handle, NVS_MAP_ZOOM, zoom);
+    nvs_set_u8 (handle, NVS_MAP_LOCK, map_lock_on ? 1 : 0);
+    nvs_commit(handle);
+    nvs_close(handle);
+    ESP_LOGI(TAG, "Map state saved: lat=%ld lon=%ld zoom=%u lock=%d",
+             (long)lat_e6, (long)lon_e6, (unsigned)zoom, (int)map_lock_on);
+}
+
+// ── Map style profile ───────────────────────────────────────────────────────
+void load_map_profile(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
+    uint8_t p = (uint8_t)map_profile;
+    if (nvs_get_u8(handle, NVS_MAP_PROFILE, &p) == ESP_OK &&
+        p < MAP_PROFILE_COUNT) {
+        map_profile = (map_profile_t)p;
+    }
+    nvs_close(handle);
+}
+
+void save_map_profile(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    nvs_set_u8(handle, NVS_MAP_PROFILE, (uint8_t)map_profile);
+    nvs_commit(handle);
+    nvs_close(handle);
+    ESP_LOGI(TAG, "Map profile saved: %s", map_profile_label(map_profile));
+}
+
+// ── Live GPS tracking prefs (Phase 4) ────────────────────────────────────────
+void load_gps_track_prefs(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
+    uint8_t  p = (uint8_t)gps_profile;
+    uint16_t i = gps_custom_interval_s;
+    uint16_t d = gps_custom_distance_m;
+    if (nvs_get_u8 (handle, NVS_GPS_PROFILE, &p) == ESP_OK &&
+        p < GPS_PROFILE_COUNT) {
+        gps_profile = (gps_profile_t)p;
+    }
+    if (nvs_get_u16(handle, NVS_GPS_INT_S,   &i) == ESP_OK) gps_custom_interval_s = i;
+    if (nvs_get_u16(handle, NVS_GPS_DIST_M,  &d) == ESP_OK) gps_custom_distance_m = d;
+    nvs_close(handle);
+}
+
+void save_gps_track_prefs(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    nvs_set_u8 (handle, NVS_GPS_PROFILE, (uint8_t)gps_profile);
+    nvs_set_u16(handle, NVS_GPS_INT_S,   gps_custom_interval_s);
+    nvs_set_u16(handle, NVS_GPS_DIST_M,  gps_custom_distance_m);
+    nvs_commit(handle);
+    nvs_close(handle);
+    ESP_LOGI(TAG, "GPS track prefs: profile=%s int=%us dist=%um",
+             gps_profile_label(gps_profile),
+             (unsigned)gps_custom_interval_s, (unsigned)gps_custom_distance_m);
 }

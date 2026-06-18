@@ -24,7 +24,10 @@
 #include "radio.h"
 #include "radio_system_protocol_client.h"
 #include "region_limits.h"
+#include "map.h"
 #include "settings_nvs.h"
+#include "sounds.h"
+#include "gps_task.h"
 #include "ui_state.h"
 
 extern bool c6_available;
@@ -143,16 +146,19 @@ static const field_def_t s_fields[FIELD_COUNT] = {
     [FIELD_SEND_FLOOD_NOW]    = { "Send flood now",      NULL                   },
     [FIELD_SEND_DIRECT_NOW]   = { "Send direct now",     NULL                   },
     // ── Network ──
+    // Labels here are deliberately short; render_settings_drilldown draws
+    // "WiFi" / "HTTPS server" section headers above the first row of each
+    // group so the qualifier doesn't need to repeat on every label.
     [FIELD_ROLE]              = { "Role",                NULL                   },
     [FIELD_PATH_HASH_SIZE]    = { "Path hash size",      NULL                   },
-    [FIELD_WIFI_SSID]         = { "WiFi SSID",           save_wifi              },
-    [FIELD_WIFI_PASSWORD]     = { "WiFi password",       save_wifi              },
-    [FIELD_WIFI_CONNECT]      = { "WiFi connect",        NULL                   },
-    [FIELD_WIFI_STATUS]       = { "WiFi status",         NULL                   },
-    [FIELD_HTTP_URL]          = { "HTTPS endpoint",      NULL                   },
+    [FIELD_WIFI_SSID]         = { "SSID",                NULL                   },
+    [FIELD_WIFI_STATUS]       = { "Status",              NULL                   },
+    [FIELD_WIFI_NETWORK]      = { "Network",             save_wifi_prefs        },
+    [FIELD_WIFI_ENABLED]      = { "Enabled",             save_wifi_prefs        },
+    [FIELD_HTTP_URL]          = { "Endpoint",            NULL                   },
     [FIELD_HTTP_API_KEY]      = { "API key",             NULL                   },
-    [FIELD_HTTP_KEY_REGEN]    = { "Regenerate API key",  NULL                   },
-    [FIELD_HTTPS_CERT_FP]     = { "HTTPS cert FP",       NULL                   },
+    [FIELD_HTTP_KEY_REGEN]    = { "Regenerate key",      NULL                   },
+    [FIELD_HTTPS_CERT_FP]     = { "Cert fingerprint",    NULL                   },
     [FIELD_HTTPS_CERT_REGEN]  = { "Regenerate cert",     NULL                   },
     [FIELD_HTTP_QR]           = { "Show QR (OwnTracks)", NULL                   },
     // ── Region & Location ──
@@ -161,6 +167,11 @@ static const field_def_t s_fields[FIELD_COUNT] = {
     [FIELD_GPS_LON]           = { "GPS longitude",       save_gps_coords        },
     [FIELD_GPS_SOURCE]        = { "GPS source",          NULL                   },
     [FIELD_GPS_AUTOFILL]      = { "Auto-fill from GPS",  NULL                   },
+    // ── Tracking (live GPS background task) ──
+    [FIELD_GPS_PROFILE]       = { "Profile",             save_gps_track_prefs   },
+    [FIELD_GPS_INTERVAL_S]    = { "Poll interval",       save_gps_track_prefs   },
+    [FIELD_GPS_DISTANCE_M]    = { "Commit distance",     save_gps_track_prefs   },
+    [FIELD_MAP_PROFILE]       = { "Style",               save_map_profile       },
     [FIELD_BLE_ENABLED]       = { "BLE companion",       save_ble_enabled       },
     // ── Brightness ──
     [FIELD_DISPLAY_BL]        = { "Display backlight",   save_brightness        },
@@ -284,6 +295,21 @@ static void render_settings_category_list(int w, int h) {
                   "WSAD: nav   Enter: open   ESC: home   Tab: next view");
 }
 
+// Optional inline section header drawn above a specific field's row. The
+// Network drilldown groups its 12 rows into mesh / WiFi / HTTPS server, so
+// the user can see at a glance which subsystem a field belongs to without
+// repeating qualifiers on every label.
+static const char *settings_section_above(field_t f) {
+    switch (f) {
+        case FIELD_WIFI_SSID:    return "WiFi";
+        case FIELD_HTTP_URL:     return "HTTPS server";
+        case FIELD_BLE_ENABLED:  return "BLE companion";
+        case FIELD_GPS_PROFILE:  return "Tracking";
+        case FIELD_MAP_PROFILE:  return "Map";
+        default:                 return NULL;
+    }
+}
+
 // ── Drilled-in category renderer ─────────────────────────────────────────────
 // Reuses the original row-rendering logic but only walks the fields belonging
 // to settings_category_active, so headings + scroll math collapse to a flat
@@ -311,6 +337,7 @@ static void render_settings_drilldown(int w, int h) {
     }
 
     const int row_h    = 44;
+    const int sec_h    = 26;   // height of an inline section header above a row
     const int title_h  = 38;
     const int footer_h = 60;
     const int y0       = TAB_BAR_H + 6;
@@ -337,12 +364,24 @@ static void render_settings_drilldown(int w, int h) {
     if (selected < first_field) selected = first_field;
     if (selected > last_field)  selected = last_field;
 
-    int sel_row = selected - first_field;
-    int reveal_top = sel_row * row_h;
-    int reveal_bot = reveal_top + row_h;
-    if (reveal_top < settings_scroll)          settings_scroll = reveal_top;
-    if (reveal_bot > settings_scroll + list_h) settings_scroll = reveal_bot - list_h;
-    int max_scroll = field_count_local * row_h - list_h;
+    // Pre-pass: compute the absolute y-offset of each field's row within the
+    // virtual list, the position of the selected row, and the total content
+    // height so scroll math survives variable-sized inline section headers
+    // (currently only the Network drilldown opts in via settings_section_above).
+    int field_y[FIELD_COUNT] = {0};   // y-top of each row, relative to list_y0+0 scroll
+    int total_h = 0;
+    int sel_top = 0, sel_bot = 0;
+    for (int f = first_field; f <= last_field; f++) {
+        if (settings_section_above((field_t)f)) total_h += sec_h;
+        field_y[f] = total_h;
+        if (f == selected) sel_top = total_h;
+        total_h += row_h;
+        if (f == selected) sel_bot = total_h;
+    }
+
+    if (sel_top < settings_scroll)          settings_scroll = sel_top;
+    if (sel_bot > settings_scroll + list_h) settings_scroll = sel_bot - list_h;
+    int max_scroll = total_h - list_h;
     if (max_scroll < 0)               max_scroll = 0;
     if (settings_scroll > max_scroll) settings_scroll = max_scroll;
     if (settings_scroll < 0)          settings_scroll = 0;
@@ -351,8 +390,22 @@ static void render_settings_drilldown(int w, int h) {
 
     pax_clip(&fb, 0, list_y0, w, list_h);
     for (int f = first_field; f <= last_field; f++) {
-        int rel = f - first_field;
-        int y   = list_y0 + rel * row_h - settings_scroll;
+        int y = list_y0 + field_y[f] - settings_scroll;
+
+        // Render the section header (if any) just above this row.
+        const char *hdr = settings_section_above((field_t)f);
+        if (hdr) {
+            int hy = y - sec_h;
+            if (hy < list_y0 + list_h && hy + sec_h > list_y0) {
+                pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL,
+                              18, hy + (sec_h - TXT_SMALL) / 2 - 1, hdr);
+                pax_vec2f hsz = pax_text_size(FONT, TXT_SMALL, hdr);
+                int line_x = 18 + (int)hsz.x + 10;
+                int line_y = hy + sec_h - 6;
+                pax_simple_rect(&fb, COL_PANEL, line_x, line_y, w - line_x - 18, 1);
+            }
+        }
+
         if (y + row_h <= list_y0 || y >= list_y0 + list_h) continue;
 
         bool is_sel = (f == selected);
@@ -397,8 +450,7 @@ static void render_settings_drilldown(int w, int h) {
         char val_disp[80];
         bool is_text_field = (f == FIELD_OWNER || f == FIELD_ADV_NAME ||
                               f == FIELD_REGION_SCOPE ||
-                              f == FIELD_GPS_LAT || f == FIELD_GPS_LON ||
-                              f == FIELD_WIFI_SSID || f == FIELD_WIFI_PASSWORD);
+                              f == FIELD_GPS_LAT || f == FIELD_GPS_LON);
         if (is_sel && edit_mode && field_editing_text && is_text_field) {
             snprintf(val_disp, sizeof(val_disp), "%s_", field_edit_buf);
         } else if (is_sel && edit_mode && !is_text_field) {
@@ -622,21 +674,32 @@ static void fmt_field(field_t f, char *out, size_t cap) {
             snprintf(out, cap, "%u byte (%s)", path_hash_size, hops[hi]);
             break;
         }
-        case FIELD_WIFI_SSID:
-            snprintf(out, cap, "%s", wifi_ssid[0] ? wifi_ssid : "(not set)");
-            break;
-        case FIELD_WIFI_PASSWORD:
-            if (wifi_password[0]) {
-                size_t plen = strlen(wifi_password);
-                snprintf(out, cap, "%.*s (%zu chars)",
-                         (int)(plen > 3 ? 3 : plen), wifi_password, plen);
-            } else {
-                snprintf(out, cap, "(not set)");
+        case FIELD_WIFI_SSID: {
+            // Read-only: the SSID of the launcher slot we're set to use.
+            // Falls back to "(no slots)" if the launcher has no networks
+            // saved yet — the user should add one via the launcher first.
+            int n = wifi_slots_count();
+            if (n == 0) { snprintf(out, cap, "(no slots — use launcher)"); break; }
+            int pos = 0;
+            for (int i = 0; i < n; i++) {
+                if (wifi_slot_idx_at(i) == wifi_slot) { pos = i; break; }
             }
+            snprintf(out, cap, "%s", wifi_slot_ssid_at(pos));
             break;
-        case FIELD_WIFI_CONNECT:
-            snprintf(out, cap, "%s",
-                     wifi_ssid[0] ? "press OK to connect" : "(enter SSID first)");
+        }
+        case FIELD_WIFI_NETWORK: {
+            int n = wifi_slots_count();
+            if (n == 0) { snprintf(out, cap, "(no slots)"); break; }
+            int pos = 0;
+            for (int i = 0; i < n; i++) {
+                if (wifi_slot_idx_at(i) == wifi_slot) { pos = i; break; }
+            }
+            snprintf(out, cap, "[%u] %s", (unsigned)wifi_slot_idx_at(pos),
+                                          wifi_slot_ssid_at(pos));
+            break;
+        }
+        case FIELD_WIFI_ENABLED:
+            snprintf(out, cap, "%s", wifi_enabled ? "On" : "Off");
             break;
         case FIELD_WIFI_STATUS:
             if (wifi_connection_is_connected()) {
@@ -735,6 +798,22 @@ static void fmt_field(field_t f, char *out, size_t cap) {
             }
             break;
         }
+        case FIELD_GPS_PROFILE:
+            snprintf(out, cap, "%s", gps_profile_label(gps_profile));
+            break;
+        case FIELD_GPS_INTERVAL_S:
+            if (gps_custom_interval_s == 0) snprintf(out, cap, "Auto");
+            else                             snprintf(out, cap, "%us",
+                                                       (unsigned)gps_custom_interval_s);
+            break;
+        case FIELD_GPS_DISTANCE_M:
+            if (gps_custom_distance_m == 0) snprintf(out, cap, "Auto");
+            else                             snprintf(out, cap, "%um",
+                                                       (unsigned)gps_custom_distance_m);
+            break;
+        case FIELD_MAP_PROFILE:
+            snprintf(out, cap, "%s", map_profile_label(map_profile));
+            break;
         case FIELD_BLE_ENABLED:
             snprintf(out, cap, "%s", ble_enabled ? "On" : "Off");
             break;
@@ -761,8 +840,14 @@ static void fmt_field(field_t f, char *out, size_t cap) {
                          : (f == FIELD_SOUND_CHANNEL) ? sound_channel_slot
                          : (f == FIELD_SOUND_ERROR)   ? sound_error_slot
                                                       : sound_boot_slot;
-            if (slot == 0) snprintf(out, cap, "Off");
-            else           snprintf(out, cap, "Sound %u", (unsigned)slot);
+            if (slot == 0) {
+                snprintf(out, cap, "Off");
+            } else if (slot > sounds_count()) {
+                // Stored slot references a WAV that's no longer on the SD.
+                snprintf(out, cap, "(missing #%u)", (unsigned)slot);
+            } else {
+                snprintf(out, cap, "%s", sounds_slot_name(slot));
+            }
             break;
         }
         case FIELD_SOUND_TEST_DM:

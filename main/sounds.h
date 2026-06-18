@@ -37,3 +37,22 @@ void sounds_play_dm(void);
 void sounds_play_channel(void);
 void sounds_play_error(void);
 void sounds_play_boot(void);
+
+// Hard cap on the number of WAV slots surfaced in Settings. Slot 0 is
+// reserved for "Off"; slots 1..SOUNDS_MAX_SLOTS index into the alphabetically
+// sorted list of .wav files under /sd/meshcore/sounds/.
+#define SOUNDS_MAX_SLOTS 20
+// Maximum length of a stored WAV basename (without extension). Keeps the
+// in-memory list bounded and matches the Settings UI's truncation budget.
+#define SOUNDS_NAME_MAX  24
+
+// Rescan /sd/meshcore/sounds/ and rebuild the alphabetical WAV index.
+// Safe to call from the UI task; uses readdir, no audio I/O.
+void sounds_refresh_list(void);
+
+// Number of WAVs currently discovered (0..SOUNDS_MAX_SLOTS).
+int sounds_count(void);
+
+// Filename basename (no path, no .wav) for slot 1..count(). Returns "" for
+// slot 0 (Off) or out of range. Pointer is valid until the next refresh.
+const char *sounds_slot_name(uint8_t slot);

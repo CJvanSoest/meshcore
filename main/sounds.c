@@ -3,6 +3,8 @@
 
 #include "sounds.h"
 
+#include <ctype.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,6 +32,13 @@ static uint32_t          s_rate   = 0;
 // Single mutex so two parallel preview taps can't trample one another's
 // I2S writes. If a sound is already playing we just drop the second one.
 static SemaphoreHandle_t s_busy   = NULL;
+
+// In-memory index of the .wav files under SOUND_DIR. Built by
+// sounds_refresh_list(), consumed by the Settings UI for label display +
+// by play_async() to resolve a slot to a real filename. Names are stored
+// without the .wav extension so the UI can show them as-is.
+static char s_names[SOUNDS_MAX_SLOTS][SOUNDS_NAME_MAX + 1];
+static int  s_count = 0;
 
 // ── WAV parsing ──────────────────────────────────────────────────────────────
 typedef struct __attribute__((packed)) {
@@ -181,15 +190,70 @@ static void play_task(void *arg) {
 }
 
 static void play_async(uint8_t slot) {
-    if (!s_ready || slot == 0 || slot > 9) return;
+    if (!s_ready || slot == 0 || slot > SOUNDS_MAX_SLOTS) return;
+    if (slot > s_count) return;
     play_arg_t *pa = (play_arg_t *)malloc(sizeof(play_arg_t));
     if (!pa) return;
-    snprintf(pa->path, sizeof(pa->path), "%s/%u.wav", SOUND_DIR, (unsigned)slot);
+    snprintf(pa->path, sizeof(pa->path), "%s/%s.wav", SOUND_DIR, s_names[slot - 1]);
     // 8 KB stack: WAV parse uses ~100B locals, I2S write is shallow, fread
     // through SDMMC ~1 KB. Headroom for any deeper SD call.
     if (xTaskCreate(play_task, "sound_play", 8192, pa, 4, NULL) != pdPASS) {
         free(pa);
     }
+}
+
+// ── WAV directory index ─────────────────────────────────────────────────────
+// Strips the trailing ".wav"/".WAV" from a directory entry and copies the
+// remaining basename into dst (truncated to SOUNDS_NAME_MAX). Returns true
+// if the entry was a WAV (case-insensitive) and a non-empty basename remained.
+static bool sounds_take_wav_name(const char *fname, char *dst) {
+    size_t len = strlen(fname);
+    if (len < 5) return false;
+    const char *ext = fname + len - 4;
+    if ((ext[0] != '.') ||
+        (ext[1] != 'w' && ext[1] != 'W') ||
+        (ext[2] != 'a' && ext[2] != 'A') ||
+        (ext[3] != 'v' && ext[3] != 'V')) {
+        return false;
+    }
+    size_t base = len - 4;
+    if (base == 0)                    return false;
+    if (base > SOUNDS_NAME_MAX)       base = SOUNDS_NAME_MAX;
+    memcpy(dst, fname, base);
+    dst[base] = '\0';
+    return true;
+}
+
+static int sounds_name_cmp(const void *a, const void *b) {
+    const char *sa = (const char *)a;
+    const char *sb = (const char *)b;
+    return strcasecmp(sa, sb);
+}
+
+void sounds_refresh_list(void) {
+    s_count = 0;
+    memset(s_names, 0, sizeof(s_names));
+    DIR *d = opendir(SOUND_DIR);
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL && s_count < SOUNDS_MAX_SLOTS) {
+        if (e->d_name[0] == '.') continue;
+        char tmp[SOUNDS_NAME_MAX + 1];
+        if (sounds_take_wav_name(e->d_name, tmp)) {
+            memcpy(s_names[s_count], tmp, SOUNDS_NAME_MAX + 1);
+            s_count++;
+        }
+    }
+    closedir(d);
+    if (s_count > 1) qsort(s_names, s_count, sizeof(s_names[0]), sounds_name_cmp);
+    ESP_LOGI(TAG, "sound list: %d WAV(s) under %s", s_count, SOUND_DIR);
+}
+
+int sounds_count(void) { return s_count; }
+
+const char *sounds_slot_name(uint8_t slot) {
+    if (slot == 0 || slot > s_count) return "";
+    return s_names[slot - 1];
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -216,6 +280,7 @@ void sounds_init(void) {
     sounds_apply_volume();
     mkdir("/sd/meshcore",        0755);
     mkdir("/sd/meshcore/sounds", 0755);
+    sounds_refresh_list();
     ESP_LOGI(TAG, "sounds ready (vol=%u%%)", sound_volume_pct);
 }
 

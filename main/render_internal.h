@@ -25,6 +25,7 @@ void render_chat(void);
 void render_channel(void);
 void render_home(void);
 void render_about(void);
+void render_map(void);
 
 // VIEW_HOME tile-grid API used by input.c to translate tile-Enter into a
 // view switch + optional side-effect. home_tile_target() returns VIEW_HOME

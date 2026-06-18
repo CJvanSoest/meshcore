@@ -27,15 +27,27 @@
 
 // Greedy word-wrap of `text` to fit `max_w` px at FONT/TXT_BODY. A word longer
 // than a line is left on its own line (clipped). Measures with emoji_measure_text
-// so emoji widths count.
+// so emoji widths count. Explicit '\n' / '\r' in the source text are honoured
+// as hard line breaks — otherwise pax_draw_text would render the newline glyph
+// itself as a second line, but msg_wrap would still count this row as a single
+// line, and the bubble below the next message would overlap the runaway text.
 static int msg_wrap(const char *text, int max_w, char out[][MAX_MSG_TEXT], int max_lines) {
     int  nl = 0;
     char line[MAX_MSG_TEXT] = {0};
     int  ll = 0;
     const char *p = text;
     while (*p && nl < max_lines) {
+        if (*p == '\n' || *p == '\r') {
+            // Flush the current line (possibly empty) and consume the CR/LF run.
+            memcpy(out[nl], line, ll + 1);
+            nl++;
+            ll = 0;
+            line[0] = 0;
+            while (*p == '\n' || *p == '\r') p++;
+            continue;
+        }
         const char *w0 = p;
-        while (*p && *p != ' ') p++;
+        while (*p && *p != ' ' && *p != '\n' && *p != '\r') p++;
         while (*p == ' ') p++;
         int wlen = (int)(p - w0);
         if (wlen > MAX_MSG_TEXT - 1) wlen = MAX_MSG_TEXT - 1;
@@ -53,6 +65,7 @@ static int msg_wrap(const char *text, int max_w, char out[][MAX_MSG_TEXT], int m
         } else {
             memcpy(out[nl], line, ll + 1);
             nl++;
+            if (nl >= max_lines) break;
             ll = (wlen < MAX_MSG_TEXT) ? wlen : MAX_MSG_TEXT - 1;
             memcpy(line, w0, ll);
             line[ll] = 0;
@@ -76,7 +89,12 @@ void render_msg_list(int w, int list_y0, int list_h, chat_msg_t *msgs,
     *scroll_p = sc;
 
     const int line_h  = TXT_BODY + 4;
-    const int avail_w = w - 32;
+    const int meta_h  = TXT_TINY + 4;
+    const int pad_x   = 8;    // inner horizontal padding within a bubble
+    const int pad_y   = 5;    // inner vertical padding within a bubble
+    const int gap     = 10;   // vertical gap between adjacent bubbles
+    const int margin  = 14;   // outer horizontal margin from screen edges
+    const int avail_w = w - 2 * margin - 2 * pad_x;
     char lines[MSG_MAX_LINES][MAX_MSG_TEXT];
 
     pax_clip(&fb, 0, list_y0, w, list_h);
@@ -105,35 +123,58 @@ void render_msg_list(int w, int list_y0, int list_h, chat_msg_t *msgs,
             if (hbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", hbuf);
             if (ack)     o += snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", ack);
         }
-        int meta_h = TXT_TINY + 2;
-        int mh     = nl * line_h + meta_h + 6;
+
+        // Each bubble: pad_y top + nl text lines + meta + pad_y bottom.
+        // Step height adds an explicit gap between adjacent bubbles.
+        int bubble_h = pad_y + nl * line_h + meta_h + pad_y;
+        int mh       = bubble_h + gap;
 
         y -= mh;
         if (y + mh <= list_y0) break;
 
+        int bubble_y = y + gap / 2;
+
+        // Measure widest content (text lines + meta) so the bubble hugs the text.
+        int maxw = 0;
+        for (int k = 0; k < nl; k++) {
+            int lw = emoji_measure_text(FONT, TXT_BODY, lines[k]);
+            if (lw > maxw) maxw = lw;
+        }
+        if (meta[0] || m->is_mine) {
+            const char *ml = meta[0] ? meta : "You";
+            int mw = (int)pax_text_size(FONT, TXT_TINY, ml).x;
+            if (mw > maxw) maxw = mw;
+        }
+        int max_bubble_w = w - 2 * margin;
+        int bubble_w     = maxw + 2 * pad_x;
+        if (bubble_w > max_bubble_w) bubble_w = max_bubble_w;
+
         if (m->is_mine) {
-            int maxw = 0;
+            int bx = w - margin - bubble_w;
+            pax_simple_rect(&fb, COL_PANEL, bx, bubble_y, bubble_w, bubble_h);
             for (int k = 0; k < nl; k++) {
                 int lw = emoji_measure_text(FONT, TXT_BODY, lines[k]);
-                if (lw > maxw) maxw = lw;
-            }
-            int bx = w - maxw - 16;
-            if (bx < 16) bx = 16;
-            pax_simple_rect(&fb, COL_PANEL, bx - 6, y + 2, maxw + 12, nl * line_h + meta_h + 2);
-            for (int k = 0; k < nl; k++) {
-                int lw = emoji_measure_text(FONT, TXT_BODY, lines[k]);
-                emoji_draw_text(&fb, COL_BLUE, FONT, TXT_BODY, w - lw - 16, y + 4 + k * line_h, lines[k]);
+                emoji_draw_text(&fb, COL_BLUE, FONT, TXT_BODY,
+                                bx + bubble_w - pad_x - lw,
+                                bubble_y + pad_y + k * line_h, lines[k]);
             }
             pax_col_t mc = (m->ack_state == 2) ? COL_GREEN : COL_GRAY;
             const char *ml = meta[0] ? meta : "You";
             pax_vec2f msz = pax_text_size(FONT, TXT_TINY, ml);
-            pax_draw_text(&fb, mc, FONT, TXT_TINY, w - (int)msz.x - 16, y + 4 + nl * line_h, ml);
+            pax_draw_text(&fb, mc, FONT, TXT_TINY,
+                          bx + bubble_w - pad_x - (int)msz.x,
+                          bubble_y + pad_y + nl * line_h, ml);
         } else {
+            int bx = margin;
+            pax_simple_rect(&fb, COL_HEADER, bx, bubble_y, bubble_w, bubble_h);
+            pax_simple_rect(&fb, COL_ACCENT, bx, bubble_y, 3, bubble_h);
             for (int k = 0; k < nl; k++) {
-                emoji_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 14, y + 4 + k * line_h, lines[k]);
+                emoji_draw_text(&fb, COL_WHITE, FONT, TXT_BODY,
+                                bx + pad_x, bubble_y + pad_y + k * line_h, lines[k]);
             }
             if (meta[0]) {
-                pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, 14, y + 4 + nl * line_h, meta);
+                pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY,
+                              bx + pad_x, bubble_y + pad_y + nl * line_h, meta);
             }
         }
     }
@@ -201,10 +242,17 @@ void render_chat(void) {
                     role = (meshcore_device_role_t)contacts[e].role;
                 }
 
+                int row_slot   = is_active ? contact_find(dm_target_pub) : e;
+                int row_unread = (row_slot >= 0) ? contact_unread[row_slot] : 0;
+
                 int y = inbox_y0 + row * row_h;
                 if (is_cursor) {
                     pax_simple_rect(&fb, COL_PANEL, 0, y, w, row_h - 2);
                     pax_simple_rect(&fb, COL_ACCENT, 0, y, 5, row_h - 2);
+                } else if (row_unread > 0) {
+                    // Subtle stripe on left edge so unread rows pop without
+                    // stealing the cursor's amber/accent treatment.
+                    pax_simple_rect(&fb, COL_RED, 0, y, 3, row_h - 2);
                 }
                 pax_simple_rect(&fb, COL_PANEL, 12, y + row_h - 1, w - 24, 1);
 
@@ -221,8 +269,6 @@ void render_chat(void) {
                 int name_x = av_x + av_d + 12;
                 pax_draw_text(&fb, name_col, FONT, TXT_BODY, name_x, y + 6, name);
 
-                int row_slot   = is_active ? contact_find(dm_target_pub) : e;
-                int row_unread = (row_slot >= 0) ? contact_unread[row_slot] : 0;
                 if (row_unread > 0) {
                     char ub[8];
                     snprintf(ub, sizeof(ub), "%d", row_unread > 99 ? 99 : row_unread);
@@ -238,9 +284,16 @@ void render_chat(void) {
 
                 const char *rl = role_label(role);
                 char sub[64];
-                if (is_active) snprintf(sub, sizeof(sub), "%s  ·  active DM", rl);
-                else           snprintf(sub, sizeof(sub), "%s  ·  saved contact", rl);
-                pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL,
+                if (row_unread > 0) {
+                    snprintf(sub, sizeof(sub), "%s  ·  %d new",
+                             rl, row_unread > 99 ? 99 : row_unread);
+                } else if (is_active) {
+                    snprintf(sub, sizeof(sub), "%s  ·  active DM", rl);
+                } else {
+                    snprintf(sub, sizeof(sub), "%s  ·  saved contact", rl);
+                }
+                pax_col_t sub_col = (row_unread > 0) ? COL_RED : COL_GRAY;
+                pax_draw_text(&fb, sub_col, FONT, TXT_SMALL,
                               av_x + av_d + 12, y + 6 + TXT_BODY + 4, sub);
 
                 if (is_cursor) {

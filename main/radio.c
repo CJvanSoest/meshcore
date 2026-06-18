@@ -216,35 +216,68 @@ static void send_advert_internal(bool direct_route, const uint8_t *dst_hash, uin
 
 void send_advert(void) { send_advert_internal(false, NULL, 0); }
 
+// Background-task payload: pub-key hashes pre-computed under a brief
+// node_mutex hold, plus the path-hash byte-count both passed to
+// send_advert_internal one packet at a time, with a 150 ms gap so the
+// radio TX queue + duty-cycle accounting stay healthy.
+typedef struct {
+    int     n;
+    uint8_t bph;
+    uint8_t hashes[];
+} adv_direct_args_t;
+
+static void send_advert_direct_task(void *arg) {
+    adv_direct_args_t *a = (adv_direct_args_t *)arg;
+    if (a->n == 0) {
+        send_advert_internal(true, NULL, 0);
+    } else {
+        for (int i = 0; i < a->n; i++) {
+            send_advert_internal(true, a->hashes + i * 32, a->bph);
+            // 250 ms gap — a bit more generous than the flood path's 150 ms
+            // so 16 sequential TXs stay under ~1 % of the 1-hour duty budget.
+            vTaskDelay(pdMS_TO_TICKS(250));
+        }
+    }
+    free(a);
+    vTaskDelete(NULL);
+}
+
 // DIRECT advert: stock MeshCore receivers drop direct packets with no
-// destination match, so we iterate node_list[] and send one direct-route
-// advert per known node, addressed by sha256(pub_key)[0..bph-1]. This is
-// upstream's "sendSelfAdvertDirect" pattern minus the per-contact path
-// memory (we don't store out_path yet -- repeaters that don't already
-// route via our path simply won't forward, which is the intent).
+// destination match, so we send one direct-route advert per *contact*
+// (user-favorited / DM'd peers, MAX_CONTACTS = 16), addressed by
+// sha256(pub_key)[0..bph-1]. Iterating every background-discovered node
+// (up to 200) wastes airtime — most of those are out-of-route repeaters
+// the user has no relationship with. Limiting to contacts caps the worst
+// case at ~16 × (TX + 200 ms gap) ≈ 5-6 seconds of activity and a few
+// tenths of a percent duty-cycle hit.
 void send_advert_direct(void) {
     if (!c6_available || !identity_is_ready()) return;
     uint8_t bph = path_hash_size ? path_hash_size : 1;
-    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        // Couldn't grab the lock; fall back to a single no-dst direct so
-        // the user still sees an emit + toast confirms the action ran.
+
+    // Worst case MAX_CONTACTS × 32-byte hashes = 512 B. Allocate from heap
+    // so the task can run on a modest stack.
+    size_t cap = sizeof(adv_direct_args_t) + (size_t)MAX_CONTACTS * 32u;
+    adv_direct_args_t *a = (adv_direct_args_t *)malloc(cap);
+    if (!a) {
+        // OOM — fall back to the single no-dst direct so the user still
+        // gets feedback (toast is set by the caller after this returns).
         send_advert_internal(true, NULL, 0);
         return;
     }
-    int sent = 0;
-    for (int i = 0; i < MAX_NODES; i++) {
-        if (!node_list[i].active) continue;
-        uint8_t hash[32];
-        mbedtls_sha256(node_list[i].pub_key, MESHCORE_PUB_KEY_SIZE, hash, 0);
-        send_advert_internal(true, hash, bph);
-        sent++;
-        // Small inter-packet gap so the radio TX queue + duty-cycle
-        // accounting stay healthy when there are many known nodes.
-        vTaskDelay(pdMS_TO_TICKS(150));
+    a->n   = 0;
+    a->bph = bph;
+    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        for (int i = 0; i < contact_count && a->n < MAX_CONTACTS; i++) {
+            mbedtls_sha256(contacts[i].pub_key, MESHCORE_PUB_KEY_SIZE,
+                           a->hashes + a->n * 32, 0);
+            a->n++;
+        }
+        xSemaphoreGive(node_mutex);
     }
-    xSemaphoreGive(node_mutex);
-    if (sent == 0) {
-        // No known peers yet -- still emit one so the user gets feedback.
+    BaseType_t r = xTaskCreate(send_advert_direct_task, "adv_direct",
+                               4096, a, 3, NULL);
+    if (r != pdPASS) {
+        free(a);
         send_advert_internal(true, NULL, 0);
     }
 }

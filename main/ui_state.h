@@ -39,24 +39,33 @@ typedef enum {
     // ── Network & behavior ──
     FIELD_ROLE,
     FIELD_PATH_HASH_SIZE,
-    // ── WiFi (lives in the Network tile alongside mesh params) ──
-    FIELD_WIFI_SSID,
-    FIELD_WIFI_PASSWORD,
-    FIELD_WIFI_CONNECT,   // Action row: save creds + wifi_connect_try_all
+    // ── WiFi (lives in the Network tile alongside mesh params).
+    //     Slot management (add/edit SSID + password for new networks) lives
+    //     in the launcher's WiFi settings; our app only flips the on/off
+    //     toggle and lets the user pick which already-stored slot to use.
+    FIELD_WIFI_SSID,      // Read-only: SSID of the currently selected slot
     FIELD_WIFI_STATUS,    // Read-only: "Disconnected" / "Connecting..." / "IP: x.x.x.x"
+    FIELD_WIFI_NETWORK,   // Picker: cycles launcher-stored slots (idx + SSID)
+    FIELD_WIFI_ENABLED,   // Toggle: On = wifi_connection_connect, Off = disconnect
     FIELD_HTTP_URL,       // Read-only: https://<ip>:8443/ping (for MeshMapper config)
     FIELD_HTTP_API_KEY,   // Read-only: 64 hex chars (paste into MeshMapper)
     FIELD_HTTP_KEY_REGEN, // Action row: press OK to roll a new API key
     FIELD_HTTPS_CERT_FP,  // Read-only: SHA-256 fingerprint of the on-device cert
     FIELD_HTTPS_CERT_REGEN, // Action row: wipe NVS cert + regenerate self-signed
     FIELD_HTTP_QR,        // Action row: open QR overlay with /ping URL + key for iPhone capture
+    FIELD_BLE_ENABLED,        // Toggle: BLE companion radio on/off (takes effect on next app start)
     // ── Region & location ──
     FIELD_REGION_SCOPE,
     FIELD_GPS_LAT,
     FIELD_GPS_LON,
     FIELD_GPS_SOURCE,         // Read-only: shows whether coords are from PA1010D / Manual / CDC / BLE
     FIELD_GPS_AUTOFILL,       // Action-row: press OK to scan PA1010D on QWIIC and auto-fill lat/lon
-    FIELD_BLE_ENABLED,        // Toggle: BLE companion radio on/off (takes effect on next app start)
+    // ── Live GPS tracking (background gps_task) ──
+    FIELD_GPS_PROFILE,        // Walking / Cycling / Driving / Manual
+    FIELD_GPS_INTERVAL_S,     // Custom poll interval seconds; 0 = use profile default
+    FIELD_GPS_DISTANCE_M,     // Custom commit distance metres; 0 = use profile default
+    // ── Map style (VIEW_MAP tile profile) ──
+    FIELD_MAP_PROFILE,        // Ripple / OSM Bright / CyclOSM / OpenTopo — picks the SD subdir
     // ── Brightness (display backlight, keyboard backlight, RGB LED) ──
     FIELD_DISPLAY_BL,
     FIELD_KB_BL,

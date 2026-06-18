@@ -128,17 +128,57 @@ extern char                          wifi_ssid[33];      // SSID (max 32 + NUL)
 extern char                          wifi_password[65];  // WPA2 PSK (max 64 + NUL)
 
 // ── Notification sounds (PR D) ───────────────────────────────────────────────
-// User drops WAVs into /sd/meshcore/sounds/{1..4}.wav. Each event picks one
-// of those slots (or 0 = off). Volume is a single 0..100 % shared by all
-// events; the codec does the actual mixing.
+// User drops .wav files into /sd/meshcore/sounds/. At boot the sounds module
+// scans the directory and builds an alphabetically sorted index (up to
+// SOUNDS_MAX_SLOTS entries). Each event slot stores 0 = Off or 1..N index
+// into that list. Volume is a single 0..100 % shared by all events; the
+// codec does the actual mixing.
 extern uint8_t sound_volume_pct;
-extern uint8_t sound_dm_slot;        // 0=off, 1..4 = which numbered WAV to play
+extern uint8_t sound_dm_slot;        // 0=off, 1..N = index into discovered WAV list
 extern uint8_t sound_channel_slot;
 extern uint8_t sound_error_slot;
 extern uint8_t sound_boot_slot;
 
 void load_sound_prefs(void);
 void save_sound_prefs(void);
+
+// ── Map view state (Phase 3) ────────────────────────────────────────────────
+// Centre lat/lon (1e-6 °) and zoom level for VIEW_MAP. The map module owns
+// the runtime state (see map.h); these helpers only handle NVS persistence
+// so the boot flow and the debounced save inside the render loop both go
+// through the same path. Returns false from load_*() if any key is missing —
+// the map module then falls back to its built-in default centre.
+bool load_map_state(int32_t *lat_e6, int32_t *lon_e6, uint8_t *zoom);
+void save_map_state(int32_t lat_e6, int32_t lon_e6, uint8_t zoom);
+
+// Map style profile (Ripple / OSM Bright / CyclOSM / OpenTopo). The
+// runtime enum lives in map.{c,h}; this glues it to NVS.
+void load_map_profile(void);
+void save_map_profile(void);
+
+// WiFi connect preferences. The launcher owns SSID/password slot storage
+// via the wifi-manager component; we only persist the user's intent
+// (on/off) plus which launcher slot to prefer.
+extern bool    wifi_enabled;        // Auto-connect on boot + while enabled
+extern uint8_t wifi_slot;           // Active launcher slot to connect to
+void load_wifi_prefs(void);
+void save_wifi_prefs(void);
+
+// Cached snapshot of launcher-stored WiFi slots. Rebuilt by
+// wifi_slots_refresh() on boot, on every Settings 'R' reload, and just
+// before the FIELD_WIFI_NETWORK picker enters edit mode — so newly added
+// launcher slots show up without re-launching the app.
+#define WIFI_SLOTS_SCAN_MAX 16
+int         wifi_slots_count(void);
+uint8_t     wifi_slot_idx_at(int list_pos);
+const char *wifi_slot_ssid_at(int list_pos);
+void        wifi_slots_refresh(void);
+
+// Live GPS tracking prefs (Phase 4): profile + custom interval/distance.
+// The runtime variables themselves live in gps_task.{c,h}; these helpers
+// just glue them to NVS so the Settings UI doesn't have to.
+void load_gps_track_prefs(void);
+void save_gps_track_prefs(void);
 
 // Shared secret used by the HTTPS /ping endpoint to authenticate POSTs.
 // Auto-generated (64 random hex chars) at first boot if NVS is empty, so

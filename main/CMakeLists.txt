@@ -27,6 +27,10 @@ idf_component_register(
 		"render_channel.c"
 		"render_home.c"
 		"render_about.c"
+		"render_map.c"
+		"map.c"
+		"lodepng.c"
+		"gps_task.c"
 		"emoji.c"
 		"emoji_bitmaps.c"
 		"ed25519.c"
@@ -73,3 +77,9 @@ idf_component_register(
 
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=unused-variable" APPEND)
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=unused-const-variable" APPEND)
+
+# Slim lodepng to decoder-only — we read PNGs from SD via fread and never
+# write or generate PNGs, so the encoder + ancillary chunk + disk helpers
+# just bloat the binary.
+set_source_files_properties("main/lodepng.c" PROPERTIES COMPILE_OPTIONS
+	"-DLODEPNG_NO_COMPILE_ENCODER;-DLODEPNG_NO_COMPILE_DISK;-DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS;-DLODEPNG_NO_COMPILE_ERROR_TEXT;-Wno-error=implicit-fallthrough;-Wno-error=stringop-overflow")

@@ -197,8 +197,16 @@ void render_nodes(void) {
                     pax_draw_text(&fb, COL_AMBER, FONT, TXT_BODY, 78, y + row_text_y, "*");
                 }
 
+                int row_unread = d->is_contact ? contact_unread[d->contact_idx] : 0;
+                int badge_w_resv = 0;
+                if (row_unread > 0) {
+                    char ub[8];
+                    snprintf(ub, sizeof(ub), "%d", row_unread > 99 ? 99 : row_unread);
+                    badge_w_resv = (int)pax_text_size(FONT, TXT_SMALL, ub).x + 12 + 6;
+                }
+
                 char name_trunc[25];
-                int  max_name_w = rssi_x - name_x - 6;
+                int  max_name_w = rssi_x - name_x - 6 - badge_w_resv;
                 int  max_chars  = max_name_w / 11;
                 if (max_chars > 24) max_chars = 24;
                 if (max_chars < 1)  max_chars = 1;
@@ -206,6 +214,18 @@ void render_nodes(void) {
                 pax_col_t name_col = is_cursor ? COL_WHITE :
                                      (n == NULL ? COL_GRAY : COL_WHITE);
                 pax_draw_text(&fb, name_col, FONT, TXT_BODY, name_x, y + row_text_y, name_trunc);
+
+                if (row_unread > 0) {
+                    char ub[8];
+                    snprintf(ub, sizeof(ub), "%d", row_unread > 99 ? 99 : row_unread);
+                    pax_vec2f nsz = pax_text_size(FONT, TXT_BODY, name_trunc);
+                    pax_vec2f usz = pax_text_size(FONT, TXT_SMALL, ub);
+                    int bw = (int)usz.x + 12;
+                    int bx = name_x + (int)nsz.x + 6;
+                    int by = y + (NODES_ROW_H - (TXT_SMALL + 4)) / 2;
+                    pax_simple_rect(&fb, COL_RED, bx, by, bw, TXT_SMALL + 4);
+                    pax_draw_text(&fb, COL_HEADER, FONT, TXT_SMALL, bx + 6, by + 2, ub);
+                }
 
                 pax_simple_rect(&fb, COL_PANEL, 12, y + NODES_ROW_H - 1, w - 24, 1);
             }

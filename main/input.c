@@ -23,9 +23,11 @@
 #include "contacts.h"
 #include "emoji.h"
 #include "gps.h"
+#include "gps_task.h"
 #include "history.h"
 #include "http_server.h"
 #include "identity.h"
+#include "map.h"
 #include "nodes.h"
 #include "radio.h"
 #include "region_limits.h"
@@ -220,6 +222,20 @@ void field_adjust(int field, int delta) {
             antenna_gain_dbi = (int8_t)v;
             break;
         }
+        case FIELD_WIFI_ENABLED:
+            wifi_enabled = !wifi_enabled;
+            break;
+        case FIELD_WIFI_NETWORK: {
+            int n = wifi_slots_count();
+            if (n == 0) break;
+            int pos = 0;
+            for (int i = 0; i < n; i++) {
+                if (wifi_slot_idx_at(i) == wifi_slot) { pos = i; break; }
+            }
+            pos = ((pos + delta) % n + n) % n;
+            wifi_slot = wifi_slot_idx_at(pos);
+            break;
+        }
         case FIELD_DISPLAY_BL:
         case FIELD_KB_BL:
         case FIELD_LED_BR: {
@@ -263,15 +279,52 @@ void field_adjust(int field, int delta) {
         case FIELD_SOUND_CHANNEL:
         case FIELD_SOUND_ERROR:
         case FIELD_SOUND_BOOT: {
-            // 0=off, 1..4 = slot under /sd/meshcore/sounds/<n>.wav.
+            // 0=off, 1..sounds_count() = index into /sd/meshcore/sounds/.
             uint8_t *slot = (field == FIELD_SOUND_DM)      ? &sound_dm_slot
                          : (field == FIELD_SOUND_CHANNEL)  ? &sound_channel_slot
                          : (field == FIELD_SOUND_ERROR)    ? &sound_error_slot
                                                            : &sound_boot_slot;
+            // Off + one row per discovered WAV, capped at SOUNDS_MAX_SLOTS.
+            int avail = sounds_count();
+            if (avail > SOUNDS_MAX_SLOTS) avail = SOUNDS_MAX_SLOTS;
+            const int n = avail + 1;  // include "Off"
             int idx = (int)*slot;
-            const int n = 5;  // 0..4
             idx = ((idx + delta) % n + n) % n;
             *slot = (uint8_t)idx;
+            break;
+        }
+        case FIELD_GPS_PROFILE: {
+            int idx = (int)gps_profile;
+            const int n = (int)GPS_PROFILE_COUNT;
+            idx = ((idx + delta) % n + n) % n;
+            gps_profile = (gps_profile_t)idx;
+            break;
+        }
+        case FIELD_GPS_INTERVAL_S: {
+            // Stops: 0 (Auto/profile default), 1, 2, 5, 10, 15, 30, 60, 120 s
+            static const uint16_t stops[] = {0, 1, 2, 5, 10, 15, 30, 60, 120};
+            const int n = sizeof(stops) / sizeof(stops[0]);
+            int idx = 0;
+            for (int i = 0; i < n; i++) if (stops[i] == gps_custom_interval_s) { idx = i; break; }
+            idx = ((idx + delta) % n + n) % n;
+            gps_custom_interval_s = stops[idx];
+            break;
+        }
+        case FIELD_GPS_DISTANCE_M: {
+            // Stops: 0 (Auto/profile default), 5, 10, 25, 50, 100, 250, 500 m
+            static const uint16_t stops[] = {0, 5, 10, 25, 50, 100, 250, 500};
+            const int n = sizeof(stops) / sizeof(stops[0]);
+            int idx = 0;
+            for (int i = 0; i < n; i++) if (stops[i] == gps_custom_distance_m) { idx = i; break; }
+            idx = ((idx + delta) % n + n) % n;
+            gps_custom_distance_m = stops[idx];
+            break;
+        }
+        case FIELD_MAP_PROFILE: {
+            int idx = (int)map_profile;
+            const int n = (int)MAP_PROFILE_COUNT;
+            idx = ((idx + delta) % n + n) % n;
+            map_profile_set((map_profile_t)idx);
             break;
         }
         default:
@@ -333,8 +386,7 @@ static void settings_begin_text_edit(field_t f) {
     } else if (f == FIELD_GPS_LON) {
         if (gps_position_valid) snprintf(numbuf, sizeof(numbuf), "%.6f", (double)gps_lon_e6 / 1e6);
         src = numbuf;
-    } else if (f == FIELD_WIFI_SSID && wifi_ssid[0])    src = wifi_ssid;
-    else   if (f == FIELD_WIFI_PASSWORD && wifi_password[0]) src = wifi_password;
+    }
     strncpy(field_edit_buf, src, sizeof(field_edit_buf) - 1);
     field_edit_buf[sizeof(field_edit_buf) - 1] = '\0';
     field_edit_len     = (int)strlen(field_edit_buf);
@@ -353,14 +405,6 @@ static void settings_commit_text_edit(field_t f) {
         strncpy(region_scope, field_edit_buf, sizeof(region_scope) - 1);
         region_scope[sizeof(region_scope) - 1] = '\0';
         save_region_scope();
-    } else if (f == FIELD_WIFI_SSID) {
-        strncpy(wifi_ssid, field_edit_buf, sizeof(wifi_ssid) - 1);
-        wifi_ssid[sizeof(wifi_ssid) - 1] = '\0';
-        save_wifi();
-    } else if (f == FIELD_WIFI_PASSWORD) {
-        strncpy(wifi_password, field_edit_buf, sizeof(wifi_password) - 1);
-        wifi_password[sizeof(wifi_password) - 1] = '\0';
-        save_wifi();
     } else if (f == FIELD_GPS_LAT || f == FIELD_GPS_LON) {
         // Empty (or whitespace) clears both coords; otherwise parse as decimal
         // degrees. We don't want a half-set position so both keys live or die
@@ -617,7 +661,8 @@ static void nav_settings(uint32_t key) {
                             (country_code[0] == '-' || country_code[0] == '\0'));
         if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP ||
             selected == FIELD_DUTY_CYCLE || selected == FIELD_GPS_SOURCE ||
-            selected == FIELD_WIFI_STATUS || selected == FIELD_HTTP_URL ||
+            selected == FIELD_WIFI_SSID  || selected == FIELD_WIFI_STATUS ||
+            selected == FIELD_HTTP_URL ||
             selected == FIELD_HTTP_API_KEY || selected == FIELD_HTTPS_CERT_FP ||
             gain_locked) {
             // ignore (read-only rows)
@@ -641,7 +686,7 @@ static void nav_settings(uint32_t key) {
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         } else if (selected == FIELD_SEND_DIRECT_NOW) {
             send_advert_direct();
-            snprintf(toast_text, sizeof(toast_text), "Direct advert sent (1-hop)");
+            snprintf(toast_text, sizeof(toast_text), "Direct adverts queued (1-hop)");
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         } else if (selected == FIELD_SOUND_TEST_DM)      { sounds_play_dm(); }
         else if   (selected == FIELD_SOUND_TEST_CHANNEL) { sounds_play_channel(); }
@@ -649,29 +694,6 @@ static void nav_settings(uint32_t key) {
         else if   (selected == FIELD_SOUND_TEST_BOOT)    { sounds_play_boot(); }
         else if   (selected == FIELD_GPS_AUTOFILL) {
             settings_trigger_gps_autofill();
-        } else if (selected == FIELD_WIFI_CONNECT) {
-            // Action row: explicitly connect to slot 0 (the SSID shown in
-            // the WIFI_SSID row). Disconnect first so we move off whatever
-            // slot the launcher had picked. Without the slot-0 anchor,
-            // wifi_connect_try_all would silently fall back to a launcher
-            // slot and the user thinks our edit didn't stick.
-            if (!wifi_ssid[0]) {
-                snprintf(toast_text, sizeof(toast_text), "Enter WiFi SSID first");
-            } else {
-                snprintf(toast_text, sizeof(toast_text), "WiFi: connecting to \"%s\"...", wifi_ssid);
-                toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-                render();
-                wifi_connection_disconnect();
-                esp_err_t rc = wifi_connection_connect(0, 5);
-                if (rc == ESP_OK && wifi_connection_is_connected()) {
-                    esp_netif_ip_info_t *ip = wifi_get_ip_info();
-                    snprintf(toast_text, sizeof(toast_text), "WiFi connected: " IPSTR,
-                             IP2STR(&ip->ip));
-                } else {
-                    snprintf(toast_text, sizeof(toast_text), "WiFi connect failed (rc=%d)", rc);
-                }
-            }
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         } else if (selected == FIELD_BLE_ENABLED) {
             // Toggle row: flip + save. Takes effect on next app start;
             // tearing NimBLE down cleanly mid-runtime is messy enough that
@@ -682,11 +704,13 @@ static void nav_settings(uint32_t key) {
                      "BLE %s on next start", ble_enabled ? "ON" : "OFF");
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         } else if (!edit_mode) {
+            // Refresh the cached launcher-slot list right before letting
+            // the user cycle through it, so newly added networks land.
+            if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
             edit_mode = true;
             if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME ||
                 selected == FIELD_REGION_SCOPE ||
-                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON ||
-                selected == FIELD_WIFI_SSID || selected == FIELD_WIFI_PASSWORD) {
+                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
                 settings_begin_text_edit(selected);
             }
         } else {
@@ -812,6 +836,14 @@ void handle_nav(uint32_t key) {
             case VIEW_NODES:   nav_nodes(key);   break;
             case VIEW_CHAT:    nav_chat(key);    break;
             case VIEW_CHANNEL: nav_channel(key); break;
+            case VIEW_MAP:
+                // Arrow-key pan. 1/4 tile per press matches a comfortable
+                // step at zoom 8–10 (≈ 64 px on screen).
+                if      (key == BSP_INPUT_NAVIGATION_KEY_UP)    map_state_pan(0, -1);
+                else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN)  map_state_pan(0,  1);
+                else if (key == BSP_INPUT_NAVIGATION_KEY_LEFT)  map_state_pan(-1, 0);
+                else if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT) map_state_pan( 1, 0);
+                break;
             default: break;
         }
     }
@@ -955,7 +987,8 @@ static void key_settings(char c) {
                             (country_code[0] == '-' || country_code[0] == '\0'));
         if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP ||
             selected == FIELD_DUTY_CYCLE || selected == FIELD_GPS_SOURCE ||
-            selected == FIELD_WIFI_STATUS || selected == FIELD_HTTP_URL ||
+            selected == FIELD_WIFI_SSID  || selected == FIELD_WIFI_STATUS ||
+            selected == FIELD_HTTP_URL ||
             selected == FIELD_HTTP_API_KEY || selected == FIELD_HTTPS_CERT_FP ||
             gain_locked) {
             // ignore (read-only rows)
@@ -979,7 +1012,7 @@ static void key_settings(char c) {
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         } else if (selected == FIELD_SEND_DIRECT_NOW) {
             send_advert_direct();
-            snprintf(toast_text, sizeof(toast_text), "Direct advert sent (1-hop)");
+            snprintf(toast_text, sizeof(toast_text), "Direct adverts queued (1-hop)");
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         } else if (selected == FIELD_SOUND_TEST_DM) {
             sounds_play_dm();
@@ -991,24 +1024,6 @@ static void key_settings(char c) {
             sounds_play_boot();
         } else if (selected == FIELD_GPS_AUTOFILL) {
             settings_trigger_gps_autofill();
-        } else if (selected == FIELD_WIFI_CONNECT) {
-            if (!wifi_ssid[0]) {
-                snprintf(toast_text, sizeof(toast_text), "Enter WiFi SSID first");
-            } else {
-                snprintf(toast_text, sizeof(toast_text), "WiFi: connecting to \"%s\"...", wifi_ssid);
-                toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-                render();
-                wifi_connection_disconnect();
-                esp_err_t rc = wifi_connection_connect(0, 5);
-                if (rc == ESP_OK && wifi_connection_is_connected()) {
-                    esp_netif_ip_info_t *ip = wifi_get_ip_info();
-                    snprintf(toast_text, sizeof(toast_text), "WiFi connected: " IPSTR,
-                             IP2STR(&ip->ip));
-                } else {
-                    snprintf(toast_text, sizeof(toast_text), "WiFi connect failed (rc=%d)", rc);
-                }
-            }
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         } else if (selected == FIELD_BLE_ENABLED) {
             ble_enabled = !ble_enabled;
             save_ble_enabled();
@@ -1016,11 +1031,11 @@ static void key_settings(char c) {
                      "BLE %s on next start", ble_enabled ? "ON" : "OFF");
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         } else if (!edit_mode) {
+            if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
             edit_mode = true;
             if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME ||
                 selected == FIELD_REGION_SCOPE ||
-                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON ||
-                selected == FIELD_WIFI_SSID || selected == FIELD_WIFI_PASSWORD) {
+                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
                 settings_begin_text_edit(selected);
             }
         } else {
@@ -1030,6 +1045,7 @@ static void key_settings(char c) {
             dirty     = false;
         }
     } else if (c == 'r' || c == 'R') {
+        wifi_slots_refresh();
         load_owner_name();
         load_lora_advert_name();
         load_region_scope();
@@ -1087,6 +1103,10 @@ static void key_chat(char c) {
         ESP_LOGI(TAG, "DM deleted by user (D): %s", target_name);
     }
 }
+
+// Map-view key handler. Pan/zoom logic is added in Phase 3; for now this is
+// a stub so VIEW_MAP doesn't fall through to a sibling view's keymap.
+static void key_map(char c);
 
 static void key_channel(char c) {
     // 'R' clears the active channel's history (RAM + file). Channel list-mode
@@ -1390,8 +1410,22 @@ void handle_key(char c) {
         case VIEW_NODES:    key_nodes(c);    break;
         case VIEW_CHAT:     key_chat(c);     break;
         case VIEW_CHANNEL:  key_channel(c);  break;
+        case VIEW_MAP:      key_map(c);      break;
         default: break;
     }
+}
+
+// Pan + zoom keymap. Arrow-key pan lives in nav_map via the navigation event
+// path; here we handle the WASD aliases for pan plus '+' / '-' for zoom and
+// 'L' for the lock-to-position toggle.
+static void key_map(char c) {
+    if      (c == 'w' || c == 'W') map_state_pan(0, -1);
+    else if (c == 's' || c == 'S') map_state_pan(0,  1);
+    else if (c == 'a' || c == 'A') map_state_pan(-1, 0);
+    else if (c == 'd' || c == 'D') map_state_pan( 1, 0);
+    else if (c == '+' || c == '=') map_state_zoom( 1);  // '=' is the unshifted '+' key
+    else if (c == '-' || c == '_') map_state_zoom(-1);
+    else if (c == 'l' || c == 'L') map_state_toggle_lock();
 }
 
 // ── BLE pairing UI hooks ────────────────────────────────────────────────────

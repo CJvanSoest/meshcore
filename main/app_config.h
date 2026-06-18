@@ -22,10 +22,11 @@ typedef enum {
     VIEW_CHANNEL  = 3,   // public channel (GRP_TXT)
     VIEW_HOME     = 4,   // tile-grid landing screen (Pager-style)
     VIEW_ABOUT    = 5,   // version / authors / credits / license
-    VIEW_COUNT    = 6,
-    // Number of views that appear in the legacy top tab-bar. VIEW_HOME and
-    // VIEW_ABOUT have their own headers, so the tab-bar still iterates only
-    // the four classic views (0..3).
+    VIEW_MAP      = 6,   // OSM tile-based map + live GPS overlay
+    VIEW_COUNT    = 7,
+    // Number of views that appear in the legacy top tab-bar. VIEW_HOME,
+    // VIEW_ABOUT and VIEW_MAP have their own headers, so the tab-bar
+    // still iterates only the four classic views (0..3).
     VIEW_TAB_COUNT = 4,
 } app_view_t;
 

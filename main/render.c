@@ -178,6 +178,7 @@ void render(void) {
     switch (current_view) {
         case VIEW_HOME:    render_home();    break;
         case VIEW_ABOUT:   render_about();   break;
+        case VIEW_MAP:     render_map();     break;
         case VIEW_NODES:
             render_nodes();
             if (qr_overlay_active) render_qr_overlay();

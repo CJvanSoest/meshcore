@@ -175,7 +175,7 @@ static const home_tile_t home_tiles[HOME_TILE_COUNT] = {
     { "Nodes",    VIEW_NODES,    icon_nodes,    HOME_ACTION_NONE,        NULL                  },
     { "DM",       VIEW_CHAT,     icon_dm,       HOME_ACTION_NONE,        contact_unread_total  },
     { "Channel",  VIEW_CHANNEL,  icon_channel,  HOME_ACTION_NONE,        channel_unread_total  },
-    { "Map",      VIEW_HOME,     icon_map,      HOME_ACTION_NONE,        NULL                  },  // TODO: VIEW_MAP
+    { "Map",      VIEW_MAP,      icon_map,      HOME_ACTION_NONE,        NULL                  },
     { "Advert",   VIEW_SETTINGS, icon_antenna,  HOME_ACTION_OPEN_ADVERT, NULL                  },
     { "Settings", VIEW_SETTINGS, icon_settings, HOME_ACTION_NONE,        NULL                  },
     { "About",    VIEW_ABOUT,    icon_about,    HOME_ACTION_NONE,        NULL                  },

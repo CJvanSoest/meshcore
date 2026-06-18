@@ -142,6 +142,11 @@ void dm_select_target(const uint8_t pub[32], const char *name) {
     memcpy(dm_target_pub, pub, MESHCORE_PUB_KEY_SIZE);
     strncpy(dm_target_name, name ? name : "", sizeof(dm_target_name) - 1);
     dm_target_name[sizeof(dm_target_name) - 1] = '\0';
+    // Capture the unread count *before* clearing it so we can park the
+    // scroll on the first unread message after history reload.
+    int unread_before = 0;
+    int ci = contact_find(pub);
+    if (ci >= 0) unread_before = contact_unread[ci];
     contact_clear_unread(pub);  // opening a conversation clears its unread
     update_notification_led();  // turn LED off once nothing remains unread
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
@@ -152,6 +157,18 @@ void dm_select_target(const uint8_t pub[32], const char *name) {
         xSemaphoreGive(chat_mutex);
     }
     history_load_dm(pub, chat_ring_add_from_disk);
+    // After history load, ch_ring_add_from_disk has left chat_scroll =
+    // chat_count (newest at the bottom). If the user had unread messages,
+    // park the scroll on the first unread instead so they don't have to
+    // back-scroll to find what they missed.
+    if (unread_before > 0 && unread_before < chat_count) {
+        if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            chat_scroll = chat_count - unread_before + 1;
+            if (chat_scroll < 1)          chat_scroll = 1;
+            if (chat_scroll > chat_count) chat_scroll = chat_count;
+            xSemaphoreGive(chat_mutex);
+        }
+    }
 }
 
 // Channel message with explicit channel context: always persist to that
@@ -194,6 +211,7 @@ void ch_add_message(const char *text, bool is_mine) {
 void ch_select_channel(int idx) {
     if (idx < 0 || idx >= CHANNELS_MAX || !channels[idx].active) return;
     active_channel_idx = idx;
+    int unread_before = channel_unread[idx];  // capture before we clear
     channel_unread[idx] = 0;  // opening a channel clears its unread
     update_notification_led();  // turn LED off once nothing remains unread
     if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
@@ -204,6 +222,17 @@ void ch_select_channel(int idx) {
         xSemaphoreGive(ch_mutex);
     }
     history_load_channel(channels[idx].secret, ch_ring_add_from_disk);
+    // Same trick as dm_select_target: after history reload, park the scroll
+    // on the first unread message so the user starts reading where they
+    // left off instead of at the newest message.
+    if (unread_before > 0 && unread_before < ch_count) {
+        if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            ch_scroll = ch_count - unread_before + 1;
+            if (ch_scroll < 1)        ch_scroll = 1;
+            if (ch_scroll > ch_count) ch_scroll = ch_count;
+            xSemaphoreGive(ch_mutex);
+        }
+    }
 }
 
 void update_notification_led(void) {

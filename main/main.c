@@ -69,8 +69,10 @@
 
 #include "app_config.h"
 #include "emoji.h"
+#include "gps_task.h"
 #include "history.h"
 #include "input.h"
+#include "map.h"
 #include "settings_nvs.h"
 #include "sounds.h"
 
@@ -314,13 +316,19 @@ void app_main(void) {
     load_ble_gps_pref();
     load_advert_loc_policy();
     load_wifi();
+    load_wifi_prefs();      // enabled toggle + chosen slot
+    wifi_slots_refresh();   // populate the picker cache from launcher slots
     load_or_init_http_api_key();
-    // Auto-connect to the saved WiFi network at boot, if creds are present.
-    // Non-blocking: wifi_connect_try_all returns immediately on failure;
-    // the Settings WiFi rows show current state.
-    if (wifi_ssid[0]) {
-        ESP_LOGI(TAG, "WiFi auto-connect: ssid=\"%s\"", wifi_ssid);
-        wifi_connect_try_all();
+    // Auto-connect to the saved WiFi network at boot when WiFi is enabled.
+    // We honour the user-chosen slot explicitly (instead of try_all) so
+    // toggling the picker behaves predictably.
+    if (wifi_enabled && wifi_slots_count() > 0) {
+        ESP_LOGI(TAG, "WiFi auto-connect: slot=%u", (unsigned)wifi_slot);
+        wifi_connection_connect(wifi_slot, 5);
+    } else if (wifi_enabled) {
+        ESP_LOGI(TAG, "WiFi enabled but no launcher slots present");
+    } else {
+        ESP_LOGI(TAG, "WiFi disabled — skipping auto-connect");
     }
     // Supervisor task starts/stops the gateway-ping keepalive whenever the
     // WiFi link comes up or drops -- works for both our own auto-connect
@@ -345,6 +353,15 @@ void app_main(void) {
     DIAG(COL_GRAY, "SD mount...");
     history_init(node_prv_key);
     DIAG(history_is_ready() ? COL_GREEN : COL_YELLOW, "  SD: %s", history_status());
+    // sounds_init runs before the SD mount, so its first sounds_refresh_list()
+    // sees no files. Re-scan now that /sd is live so the Settings UI shows the
+    // real filenames + the slot pickers see the full list.
+    if (history_is_ready()) sounds_refresh_list();
+    map_state_init();  // restore last centre + zoom (or fall back to defaults)
+    map_loader_init(); // background tile fetcher (SD → lodepng → RGB565)
+    load_map_profile();
+    load_gps_track_prefs();
+    gps_task_start();
     // DM history is loaded per peer in dm_select_target — no boot-time DM load.
     // Channel history is per-channel; load the active channel (Public at boot).
     if (history_is_ready()) { ch_select_channel(active_channel_idx); }
