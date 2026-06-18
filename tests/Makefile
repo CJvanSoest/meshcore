@@ -16,7 +16,7 @@
 # best-effort -- CI is the source of truth.
 
 CC        ?= gcc
-CFLAGS    += -std=c11 -Wall -Wextra -Werror -Wno-deprecated-declarations -O1 -I../main -I../components/mc_proto
+CFLAGS    += -std=c11 -Wall -Wextra -Werror -Wno-deprecated-declarations -O1 -I../main -I../components/mc_proto -I../components/vendor
 LDLIBS    += -lmbedcrypto
 # -Wno-deprecated-declarations: mbedtls 2.28 (Ubuntu 22.04 / Gitea runner)
 # marks mbedtls_sha512_{starts,update,finish} as deprecated in favour of the
@@ -25,7 +25,7 @@ LDLIBS    += -lmbedcrypto
 # names in source (forward-compatible) and silence the warning here.
 
 # Source files from main/ that the tests link against.
-SRC_ED25519     = ../main/ed25519_mpi.c
+SRC_ED25519     = ../components/vendor/ed25519_mpi.c
 SRC_GPS_NMEA    = ../components/mc_proto/gps_parser.c
 SRC_COMP_PROTO  = ../components/mc_proto/companion-radio-protocol/mc_companion_command_parser.c \
                   ../components/mc_proto/companion-radio-protocol/mc_companion_serial_interface.c
