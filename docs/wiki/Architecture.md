@@ -4,6 +4,12 @@ The app is a single ESP-IDF firmware image for the ESP32-P4 (Tanmatsu app
 processor). Everything runs in one process; concurrency comes from a handful
 of FreeRTOS tasks plus the main event loop.
 
+> For the layer discipline (L0–L5), the forbidden-include rules and the
+> wire-boundary rules, see the root [ARCHITECTURE.md](../../ARCHITECTURE.md).
+> The pure protocol/parser core lives in the `mc_proto` component and the
+> third-party libraries in `vendor`; the rest is still the `main` component.
+> This page is the descriptive tour; ARCHITECTURE.md is the rulebook.
+
 ## Module overview
 
 ```
@@ -27,8 +33,8 @@ of FreeRTOS tasks plus the main event loop.
                 ▼
         ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
         │   nodes.c   │  │   chat.c    │  │ identity.c  │  │ contacts.c  │
-        │ heard table │  │ DM + chan   │  │ Ed25519 KP, │  │ favourites  │
-        │ + filter    │  │ rings + LED │  │ SNTP        │  │ in NVS      │
+        │ heard table │  │ DM + chan   │  │ Ed25519 KP  │  │ favourites  │
+        │ + filter    │  │ rings + LED │  │ (time: RTC) │  │ in NVS      │
         └─────────────┘  └──────┬──────┘  └─────────────┘  └─────────────┘
                                 │
                                 ▼
@@ -40,22 +46,46 @@ of FreeRTOS tasks plus the main event loop.
                        └─────────────────┘  └─────────────────┘
 ```
 
+The diagram is the core message path. Several subsystems are left out to keep
+it readable: `gps.c`/`gps_task.c` (PA1010D + live fix), `companion_transport.c`
++ `ble_companion.c` (companion-radio link), `http_server.c` + `cert_gen.c`
+(on-device HTTPS `/ping`), `wifi_keepalive.c`, `sounds.c`, `map.c` (slippy-map
+tiles), `emoji.c`, `channels.c`, and `radio_system_protocol_client.c`.
+
 ## Tasks and synchronisation
+
+About a dozen FreeRTOS tasks run beside the `app_main` event loop. The main
+ones:
 
 | Task | Created by | Purpose |
 |---|---|---|
 | `app_main` | IDF | Boot DIAG, event loop, render dispatch |
-| `lora_rx_task` | `radio_start_tasks` | Reads packets from C6, dispatches to chat/nodes |
-| `advert_task` | `radio_start_tasks` | Periodic ADVERT TX based on `advert_interval_s` |
-| `sntp_task` (idf) | `esp_sntp_init` | NTP polling once WiFi connects |
+| `lora_rx` | `radio_start_tasks` | Reads packets from C6, dedups floods, dispatches ADVERT→nodes, text→chat, ACK/PATH handling |
+| `lora_advert` | `radio_start_tasks` | Periodic ADVERT TX based on `advert_interval_s` |
+| `noise_poll` | `radio_start_tasks` | Polls the ambient noise floor (NACK-tolerant for old C6) |
+| `gps_task` | `gps_task_start` | Polls the PA1010D and publishes the live fix |
+| `comp-tx` | `companion_transport_init` | Reads USB-CDC stdin into the companion parser |
+| `nodes_save` | `nodes_start_save_task` | Saves the node table to SD when dirty (~30 s) |
+| `map_loader` | `map_loader_init` | Background SD → PNG → RGB565 tile decode |
+| `sound_play` | `sounds_play_*` | One-shot tone/WAV playback |
+| `wifi-ka-sup` | `wifi_keepalive_supervisor_start` | ICMP keepalive on link up/down |
+| NimBLE host | `ble_companion_init` | NimBLE GATT stack (when BLE is enabled) |
 
-Shared mutable state is protected by:
+Shared mutable state is protected by per-table mutexes; lock ordering is by
+convention, so hold the right lock when touching each table:
 
-- `node_mutex` — node and contact tables
+- `node_mutex` — node table **and** the contacts table (note this coupling:
+  `send_advert_direct` walks `contacts[]` under `node_mutex`)
 - `chat_mutex` — DM ring buffer + DM target
 - `ch_mutex` — channel ring buffer
-- `rx_mutex` — RX counter
+- `rx_mutex` — raw RX debug ring + counter
 - `s_mutex` (in `history.c`) — SD-card file access
+- `s_cache_mutex` + a loader queue (in `map.c`) — tile cache + loader requests
+- `s_dispatch_mutex` (in `companion_transport.c`) — serialises BLE/CDC feeds
+  into the single companion parser
+
+GPS uses a `portMUX` critical section rather than a mutex. There are no event
+groups.
 
 ## Cold-start sequence
 
@@ -63,8 +93,9 @@ Shared mutable state is protected by:
 2. BSP init (display, input, power, LED)
 3. `nodes_init`, `chat_init`, `identity_init` (creates mutexes + loads Ed25519 keys)
 4. Boot DIAG screen begins drawing
-5. WiFi stack init → `wifi_connect_try_all` → on success start SNTP
-6. NVS time restore if SNTP didn't sync
+5. WiFi stack init (brings up the P4↔C6 link; it does **not** connect or scan)
+6. Time comes from the C6 RTC (`bsp_rtc_update_time`); NVS time restore as
+   fallback. There is no SNTP path (the old `identity_sntp_sync_cb` is dead).
 7. Owner / advert / region / contacts load from NVS
 8. `history_init(node_prv_key)` → mounts SD, derives AES-CBC key from identity
 9. `lora_init(16)` → talks to the C6
@@ -95,6 +126,8 @@ emoji-picker overlay; each view lives in its own file:
 | `render_chat.c` | `VIEW_CHAT` (DM inbox + conversation) + shared `render_msg_list` + word-wrap |
 | `render_channel.c` | `VIEW_CHANNEL` (list mode + conversation) |
 | `render_about.c` | `VIEW_ABOUT` (version, author, credits, license, source) |
+| `render_map.c` | `VIEW_MAP` (slippy-map tiles, node markers, GPS centre) |
+| `render_settings_icons.c` | The Settings category glyphs, kept out of `render_settings.c` |
 
 Cross-file declarations (the per-view entry points + a few shared helpers
 like `render_msg_list`, the category bounds API, the home tile API)
@@ -106,6 +139,6 @@ blit. The dispatcher calls one (and optionally an overlay on top), then
 blits exactly once at the end. This is what kills the v2.1.x QR + emoji
 overlay flicker.
 
-The render split also gave us a natural place to grow without touching
-the existing views — a future `render_map.c` for the Map tile, for
-example, drops in without re-flowing any other file.
+The render split also gives a natural place to grow without touching the
+existing views: `render_map.c` (the Map tile) and `render_settings_icons.c`
+both dropped in this way without re-flowing any other view file.

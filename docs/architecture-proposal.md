@@ -80,11 +80,45 @@ coupling as a class of bug, at the cost of a small per-event overhead.
 ## Migration (incremental, each step independently buildable)
 
 1. **Carve `mc_proto`.** Pure files, already host-tested. No behaviour change.
+   **DONE** (codecs + region_limits + gps_parser + companion parser). IDF build green.
 2. **Add `mc_ports` + device impls; move the domain behind the ports.** Unlocks
-   host tests for nodes/chat/channels/contacts.
+   host tests for nodes/chat/channels/contacts. **NOT DONE — see below.**
 3. **Split `mc_radio`, `mc_io`, `mc_ui` into components; declare `REQUIRES`.**
-   Layer rules become compiler-enforced; retire the grep lint.
-4. **(Optional) introduce `esp_event`** for the RX → domain → UI path.
+   Layer rules become compiler-enforced; retire the grep lint. **PARTIAL:** the
+   `vendor` component is extracted and the `nodes.h → radio.h` cycle is broken;
+   the domain/radio/io/ui split is blocked on step 2 (below).
+4. **(Optional) introduce `esp_event`** for the RX → domain → UI path. NOT DONE.
+
+## What is done so far (branch `refactor-Ilias`)
+
+`mc_proto` (pure core) and `vendor` (third-party) are extracted into components
+with no dependency on the rest of the tree, so the build enforces those edges.
+The redundant `nodes.h → radio.h` include is gone, breaking the domain→radio
+header cycle. Host tests cover the protocol codecs, region limits, the GPS and
+companion parsers; `tests/check-arch-rules.sh` enforces the in-`main` layering.
+Every step is verified against a real `espressif/idf:v5.5.1` build.
+
+## Why the domain/radio/io/ui split needs a deliberate, hardware-validated step
+
+The remaining modules are not a clean stack; they are one strongly-connected
+cluster. The hard edge is `radio.c` ↔ the domain: `radio.c`'s RX path does not
+just hand packets to the domain, it **performs** the domain work inline — it
+decrypts DMs with the identity keys, matches the channel hash, writes into the
+chat rings and handles ACKs (see the `update_node` / `chat_add_*` /
+`channels_find_by_hash` / `chat_mark_ack_by_crc` call sites). `settings_nvs`
+adds a second knot: its header is clean, but `settings_nvs.c` reaches up into
+`radio.h` (`lora_handle`), `gps_task.h` and `map.h` to push loaded config, while
+`radio.c` reads the settings globals.
+
+Splitting these into acyclic components therefore means **relocating the RX
+message-processing logic out of `radio.c` into the domain** (radio delivers raw
+frames through a sink/port; the domain decrypts/matches/stores) and **inverting
+the settings-apply direction** (a settings-changed callback rather than
+`settings_nvs.c` calling into radio/gps/map). That is a real redesign of
+security-critical code, not a mechanical move. It compiles-or-not in the build
+container, but it changes runtime behaviour on the radio and decrypt paths,
+which only a flashed badge can confirm. It is the right next step, to be done
+with hardware in the loop, not blind.
 
 ## Trade-offs
 
