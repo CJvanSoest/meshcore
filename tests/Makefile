@@ -32,7 +32,7 @@ SRC_COMP_PROTO  = ../main/companion-radio-protocol/mc_companion_command_parser.c
 
 .PHONY: all test clean
 
-all: test_ed25519 test_gps_nmea test_companion_protocol
+all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet
 
 test_ed25519: test_ed25519.c $(SRC_ED25519)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
@@ -52,10 +52,27 @@ test_gps_nmea: test_gps_nmea.c $(SRC_GPS_NMEA)
 test_companion_protocol: test_companion_protocol.c $(SRC_COMP_PROTO)
 	$(CC) $(CFLAGS) -Wno-unused-parameter -o $@ $^
 
-test: test_ed25519 test_gps_nmea test_companion_protocol
+# Pure-C regulatory-table test -- no libmbedcrypto link needed. Guards the
+# sub-band boundaries, ERP/EIRP power unit and duty-cycle budget that gate
+# every transmit on the device.
+test_region_limits: test_region_limits.c ../main/region_limits.c
+	$(CC) $(CFLAGS) -o $@ $^
+
+# MeshCore packet codec round-trip + error-path test. Guards the wire boundary
+# (header bit-packing, transport-code gating, path length-byte encoding).
+# packet.c is the upstream protocol mirror (see ARCHITECTURE.md "Wire-boundary
+# discipline") and must not diverge locally, so suppress two upstream warnings
+# here instead of editing the source: -Wtype-limits fires on the uint8_t size
+# bound check and -Wsign-compare on its int/size_t length math.
+test_meshcore_packet: test_meshcore_packet.c ../main/meshcore/packet.c
+	$(CC) $(CFLAGS) -Wno-type-limits -Wno-sign-compare -o $@ $^
+
+test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet
 	./test_ed25519
 	./test_gps_nmea
 	./test_companion_protocol
+	./test_region_limits
+	./test_meshcore_packet
 
 clean:
-	rm -f test_ed25519 test_gps_nmea test_companion_protocol
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet
