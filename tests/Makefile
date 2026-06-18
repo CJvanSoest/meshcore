@@ -16,7 +16,7 @@
 # best-effort -- CI is the source of truth.
 
 CC        ?= gcc
-CFLAGS    += -std=c11 -Wall -Wextra -Werror -Wno-deprecated-declarations -O1 -I../main
+CFLAGS    += -std=c11 -Wall -Wextra -Werror -Wno-deprecated-declarations -O1 -I../main -I../components/mc_proto
 LDLIBS    += -lmbedcrypto
 # -Wno-deprecated-declarations: mbedtls 2.28 (Ubuntu 22.04 / Gitea runner)
 # marks mbedtls_sha512_{starts,update,finish} as deprecated in favour of the
@@ -26,9 +26,9 @@ LDLIBS    += -lmbedcrypto
 
 # Source files from main/ that the tests link against.
 SRC_ED25519     = ../main/ed25519_mpi.c
-SRC_GPS_NMEA    = ../main/gps_parser.c
-SRC_COMP_PROTO  = ../main/companion-radio-protocol/mc_companion_command_parser.c \
-                  ../main/companion-radio-protocol/mc_companion_serial_interface.c
+SRC_GPS_NMEA    = ../components/mc_proto/gps_parser.c
+SRC_COMP_PROTO  = ../components/mc_proto/companion-radio-protocol/mc_companion_command_parser.c \
+                  ../components/mc_proto/companion-radio-protocol/mc_companion_serial_interface.c
 
 .PHONY: all test clean
 
@@ -55,7 +55,7 @@ test_companion_protocol: test_companion_protocol.c $(SRC_COMP_PROTO)
 # Pure-C regulatory-table test -- no libmbedcrypto link needed. Guards the
 # sub-band boundaries, ERP/EIRP power unit and duty-cycle budget that gate
 # every transmit on the device.
-test_region_limits: test_region_limits.c ../main/region_limits.c
+test_region_limits: test_region_limits.c ../components/mc_proto/region_limits.c
 	$(CC) $(CFLAGS) -o $@ $^
 
 # MeshCore packet codec round-trip + error-path test. Guards the wire boundary

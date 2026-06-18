@@ -34,7 +34,7 @@ check "meshcore/ includes UI/BSP/L1 headers" \
 # 3. Data and protocol layers do not drive UI.
 check "L0-L3 includes render.h or input.h" \
     '^#include "(render|input)\.h"' \
-    components/mc_proto/meshcore/ main/radio*.c main/region_limits.c main/settings_nvs.c \
+    components/mc_proto/meshcore/ components/mc_proto/region_limits.c main/radio*.c main/settings_nvs.c \
     main/identity.c main/history.c main/chat.c main/nodes.c main/contacts.c \
     main/channels.c
 
