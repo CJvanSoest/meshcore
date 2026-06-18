@@ -130,3 +130,35 @@ with hardware in the loop, not blind.
   `espressif/idf:v5.5.1`). The host test suite covers the pure and (after step
   2) the domain logic. Each migration step should be confirmed against a real
   IDF build before merge.
+
+## Execution status (branch refactor-Ilias, supersedes the "hardware-validated redesign" caveat above)
+
+A key finding during execution: the dependency **cycles are gone without the
+risky RX-sink redesign**. The cycle was only the *backward* edges domain→radio
+and domain→ui. Those are now all removed:
+
+- `nodes.h → radio.h` (redundant include) — removed.
+- `settings_nvs → radio.h / gps_task.h / map.h` — inverted (Break B): the
+  C6 reconcile moved to radio.c, the shared gps/map enums to config_types.h.
+- `chat → emoji.h` (pax) — broken by splitting the pax-free emoji_table out.
+
+The remaining `radio → domain` edge is **higher→lower and legal**, so a
+component split is acyclic with `mc_radio` simply REQUIRE-ing `mc_domain`. The
+RX-sink decoupling ("Break A") that would make radio fully domain-independent is
+**not required** for the split; it stays a documented optional purity step
+(its full design is captured in the session notes) precisely because relocating
+the inline decrypt/ACK logic is the one change that genuinely needs the badge.
+
+Done and IDF-build-verified (each its own commit): `mc_proto`, `vendor`,
+`mc_common` components; the three cycle-breaks above; host tests + a cppcheck
+gate + the arch-rules lint.
+
+Remaining (pure mechanical file-moves + CMake `REQUIRES`, no behaviour change,
+each independently buildable) — carve in this order, building between each:
+`mc_io` (nvs_helpers, gps, cert_gen) → `mc_domain` (identity, contacts,
+channels, chat, nodes, history, settings_nvs; public REQUIRES tanmatsu-lora
+because nodes.h/settings_nvs.h expose lora_* types) → `mc_radio` (radio,
+radio_system_protocol_client; REQUIRES mc_domain) → `mc_net` (http_server, ble,
+companion_transport, wifi_keepalive, gps_task, map, sounds) → `mc_ui` (input,
+render*, emoji) → `main` (main.c only). A 6th component `mc_net` is needed for
+acyclicity (gps_task/map/sounds read settings, so they sit above domain).
