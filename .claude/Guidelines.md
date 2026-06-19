@@ -4,24 +4,24 @@ Rules and context for an AI pair programmer (or any contributor using one) on
 MeshCore for the Tanmatsu badge. This is the entry point for the `.claude/`
 guidance set. Read the one that matches what you are about to do:
 
-- **GUIDELINES.md** (this file): the mental model, where code goes, the hard
+- **Guidelines.md** (this file): the mental model, where code goes, the hard
   rules, conventions, and the green gate.
-- **[COMPONENTS.md](COMPONENTS.md)**: per-component reference, the dependency
+- **[Components.md](Components.md)**: per-component reference, the dependency
   graph, the constants, and which file owns what.
-- **[DATA-FLOWS.md](DATA-FLOWS.md)**: the cold-start order and the RX / TX /
+- **[Data-Flows.md](Data-Flows.md)**: the cold-start order and the RX / TX /
   advert / DM / channel flows with real function names. Read before chasing a
   symptom to the wrong file.
-- **[CRYPTO.md](CRYPTO.md)**: the signing, channel, DM, region-scope and ACK
+- **[Crypto.md](Crypto.md)**: the signing, channel, DM, region-scope and ACK
   crypto, the ed25519 split, and the gates. Read before touching anything that
   signs, encrypts, or derives a key.
-- **[TESTING.md](TESTING.md)**: the host test harness, what each gate proves,
+- **[Testing.md](Testing.md)**: the host test harness, what each gate proves,
   golden vectors, and how to add a test.
-- **[BUILD-AND-CI.md](BUILD-AND-CI.md)**: build invocation, board targets, and
+- **[Build-And-CI.md](Build-And-CI.md)**: build invocation, board targets, and
   the two deliberately-divergent CI workflows.
-- **[WORKFLOW.md](WORKFLOW.md)**: how to carry a change from first read to a
+- **[Workflow.md](Workflow.md)**: how to carry a change from first read to a
   green commit, including how to verify the firmware build when you lack the
   IDF toolchain.
-- **[PITFALLS.md](PITFALLS.md)**: the traps that have already cost real time or
+- **[Pitfalls.md](Pitfalls.md)**: the traps that have already cost real time or
   real users here. Read it before you trust a tool or an assumption.
 
 Read these together with the root [CLAUDE.md](../CLAUDE.md),
@@ -82,7 +82,7 @@ first-party code goes in a component, never back into `main/`.
   ed25519, emoji_bitmaps) are third party drops kept close to upstream. Their
   TODO markers are upstream comments, not work items. If a vendored function
   looks unused, it usually is, and it stays anyway so the file matches upstream.
-  See [PITFALLS.md](PITFALLS.md) on dead code and on the ed25519 split.
+  See [Pitfalls.md](Pitfalls.md) on dead code and on the ed25519 split.
 - **`components/mc_proto/meshcore/` is the upstream protocol mirror.** Keep it
   free of ESP-IDF, pax, BSP and L1 headers. Never grow a wire format struct
   locally: take the change upstream and re-pin the dependency. Local additions
@@ -131,7 +131,7 @@ First-party code carries no dead weight. A function with no caller anywhere in
 several live symbols as unused: cross-check with grep first. The deliberate
 keeps (vendored libraries, the upstream mirror, `app_main`, callback tables,
 test-only symbols) are documented in Architecture.md "Unused code" and the
-mechanics of the false positives are in [PITFALLS.md](PITFALLS.md).
+mechanics of the false positives are in [Pitfalls.md](Pitfalls.md).
 
 ## Before you commit: all green
 
@@ -147,4 +147,4 @@ make build DEVICE=tanmatsu             # the firmware actually builds
 Add a host test in `tests/` for any pure logic you add or change and wire it
 into `tests/Makefile`. The wiring lint fails the build if you forget. The full
 change loop, including how to run the firmware build when you do not have the
-IDF toolchain locally, is in [WORKFLOW.md](WORKFLOW.md).
+IDF toolchain locally, is in [Workflow.md](Workflow.md).

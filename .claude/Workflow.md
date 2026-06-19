@@ -1,8 +1,8 @@
 # Workflow
 
 How to carry a change from first read to a green commit on this project. The
-rules behind each step are in [GUIDELINES.md](GUIDELINES.md); the traps are in
-[PITFALLS.md](PITFALLS.md).
+rules behind each step are in [Guidelines.md](Guidelines.md); the traps are in
+[Pitfalls.md](Pitfalls.md).
 
 ## 1. Understand before editing
 
@@ -89,7 +89,7 @@ symbol does. When in doubt, build.
 - After pushing, confirm the run is green before calling the work done. The
   firmware build job is the ground truth for compile and link.
 - The two CI workflows run on different runners and differ by one line on
-  purpose. See [PITFALLS.md](PITFALLS.md). Do not unify them.
+  purpose. See [Pitfalls.md](Pitfalls.md). Do not unify them.
 - Report outcomes honestly. If a result was verified on hardware by someone else,
   say so rather than implying you ran it. If a step was skipped, say it.
 

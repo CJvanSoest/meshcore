@@ -2,7 +2,7 @@
 
 How the host test suite works, what it does and does not prove, and how to add a
 test. The harness exists so a regression goes red in CI before any IDF build,
-and before any hardware. The workflow that uses it is in [WORKFLOW.md](WORKFLOW.md).
+and before any hardware. The workflow that uses it is in [Workflow.md](Workflow.md).
 
 ## What the harness is
 

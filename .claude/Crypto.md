@@ -30,7 +30,7 @@ adverts looked dead; the fix was to define the signer only in `ed25519_mpi.c`.
 So calling `ed25519_sign` resolves to the correct implementation. There is no
 `ed25519_mpi_sign`. Do not delete `ed25519_mpi.c` as "unused" (callers reference
 the bare symbol, not the filename) and do not delete `ed25519.c` (its X25519
-path is in use). Both ship. This is also in [PITFALLS.md](PITFALLS.md).
+path is in use). Both ship. This is also in [Pitfalls.md](Pitfalls.md).
 
 ## Advert signing
 
@@ -78,7 +78,7 @@ Asymmetric setup, symmetric payload.
   flags[1]` header rides inside).
 
 The DM RX handler tries every node whose pubkey first byte matches the 1-byte
-sender hash and lets the MAC pick the real sender (see [DATA-FLOWS.md](DATA-FLOWS.md)).
+sender hash and lets the MAC pick the real sender (see [Data-Flows.md](Data-Flows.md)).
 
 ## Region transport code
 

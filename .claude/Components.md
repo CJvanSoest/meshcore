@@ -4,7 +4,7 @@ Per-component map for an AI contributor: what each component owns, what it may
 depend on, the key files, and the traps specific to it. This is the "when I
 change X, where do I look and what must I not break" reference. The authority on
 the layer rules is [docs/Architecture.md](../docs/Architecture.md); this file is
-the practical index. See [DATA-FLOWS.md](DATA-FLOWS.md) for how they talk at
+the practical index. See [Data-Flows.md](Data-Flows.md) for how they talk at
 runtime.
 
 ## Layer order and dependency direction
@@ -81,8 +81,8 @@ All of it is host-tested. Do not pull a platform header in here.
 
 ### `vendor` (leaf)
 Third-party drops: lodepng, qrcodegen, ed25519, emoji_bitmaps. **Do not modify.**
-Note the ed25519 split documented in [CRYPTO.md](CRYPTO.md) and
-[PITFALLS.md](PITFALLS.md): `ed25519.c` is X25519 ECDH only, `ed25519_mpi.c` is
+Note the ed25519 split documented in [Crypto.md](Crypto.md) and
+[Pitfalls.md](Pitfalls.md): `ed25519.c` is X25519 ECDH only, `ed25519_mpi.c` is
 the signer. Both ship.
 
 ### `mc_io` (L1)
@@ -101,7 +101,7 @@ crypto self-test, time sync flags), `sounds.c`. **`node_mutex` protects both
 ### `mc_crypto` (L2)
 `mc_crypto.c` (channel GRP_TXT AES-128-ECB + HMAC-SHA256 MAC, ACK CRC, region
 transport code) and `mc_crypto_dm.c` (DM ed25519->X25519 ECDH, the 4-variant
-HMAC, AES decrypt). Both are pure enough to be host-tested. See [CRYPTO.md](CRYPTO.md).
+HMAC, AES decrypt). Both are pure enough to be host-tested. See [Crypto.md](Crypto.md).
 
 ### `mc_radio` (L3)
 `radio.c` is **pure transport**: duty-cycle accounting, airtime, RX dedup, the
@@ -119,7 +119,7 @@ prone parts.
 ### `mc_ui` (L4)
 `render_*.c` screens, input handling, view state. `render_settings.c` installs
 the `save_*` handlers into a field-dispatch table by address (this is why
-cppcheck thinks they are unused, see [PITFALLS.md](PITFALLS.md)). Selection
+cppcheck thinks they are unused, see [Pitfalls.md](Pitfalls.md)). Selection
 cursors versus shrinking lists are the classic bug here. Must not include
 `meshcore/`.
 
@@ -132,4 +132,4 @@ decrypt, write domain state, notify, and ACK. TX composers (`send_advert*`,
 
 ### `main`
 `main.c` only: the cold-start sequence and the event loop. No first-party logic
-goes here. See the cold-start steps in [DATA-FLOWS.md](DATA-FLOWS.md).
+goes here. See the cold-start steps in [Data-Flows.md](Data-Flows.md).

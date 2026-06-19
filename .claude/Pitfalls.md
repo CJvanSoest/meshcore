@@ -2,7 +2,7 @@
 
 Traps that have already cost time or shipped broken behaviour on this project.
 Each one is concrete. If you are about to do the thing on the left, read the
-note first. See also [GUIDELINES.md](GUIDELINES.md) and Architecture.md.
+note first. See also [Guidelines.md](Guidelines.md) and Architecture.md.
 
 ## cppcheck `unusedFunction` lies about used code
 

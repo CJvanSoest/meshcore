@@ -2,8 +2,8 @@
 
 How the firmware actually runs: the cold-start order, and the RX and TX paths
 with the real function names. Use this to find where a symptom originates before
-editing. Components are mapped in [COMPONENTS.md](COMPONENTS.md); crypto detail
-is in [CRYPTO.md](CRYPTO.md).
+editing. Components are mapped in [Components.md](Components.md); crypto detail
+is in [Crypto.md](Crypto.md).
 
 ## Cold start (`main/main.c` `app_main`)
 
@@ -15,7 +15,7 @@ In order:
    `bsp_input_get_queue`.
 3. Domain init: `nodes_init`, `chat_init`, `channels_init`, `identity_init`,
    `emoji_init`. **`identity_init` runs the RFC 8032 Ed25519 boot self-test and
-   `abort()`s if it fails** (see [CRYPTO.md](CRYPTO.md)).
+   `abort()`s if it fails** (see [Crypto.md](Crypto.md)).
 4. Splash render (title + community-app attribution).
 5. `setenv("TZ", "CET-1CEST,...")` + `tzset`. The NVS epoch stays UTC.
 6. `wifi_connection_init_stack` brings up the P4 to C6 SDIO RPC pipeline that
@@ -50,7 +50,7 @@ All protocol logic lives in `mc_rx`.
 
 Key detail: the RX task runs concurrently with the UI task. Anything it touches
 in the domain (`node_list`, `contacts`, chat ring) must respect `node_mutex` /
-`chat_mutex`. See the locking pitfalls in [PITFALLS.md](PITFALLS.md).
+`chat_mutex`. See the locking pitfalls in [Pitfalls.md](Pitfalls.md).
 
 ## TX path (compose to air)
 
@@ -87,7 +87,7 @@ only `ed25519_sign` call). `direct_route` changes only `msg.route` and
 
 The signable byte range is built by the pure `meshcore_advert_signable_bytes`
 (`mc_proto/advert_sign.c`): `pub_key[32] | timestamp[4] | tail` (skipping the
-64-byte signature slot). See [CRYPTO.md](CRYPTO.md).
+64-byte signature slot). See [Crypto.md](Crypto.md).
 
 ## DM flow
 

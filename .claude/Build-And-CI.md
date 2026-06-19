@@ -1,7 +1,7 @@
 # Build and CI
 
 How the firmware builds, the board targets, and the two CI workflows (which
-differ on purpose). The everyday change loop is in [WORKFLOW.md](WORKFLOW.md).
+differ on purpose). The everyday change loop is in [Workflow.md](Workflow.md).
 
 ## Local build
 
@@ -50,7 +50,7 @@ build job. They are NOT identical, and must stay divergent on one line.
   `--volumes-from "$(hostname)"` at `$GITHUB_WORKSPACE` instead.
 
 Do not "sync" the two files. If you change the build step, edit the right file
-only. This is also in [PITFALLS.md](PITFALLS.md).
+only. This is also in [Pitfalls.md](Pitfalls.md).
 
 ## The lint gate
 
@@ -64,7 +64,7 @@ locally:
 - `check-test-wiring.sh` fails if a `tests/test_*.c` is not wired into the
   Makefile.
 - `check-cppcheck.sh` runs cppcheck over the first-party components. Treat its
-  `unusedFunction` output as advisory, see [PITFALLS.md](PITFALLS.md).
+  `unusedFunction` output as advisory, see [Pitfalls.md](Pitfalls.md).
 
 ## Artifacts and partitions
 
