@@ -2,7 +2,7 @@
 
 Reference documentation for developers, contributors and curious users.
 
-For end-user setup see the [README](../../README.md).
+For end-user setup see the [README](../README.md).
 
 ## What's new since v2.2.0
 
@@ -34,7 +34,7 @@ For end-user setup see the [README](../../README.md).
 
 ## Pages
 
-- **[Architecture](Architecture.md)** — modules and how they interact
+- **[Architecture](Overview.md)** — modules and how they interact
 - **[MeshCore protocol](MeshCore-Protocol.md)** — packet types, encryption, ADVERT/DM/Channel/PATH formats
 - **[UI / UX](UI-UX.md)** — tabs, input modes, QR overlay, edit-mode state machine, Settings section headings & hints
 - **[Settings / NVS](Settings-NVS.md)** — every persistent key, default, range, and the regulatory/country compliance tables

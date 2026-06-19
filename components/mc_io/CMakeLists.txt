@@ -1,5 +1,5 @@
 # mc_io — platform I/O: NVS helpers, GPS reader, device-cert generation.
-# See docs/wiki/Components.md.
+# See docs/Components.md.
 idf_component_register(
     SRCS
         "nvs_helpers.c"

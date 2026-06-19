@@ -19,7 +19,7 @@ cd tests && make test            # host gcc tests, run in CI before any IDF buil
 ```
 
 The Tanmatsu IDF toolchain must be set up first (see
-[docs/wiki/Build-Deploy.md](docs/wiki/Build-Deploy.md)). Other board targets
+[docs/Build-Deploy.md](docs/Build-Deploy.md)). Other board targets
 live in `sdkconfigs/` (mch2022, hackerhotel-2024, heltecv3, kami, konsool,
 esp32-p4-function-ev-board).
 
@@ -27,13 +27,13 @@ esp32-p4-function-ev-board).
 
 - `components/` — first-party source, split into `mc_*` components (see
   [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)); `main/` is just `main.c`. The
-  module map and FreeRTOS task list are in [docs/wiki/Architecture.md](docs/wiki/Architecture.md).
+  module map and FreeRTOS task list are in [docs/Overview.md](docs/Overview.md).
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — **the authoritative discipline doc**:
   the six layers (L0 foundation … L5 app entry), the forbidden-include rules
   (grep-checkable, also enforced by `tests/check-arch-rules.sh`), and the
   wire-boundary rules. Read it before moving code between files.
 - `tests/` — host-side gcc tests linked against the shipping `.c` files.
-- `docs/wiki/` — long-form docs (protocol, UI, NVS, GPS, sounds, SD layout, C6 radio).
+- `docs/` — long-form docs (protocol, UI, NVS, GPS, sounds, SD layout, C6 radio).
 
 ## Rules that matter here
 

@@ -1,6 +1,6 @@
 # mc_domain — stateful app core (identity, contacts, channels, chat, nodes,
 # history, settings, sounds). Public REQUIRES tanmatsu-lora because nodes.h /
-# settings_nvs.h expose lora_* types. See docs/wiki/Components.md.
+# settings_nvs.h expose lora_* types. See docs/Components.md.
 idf_component_register(
     SRCS
         "identity.c"

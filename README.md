@@ -71,11 +71,11 @@ views (Settings → Nodes → DM → Channel) for keyboard power users.
   on the QWIIC bus (one-press auto-fill), USB-CDC push from a companion,
   BLE companion (iPhone MeshCore app), or HTTPS `/ping` (MeshMapper /
   iOS Shortcuts / OwnTracks). The active source is surfaced in Settings;
-  full details in [GPS sources](docs/wiki/GPS-Sources.md).
+  full details in [GPS sources](docs/GPS-Sources.md).
 - **Notification sounds** — drop your own WAVs on `/sd/meshcore/sounds/{1..4}.wav`,
   pick one per event (DM / Channel / Error / Boot) in Settings → Sounds.
   Volume + on/off per event, all NVS-persisted.
-  See [Sounds](docs/wiki/Sounds.md) for the WAV format, recommended free
+  See [Sounds](docs/Sounds.md) for the WAV format, recommended free
   catalogues, and the `ffmpeg` + `badgelink` upload recipe.
 - **On-device HTTPS** — each badge generates its own ECDSA P-256
   self-signed cert on first boot, persisted to NVS. mDNS publishes
@@ -95,7 +95,7 @@ views (Settings → Nodes → DM → Channel) for keyboard power users.
 - **Real timestamps** via SNTP; last known time persisted to NVS
 
 For the full feature list, packet protocol, encryption details and key bindings,
-see the [wiki](docs/wiki/Home.md).
+see the [wiki](docs/README.md).
 
 ---
 
@@ -114,7 +114,7 @@ On a freshly-recovered Tanmatsu (flashed via `recovery.tanmatsu.cloud`):
    version; nodes start arriving on the Nodes tab once the C6 receives
    adverts.
 
-See [C6 Radio → Firmware update workflow](docs/wiki/C6-Radio.md#firmware-update-workflow)
+See [C6 Radio → Firmware update workflow](docs/C6-Radio.md#firmware-update-workflow)
 for the long-form explanation, including custom-build flashing for
 developers.
 
@@ -172,7 +172,7 @@ EN 300 220 sub-band plan:
 | RU 864/869 | RU | 864–865 / 868.7–869.2 | 14 dBm ERP | 0.1% |
 
 Full per-country table and the data schema live in
-[Settings / NVS → Regulatory compliance](docs/wiki/Settings-NVS.md#regulatory-compliance).
+[Settings / NVS → Regulatory compliance](docs/Settings-NVS.md#regulatory-compliance).
 
 ---
 
@@ -182,37 +182,37 @@ Mock-ups of every view in landscape proportions (800×480), stacked vertically
 so each one renders at a usable width regardless of viewport.
 
 **Home — tile grid**
-<p><img src="docs/screen-home.svg" width="480"></p>
+<p><img src="assets/screenshots/screen-home.svg" width="480"></p>
 
 **Settings — category tiles**
-<p><img src="docs/screen-settings-tiles.svg" width="480"></p>
+<p><img src="assets/screenshots/screen-settings-tiles.svg" width="480"></p>
 
 **Settings → Radio (drill-in)**
-<p><img src="docs/screen-settings.svg" width="480"></p>
+<p><img src="assets/screenshots/screen-settings.svg" width="480"></p>
 
 **Settings → Brightness (drill-in)**
-<p><img src="docs/screen-settings-brightness.svg" width="480"></p>
+<p><img src="assets/screenshots/screen-settings-brightness.svg" width="480"></p>
 
 **Nodes**
-<p><img src="docs/screen-nodes.svg" width="480"></p>
+<p><img src="assets/screenshots/screen-nodes.svg" width="480"></p>
 
 **DM inbox**
-<p><img src="docs/screen-dm-inbox.svg" width="480"></p>
+<p><img src="assets/screenshots/screen-dm-inbox.svg" width="480"></p>
 
 **DM conversation**
-<p><img src="docs/screen-dm.svg" width="480"></p>
+<p><img src="assets/screenshots/screen-dm.svg" width="480"></p>
 
 **Channel**
-<p><img src="docs/screen-channel.svg" width="480"></p>
+<p><img src="assets/screenshots/screen-channel.svg" width="480"></p>
 
 **QR contact card**
-<p><img src="docs/screen-qr.svg" width="480"></p>
+<p><img src="assets/screenshots/screen-qr.svg" width="480"></p>
 
 **About**
-<p><img src="docs/screen-about.svg" width="480"></p>
+<p><img src="assets/screenshots/screen-about.svg" width="480"></p>
 
 **Boot diagnostics**
-<p><img src="docs/screen-boot.svg" width="480"></p>
+<p><img src="assets/screenshots/screen-boot.svg" width="480"></p>
 
 ---
 
@@ -249,7 +249,7 @@ executable. Same bundle is the artifact for a future appstore upload.
 
 Full toolchain setup, partition layout, launcher patches, and C6 radio
 firmware flashing are documented in
-[Build / Deploy](docs/wiki/Build-Deploy.md).
+[Build / Deploy](docs/Build-Deploy.md).
 
 ---
 
@@ -257,15 +257,15 @@ firmware flashing are documented in
 
 | Page | About |
 |---|---|
-| [Architecture](docs/wiki/Architecture.md) | Modules under `main/` and how they interact |
-| [MeshCore protocol](docs/wiki/MeshCore-Protocol.md) | Packet types, ADVERT/DM/Channel/PATH, encryption, ACK, SNTP |
-| [UI / UX](docs/wiki/UI-UX.md) | Tabs, key bindings, edit-mode state machine, QR overlay |
-| [Settings / NVS](docs/wiki/Settings-NVS.md) | Persistent keys, defaults, ranges, presets |
-| [GPS sources](docs/wiki/GPS-Sources.md) | All 5 input paths, what's tested vs preview, how to wire OwnTracks / iOS Shortcuts / MeshMapper |
-| [Sounds](docs/wiki/Sounds.md) | WAV format, recommended free sources, `ffmpeg` + `badgelink` setup |
-| [SD card layout](docs/wiki/SD-Card-Layout.md) | `/sd/meshcore/`, encryption, self-heal |
-| [C6 radio](docs/wiki/C6-Radio.md) | `lora_rpc`, RSSI/SNR patches, firmware update workflow |
-| [Build / Deploy](docs/wiki/Build-Deploy.md) | IDF env, badgelink, launcher dependency, partition layout |
+| [Architecture](docs/Overview.md) | Modules under `main/` and how they interact |
+| [MeshCore protocol](docs/MeshCore-Protocol.md) | Packet types, ADVERT/DM/Channel/PATH, encryption, ACK, SNTP |
+| [UI / UX](docs/UI-UX.md) | Tabs, key bindings, edit-mode state machine, QR overlay |
+| [Settings / NVS](docs/Settings-NVS.md) | Persistent keys, defaults, ranges, presets |
+| [GPS sources](docs/GPS-Sources.md) | All 5 input paths, what's tested vs preview, how to wire OwnTracks / iOS Shortcuts / MeshMapper |
+| [Sounds](docs/Sounds.md) | WAV format, recommended free sources, `ffmpeg` + `badgelink` setup |
+| [SD card layout](docs/SD-Card-Layout.md) | `/sd/meshcore/`, encryption, self-heal |
+| [C6 radio](docs/C6-Radio.md) | `lora_rpc`, RSSI/SNR patches, firmware update workflow |
+| [Build / Deploy](docs/Build-Deploy.md) | IDF env, badgelink, launcher dependency, partition layout |
 
 ---
 

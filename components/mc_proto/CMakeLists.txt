@@ -1,6 +1,6 @@
 # mc_proto — pure protocol + regulatory + parser core (upstream mirror).
 # Do NOT add esp_*, FreeRTOS, pax or BSP includes — C stdlib / POSIX only; that
-# is what keeps it host-testable. See docs/wiki/Components.md.
+# is what keeps it host-testable. See docs/Components.md.
 idf_component_register(
     SRCS
         "meshcore/packet.c"

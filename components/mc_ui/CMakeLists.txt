@@ -1,5 +1,5 @@
 # mc_ui — presentation: pax renderers, input handling, emoji picker.
-# See docs/wiki/Components.md.
+# See docs/Components.md.
 idf_component_register(
     SRCS
         "render.c"

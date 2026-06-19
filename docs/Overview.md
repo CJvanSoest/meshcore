@@ -5,7 +5,7 @@ processor). Everything runs in one process; concurrency comes from a handful
 of FreeRTOS tasks plus the main event loop.
 
 > For the layer discipline (L0–L5), the forbidden-include rules and the
-> wire-boundary rules, see [ARCHITECTURE.md](../ARCHITECTURE.md).
+> wire-boundary rules, see [ARCHITECTURE.md](ARCHITECTURE.md).
 > First-party code is split into `mc_*` components under `components/`
 > (protocol core in `mc_proto`, channel crypto in `mc_crypto`, third-party in
 > `vendor`); `main` is just the entry point.

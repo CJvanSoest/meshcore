@@ -14,7 +14,7 @@ cd tests && make test            # host gcc tests; CI runs these before the IDF 
 ```
 
 Set up the Tanmatsu ESP-IDF toolchain first (see
-[docs/wiki/Build-Deploy.md](docs/wiki/Build-Deploy.md)). Other board targets
+[Build-Deploy.md](Build-Deploy.md)). Other board targets
 live in `sdkconfigs/`.
 
 ## Before you open a PR
@@ -24,7 +24,7 @@ live in `sdkconfigs/`.
    regression fails here.
 2. **`tests/check-arch-rules.sh` and `tests/check-structure.sh` are green.**
    They enforce the include-direction and file-placement rules from
-   [ARCHITECTURE.md](../ARCHITECTURE.md) (CI runs them too).
+   [ARCHITECTURE.md](ARCHITECTURE.md) (CI runs them too).
 3. **`tests/check-cppcheck.sh` is green.** Static analysis over first-party code
    (warning/performance/portability). Needs `cppcheck`; CI runs it too.
 4. **`make build DEVICE=tanmatsu` is green.**
@@ -37,7 +37,7 @@ live in `sdkconfigs/`.
 ## Code rules
 
 These keep the codebase reasoned-about rather than just compiling. Full detail
-in [ARCHITECTURE.md](../ARCHITECTURE.md) and [CLAUDE.md](../CLAUDE.md).
+in [ARCHITECTURE.md](ARCHITECTURE.md) and [CLAUDE.md](../CLAUDE.md).
 
 - **Respect the layers.** Higher layers include lower, never the reverse.
   `render_*.c` does not speak the wire protocol. The component `REQUIRES`

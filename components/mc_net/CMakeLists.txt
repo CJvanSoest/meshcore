@@ -1,5 +1,5 @@
 # mc_net — connectivity + peripherals: HTTP server, BLE, companion transport,
-# WiFi keepalive, GPS task, map. See docs/wiki/Components.md.
+# WiFi keepalive, GPS task, map. See docs/Components.md.
 idf_build_get_property(idf_target IDF_TARGET)
 if("${idf_target}" STREQUAL "esp32p4")
 list(APPEND extra_requires esp-hosted-tanmatsu)

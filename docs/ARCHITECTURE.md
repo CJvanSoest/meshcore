@@ -2,7 +2,7 @@
 
 One-page discipline doc. For descriptive module overview, FreeRTOS tasks,
 cold-start sequence, render split — see
-[`wiki/Architecture.md`](wiki/Architecture.md).
+[`Overview.md`](Overview.md).
 
 ## Layers
 
@@ -75,7 +75,7 @@ enforces these in CI:
 
 The layers above are real components; the build refuses a backward include, so
 the discipline is mechanical, not just a promise. A full per-component tour and
-the RX/TX data flow live in [`wiki/Components.md`](wiki/Components.md); the short
+the RX/TX data flow live in [`Components.md`](Components.md); the short
 version for keeping the tree tidy:
 
 **Where does new code go?**
@@ -158,12 +158,10 @@ probably over-engineering for a ~50-file C app.
 
 ## See also
 
-- [`wiki/Architecture.md`](wiki/Architecture.md) — descriptive
+- [`Overview.md`](Overview.md) — descriptive
   module overview, FreeRTOS tasks, cold-start sequence, render split
-- [`wiki/Settings-NVS.md`](wiki/Settings-NVS.md) — NVS key
+- [`Settings-NVS.md`](Settings-NVS.md) — NVS key
   scheme and migration history
-- [`architecture-proposal.md`](architecture-proposal.md) — the components +
-  ports migration this layout came from
 - Memory references (CLAUDE/CJ session-only):
   `tanmatsu-meshcore-workflow` (branch protection + PR flow),
   `tanmatsu-meshcore-ci` (CI setup)
