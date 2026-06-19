@@ -14,6 +14,13 @@ Claude (Anthropic)
   Pair-programming partner for design discussions, code generation,
   reverse-engineering of MeshCore protocol details, devlog entries.
 
+Contributors
+------------
+Ilias el Matani <hello@ilias.codes>
+  Component architecture refactor (the mc_* components + build-enforced
+  layering), the mc_crypto extraction, host-test suite expansion, the
+  GitHub Actions CI and the arch-rules / structure lints, documentation.
+
 Upstream MeshCore protocol
 --------------------------
 Scott Powell / rippleradios.com — original MeshCore C++ implementation
@@ -23,6 +30,7 @@ Renze (MeshCore Discord) — protocol Q&A: channel key derivation,
 
 Third-party assets
 ------------------
+Lode Vandevenne — lodepng PNG decoder (zlib)
 Project Nayuki — qrcodegen library (MIT)
 Daniel J. Bernstein et al. — ed25519 reference code (public domain)
 Twitter / jdecked — Twemoji emoji bitmaps (CC-BY 4.0)

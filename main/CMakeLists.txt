@@ -7,50 +7,16 @@ endif()
 idf_component_register(
 	SRCS
 		"main.c"
-		"history.c"
-		"contacts.c"
-		"identity.c"
-		"settings_nvs.c"
-		"nvs_helpers.c"
-		"nodes.c"
-		"chat.c"
-		"channels.c"
-		"radio.c"
-		"radio_system_protocol_client.c"
-		"region_limits.c"
-		"input.c"
-		"render.c"
-		"render_settings.c"
-		"render_settings_icons.c"
-		"render_nodes.c"
-		"render_chat.c"
-		"render_channel.c"
-		"render_home.c"
-		"render_about.c"
-		"render_map.c"
-		"map.c"
-		"lodepng.c"
-		"gps_task.c"
-		"emoji.c"
-		"emoji_bitmaps.c"
-		"ed25519.c"
-		"ed25519_mpi.c"
-		"gps.c"
-		"gps_parser.c"
-		"qrcodegen.c"
-		"companion-radio-protocol/mc_companion_command_parser.c"
-		"companion-radio-protocol/mc_companion_serial_interface.c"
-		"companion-radio-protocol/mc_companion_server.c"
-		"companion_transport.c"
-		"ble_companion.c"
-		"wifi_keepalive.c"
-		"http_server.c"
-		"cert_gen.c"
-		"sounds.c"
-		"meshcore/packet.c"
-		"meshcore/payload/advert.c"
-		"meshcore/payload/grp_txt.c"
 	PRIV_REQUIRES
+		mc_common
+		mc_proto
+		mc_io
+		mc_domain
+		mc_radio
+		mc_net
+		mc_ui
+		mc_rx
+		vendor
 		esp_lcd
 		esp_app_format
 		nvs_flash
@@ -72,14 +38,7 @@ idf_component_register(
 		espressif__mdns
 	INCLUDE_DIRS
 		"."
-		"meshcore"
 )
 
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=unused-variable" APPEND)
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=unused-const-variable" APPEND)
-
-# Slim lodepng to decoder-only — we read PNGs from SD via fread and never
-# write or generate PNGs, so the encoder + ancillary chunk + disk helpers
-# just bloat the binary.
-set_source_files_properties("main/lodepng.c" PROPERTIES COMPILE_OPTIONS
-	"-DLODEPNG_NO_COMPILE_ENCODER;-DLODEPNG_NO_COMPILE_DISK;-DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS;-DLODEPNG_NO_COMPILE_ERROR_TEXT;-Wno-error=implicit-fallthrough;-Wno-error=stringop-overflow")

@@ -16,7 +16,7 @@
 # best-effort -- CI is the source of truth.
 
 CC        ?= gcc
-CFLAGS    += -std=c11 -Wall -Wextra -Werror -Wno-deprecated-declarations -O1 -I../main
+CFLAGS    += -std=c11 -Wall -Wextra -Werror -Wno-deprecated-declarations -O1 -I../components/mc_proto -I../components/vendor
 LDLIBS    += -lmbedcrypto
 # -Wno-deprecated-declarations: mbedtls 2.28 (Ubuntu 22.04 / Gitea runner)
 # marks mbedtls_sha512_{starts,update,finish} as deprecated in favour of the
@@ -25,14 +25,26 @@ LDLIBS    += -lmbedcrypto
 # names in source (forward-compatible) and silence the warning here.
 
 # Source files from main/ that the tests link against.
-SRC_ED25519     = ../main/ed25519_mpi.c
-SRC_GPS_NMEA    = ../main/gps_parser.c
-SRC_COMP_PROTO  = ../main/companion-radio-protocol/mc_companion_command_parser.c \
-                  ../main/companion-radio-protocol/mc_companion_serial_interface.c
+SRC_ED25519     = ../components/vendor/ed25519_mpi.c
+SRC_GPS_NMEA    = ../components/mc_proto/gps_parser.c
+SRC_COMP_PROTO  = ../components/mc_proto/companion-radio-protocol/mc_companion_command_parser.c \
+                  ../components/mc_proto/companion-radio-protocol/mc_companion_serial_interface.c
+SRC_MC_CRYPTO   = ../components/mc_crypto/mc_crypto.c
+SRC_PAYLOADS    = ../components/mc_proto/meshcore/payload/grp_txt.c \
+                  ../components/mc_proto/meshcore/payload/advert.c
+SRC_INTEGRATION = ../components/mc_crypto/mc_crypto.c \
+                  ../components/mc_proto/meshcore/packet.c \
+                  ../components/mc_proto/meshcore/payload/grp_txt.c
+SRC_DM          = ../components/mc_crypto/mc_crypto_dm.c \
+                  ../components/vendor/ed25519.c \
+                  ../components/vendor/ed25519_mpi.c
+SRC_ADVERT_SIGN = ../components/mc_proto/advert_sign.c \
+                  ../components/mc_proto/meshcore/payload/advert.c \
+                  ../components/vendor/ed25519_mpi.c
 
 .PHONY: all test clean
 
-all: test_ed25519 test_gps_nmea test_companion_protocol
+all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign
 
 test_ed25519: test_ed25519.c $(SRC_ED25519)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
@@ -52,10 +64,77 @@ test_gps_nmea: test_gps_nmea.c $(SRC_GPS_NMEA)
 test_companion_protocol: test_companion_protocol.c $(SRC_COMP_PROTO)
 	$(CC) $(CFLAGS) -Wno-unused-parameter -o $@ $^
 
-test: test_ed25519 test_gps_nmea test_companion_protocol
+# Pure-C regulatory-table test -- no libmbedcrypto link needed. Guards the
+# sub-band boundaries, ERP/EIRP power unit and duty-cycle budget that gate
+# every transmit on the device.
+test_region_limits: test_region_limits.c ../components/mc_proto/region_limits.c
+	$(CC) $(CFLAGS) -o $@ $^
+
+# MeshCore packet codec round-trip + error-path test. Guards the wire boundary
+# (header bit-packing, transport-code gating, path length-byte encoding).
+# packet.c is the upstream protocol mirror (see docs/ARCHITECTURE.md "Wire-boundary
+# discipline") and must not diverge locally, so suppress two upstream warnings
+# here instead of editing the source: -Wtype-limits fires on the uint8_t size
+# bound check and -Wsign-compare on its int/size_t length math.
+test_meshcore_packet: test_meshcore_packet.c ../components/mc_proto/meshcore/packet.c
+	$(CC) $(CFLAGS) -I../components/mc_proto -Wno-type-limits -Wno-sign-compare -o $@ $^
+
+# Channel crypto + ACK-binding test. Links the same mc_crypto.c shipped in the
+# firmware: GRP_TXT encrypt/decrypt round-trip, the channel-match property (a
+# wrong key fails the MAC), ciphertext-tamper rejection, and the ACK CRC.
+test_mc_crypto: test_mc_crypto.c $(SRC_MC_CRYPTO)
+	$(CC) $(CFLAGS) -I../components/mc_crypto -o $@ $^ $(LDLIBS)
+
+# GRP_TXT + ADVERT payload-codec round-trips. packet.c is covered by
+# test_meshcore_packet; these guard the two payload bodies that ride inside it.
+# -D_GNU_SOURCE: advert.c uses strnlen (POSIX), which strict -std=c11 hides;
+# the IDF build defines _GNU_SOURCE already, so match it for the host link.
+test_meshcore_payloads: test_meshcore_payloads.c $(SRC_PAYLOADS)
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -I../components/mc_proto -Wno-type-limits -Wno-sign-compare -o $@ $^
+
+# Deeper region_limits coverage: the country/sub-band lookup + power/duty helpers
+# that test_region_limits leaves thin (region_get_country, region_match_subband,
+# region_effective_power_dbm with the 2.15 dBi dipole offset, dc-budget).
+test_region_lookup: test_region_lookup.c ../components/mc_proto/region_limits.c
+	$(CC) $(CFLAGS) -o $@ $^
+
+# Extra gps_parser edge cases beyond test_gps_nmea (checksum rejects, void RMC,
+# hemisphere signs, boundary coordinates, unhandled sentences).
+test_gps_parser_edge: test_gps_parser_edge.c $(SRC_GPS_NMEA)
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+# Cross-component integration: a full GRP_TXT message lifecycle proving mc_crypto
+# and mc_proto compose (frame -> encrypt -> serialize -> deserialize -> decrypt).
+test_integration_message: test_integration_message.c $(SRC_INTEGRATION)
+	$(CC) $(CFLAGS) -I../components/mc_proto -I../components/mc_crypto -Wno-type-limits -Wno-sign-compare -o $@ $^ $(LDLIBS)
+
+# DM (TXT_MSG) ed25519-ECDH crypto round-trip. Links the vendored ed25519.c
+# (ECDH) + ed25519_mpi.c (keypair) shipped on the badge, with tests/stubs for
+# esp_random. -Wno-unused-function: ed25519.c keeps sign/verify statics this
+# call graph does not reach.
+test_mc_crypto_dm: test_mc_crypto_dm.c $(SRC_DM)
+	$(CC) $(CFLAGS) -Wno-unused-function -Istubs -I../components/mc_crypto -o $@ $^ $(LDLIBS)
+
+# ADVERT signature layout. Guards the to_sign byte range (pub_key + timestamp +
+# post-signature tail) that meshcore_advert_signable_bytes feeds ed25519_sign --
+# the layout half of the direct-advert signing bug; the math half is test_ed25519.
+# -D_GNU_SOURCE: advert.c uses strnlen, matching the IDF build.
+test_advert_sign: test_advert_sign.c $(SRC_ADVERT_SIGN)
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -I../components/mc_proto -Wno-type-limits -Wno-sign-compare -o $@ $^ $(LDLIBS)
+
+test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign
 	./test_ed25519
 	./test_gps_nmea
 	./test_companion_protocol
+	./test_region_limits
+	./test_meshcore_packet
+	./test_mc_crypto
+	./test_meshcore_payloads
+	./test_region_lookup
+	./test_gps_parser_edge
+	./test_integration_message
+	./test_mc_crypto_dm
+	./test_advert_sign
 
 clean:
-	rm -f test_ed25519 test_gps_nmea test_companion_protocol
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign
