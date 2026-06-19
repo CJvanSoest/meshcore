@@ -2,14 +2,27 @@
 
 Rules and context for an AI pair programmer (or any contributor using one) on
 MeshCore for the Tanmatsu badge. This is the entry point for the `.claude/`
-guidance set:
+guidance set. Read the one that matches what you are about to do:
 
 - **GUIDELINES.md** (this file): the mental model, where code goes, the hard
   rules, conventions, and the green gate.
-- **[WORKFLOW.md](WORKFLOW.md)**: how to actually carry out a change from first
-  read to merged commit, including how to verify the firmware build and CI.
+- **[COMPONENTS.md](COMPONENTS.md)**: per-component reference, the dependency
+  graph, the constants, and which file owns what.
+- **[DATA-FLOWS.md](DATA-FLOWS.md)**: the cold-start order and the RX / TX /
+  advert / DM / channel flows with real function names. Read before chasing a
+  symptom to the wrong file.
+- **[CRYPTO.md](CRYPTO.md)**: the signing, channel, DM, region-scope and ACK
+  crypto, the ed25519 split, and the gates. Read before touching anything that
+  signs, encrypts, or derives a key.
+- **[TESTING.md](TESTING.md)**: the host test harness, what each gate proves,
+  golden vectors, and how to add a test.
+- **[BUILD-AND-CI.md](BUILD-AND-CI.md)**: build invocation, board targets, and
+  the two deliberately-divergent CI workflows.
+- **[WORKFLOW.md](WORKFLOW.md)**: how to carry a change from first read to a
+  green commit, including how to verify the firmware build when you lack the
+  IDF toolchain.
 - **[PITFALLS.md](PITFALLS.md)**: the traps that have already cost real time or
-  real users on this project. Read it before you trust a tool or an assumption.
+  real users here. Read it before you trust a tool or an assumption.
 
 Read these together with the root [CLAUDE.md](../CLAUDE.md),
 [docs/Architecture.md](../docs/Architecture.md) (the rulebook) and

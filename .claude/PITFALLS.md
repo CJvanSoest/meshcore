@@ -123,3 +123,45 @@ on the rule characters, or you will fight false "string not found" errors.
 A sweep that renames, reformats or de-duplicates across the tree must skip
 `components/vendor/*` and `components/mc_proto/meshcore/*`. Consistency there
 means consistency with upstream, not with the rest of this repo.
+
+## The RX task and the UI task share domain tables
+
+`node_list` and `contacts[]` are both protected by `node_mutex`; the chat ring
+by `chat_mutex`. The trap is that the LoRa RX handlers (`mc_rx`) run on the
+`lora_rx` task while the UI mutates the same tables on the main loop. Every
+domain read or write from an RX handler needs the lock, and the helpers in
+`mc_domain` (`contact_ensure`, `contact_mark_unread`, the contacts scan,
+`build_node_display`) take NO lock internally: the contract is caller-holds.
+Real bugs found this way: the DM sender resolver scanned `contacts[]` unlocked
+while a UI contact-removal shifted the array, and `rx_handle_dm` appended via
+`contact_ensure` unlocked. Hold `node_mutex` around it. Keep the lock OFF the
+expensive ed25519 work: take it to read/copy, release, then do the crypto.
+
+## Shared accounting state touched by several TX tasks
+
+`radio_tx_message` is called from at least four tasks (advert, direct-advert,
+the RX-task PATH_RETURN ACK, UI sends). Anything it read-modify-writes must be
+synchronised. The duty-cycle buckets + rolling sum were not, despite a comment
+claiming a lock was held, so the sum could corrupt and let TX past the
+regulatory budget. They are now under `dc_mutex`. If you add per-TX state,
+synchronise it and do not trust a comment that says a lock is held: grep for the
+actual `xSemaphoreTake`.
+
+## A reused slot is a new identity, not an update
+
+In `nodes.c update_node`, when the table is full a slot is evicted and reused.
+The slot is still `active`, so `is_new = !active` wrongly read false and the new
+node inherited the evicted node's name, packet count, position and stats.
+Decide "new vs update" by comparing the slot's pubkey to the advert's, not by
+the active flag, and zero the slot when a different identity takes it over. Any
+fixed-capacity table with eviction has this trap.
+
+## Keyboard and D-pad input paths must agree
+
+Settings (and similar grid views) have two input paths: `nav_settings` (D-pad)
+and `key_settings` (keyboard). They are separate code and drifted: the keyboard
+path used the visible-slot cursor as the real category index (no
+`settings_visible_category_real_idx` translation) and clamped with the real
+count instead of the visible count, so keyboard Enter opened the wrong category.
+When you change navigation in one path, change the other, or factor the shared
+step into one helper.
