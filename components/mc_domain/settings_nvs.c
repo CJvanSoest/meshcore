@@ -38,7 +38,7 @@
 #define NVS_SOUND_BOOT      "snd.boot"
 #define NVS_MAP_LAT         "map.lat_e6"     // i32 — VIEW_MAP centre lat × 1e6
 #define NVS_MAP_LON         "map.lon_e6"     // i32 — VIEW_MAP centre lon × 1e6
-#define NVS_MAP_ZOOM        "map.zoom"       // u8  — VIEW_MAP zoom level (6..14)
+#define NVS_MAP_ZOOM        "map.zoom"       // u8  — VIEW_MAP zoom level (6..17)
 #define NVS_MAP_LOCK        "map.lock"       // u8  — lock-to-position toggle
 #define NVS_MAP_PROFILE     "map.profile"    // u8  — map_profile_t (style)
 #define NVS_GPS_PROFILE     "gps.profile"    // u8  — gps_profile_t

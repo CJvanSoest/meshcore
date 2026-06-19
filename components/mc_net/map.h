@@ -35,12 +35,12 @@
 void map_profile_set(map_profile_t p);
 
 // Zoom bounds. MIN matches the Ripple Europe tileset's lower edge; MAX is
-// bumped to 14 (street-name scale) so a later self-hosted tilemaker render
-// of NL z=11-14 drops in without firmware changes. Tiles missing in the
+// bumped to 17 (building scale) so a later self-hosted tilemaker render
+// of NL z=11-17 drops in without firmware changes. Tiles missing in the
 // current SD content render as a grey rect with a corner grid line, so
 // over-zooming is harmless until the deeper tiles are present.
 #define MAP_ZOOM_MIN    6
-#define MAP_ZOOM_MAX    14
+#define MAP_ZOOM_MAX    17
 
 // Slippy-map: (lat°, lon°, zoom) → tile (x, y) + pixel offset inside the
 // tile. py_in_tile uses the standard Web-Mercator Y so 0 = north edge.
