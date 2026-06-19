@@ -23,10 +23,7 @@ badgelink/
 badgelink.DS_Store
 .DS_Store
 **/.DS_Store
-tests/test_ed25519
-tests/test_gps_nmea
-tests/test_companion_protocol
-tests/test_region_limits
-tests/test_meshcore_packet
-tests/test_mc_crypto
-tests/test_meshcore_payloads
+# Compiled host-test binaries (sources are tests/test_*.c; the built
+# executables are never tracked). Pattern keeps new tests covered automatically.
+tests/test_*
+!tests/test_*.c
