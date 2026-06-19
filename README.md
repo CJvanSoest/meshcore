@@ -33,7 +33,7 @@ the launcher.
 | **Nodes** | Live list of heard nodes — role, RSSI/SNR, distance, last seen; saved contacts starred |
 | **DM** | Inbox + per-contact end-to-end encrypted conversations (carries an unread badge on the tile itself) |
 | **Channel** | Public channel chat (AES-128-ECB), per-channel rings, unread badge on the tile |
-| **Map** | Reserved — slots in once an on-device map view lands |
+| **Map** | Slippy-map view: OSM tiles from SD, live GPS overlay, pan + zoom (6–14), crosshair, scale bar, Ripple/Carto/Cycle/Topo style profiles |
 | **Advert** | Sends a flood advert inline + 2-second toast; stays on home |
 | **Settings** | Two-level menu: tile-grid of categories (Identity / Regulatory / Radio / Network / Region & Location / **Brightness** / **Sounds**) → drill into the fields for one category. Advert config is reached via the Home → Advert tile. |
 | **About** | App version, build date, author, upstream credits, MIT license, source URL |
@@ -72,6 +72,10 @@ views (Settings → Nodes → DM → Channel) for keyboard power users.
   BLE companion (iPhone MeshCore app), or HTTPS `/ping` (MeshMapper /
   iOS Shortcuts / OwnTracks). The active source is surfaced in Settings;
   full details in [GPS sources](docs/GPS-Sources.md).
+- **On-device map** — a slippy OSM-tile map rendered from SD with a live GPS
+  overlay, pan and zoom (levels 6–14), crosshair, scale bar, and
+  Ripple / Carto / Cycle / Topo style profiles (Settings → Region & Location →
+  Map). See [Maps](docs/Maps.md).
 - **Notification sounds** — drop your own WAVs on `/sd/meshcore/sounds/{1..4}.wav`,
   pick one per event (DM / Channel / Error / Boot) in Settings → Sounds.
   Volume + on/off per event, all NVS-persisted.
@@ -257,7 +261,7 @@ firmware flashing are documented in
 
 | Page | About |
 |---|---|
-| [Architecture](docs/Overview.md) | Modules under `main/` and how they interact |
+| [Architecture](docs/Overview.md) | The `mc_*` components under `components/` and how they interact |
 | [MeshCore protocol](docs/MeshCore-Protocol.md) | Packet types, ADVERT/DM/Channel/PATH, encryption, ACK |
 | [UI / UX](docs/UI-UX.md) | Tabs, key bindings, edit-mode state machine, QR overlay |
 | [Settings / NVS](docs/Settings-NVS.md) | Persistent keys, defaults, ranges, presets |

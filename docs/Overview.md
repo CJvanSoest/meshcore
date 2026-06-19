@@ -11,6 +11,10 @@ of FreeRTOS tasks plus the main event loop.
 > `vendor`); `main` is just the entry point.
 > This page is the descriptive tour; ARCHITECTURE.md is the rulebook.
 
+For the build-level view — which `mc_*` component each module lives in, the
+`REQUIRES` dependency graph, and the RX/TX data flow — see
+[Components.md](Components.md). This page is the runtime/module tour.
+
 ## Module overview
 
 ```
@@ -96,7 +100,7 @@ groups.
 4. Boot DIAG screen begins drawing
 5. WiFi stack init (brings up the P4↔C6 link; it does **not** connect or scan)
 6. Time comes from the C6 RTC (`bsp_rtc_update_time`); NVS time restore as
-   fallback. There is no in-app SNTP path; time comes from the C6 RTC.
+   fallback. There is no in-app SNTP path.
 7. Owner / advert / region / contacts load from NVS
 8. `history_init(node_prv_key)` → mounts SD, derives AES-CBC key from identity
 9. `lora_init(16)` → talks to the C6
