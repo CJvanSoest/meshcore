@@ -12,6 +12,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "mbedtls/aes.h"
+#include "mbedtls/md.h"
+
 #include "ed25519.h"
 #include "mc_crypto.h"
 
@@ -62,6 +65,50 @@ static uint8_t build_payload(uint8_t *payload, uint8_t dst0, uint8_t src0,
     return (uint8_t)(4 + padded);
 }
 
+// Encrypt a DM the way a peer keyed one of the four interop variants:
+// converted vs raw ed25519->x25519 secret, MAC'd with a 16- or 32-byte HMAC
+// key. AES always uses the first 16 bytes of the same secret. mc_crypto_dm.c's
+// own encrypt only ever produces the converted/32 case, so this is the only way
+// to exercise the other three accept branches.
+// Derive the secret exactly as the receiver will (sender_pub, recipient_prv).
+// The converted variant is symmetric so either order works, but the raw variant
+// uses the Edwards bytes directly as the u-coordinate and is NOT symmetric, so
+// to land on the receiver's secret_raw we must key from the receiver's side.
+static void encrypt_variant(const uint8_t sender_pub[32], const uint8_t recipient_prv[64],
+                            const uint8_t *plain, size_t padded, bool raw, int keylen,
+                            uint8_t *out_cipher, uint8_t out_mac[32]) {
+    uint8_t secret[32];
+    if (raw) ed25519_key_exchange_raw(secret, sender_pub, recipient_prv);
+    else     ed25519_key_exchange    (secret, sender_pub, recipient_prv);
+
+    mbedtls_aes_context aes;
+    mbedtls_aes_init(&aes);
+    mbedtls_aes_setkey_enc(&aes, secret, 128);
+    for (size_t i = 0; i < padded / 16; i++)
+        mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, &plain[i * 16], &out_cipher[i * 16]);
+    mbedtls_aes_free(&aes);
+
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                    secret, (size_t)keylen, out_cipher, padded, out_mac);
+}
+
+static void test_variant(const char *name, const uint8_t b_pub[32],
+                         const uint8_t a_pub[32], const uint8_t b_prv[64], bool raw, int keylen) {
+    const char *text       = "variant probe message";
+    uint8_t     plain[256] = {0};
+    size_t      padded     = frame(plain, text);
+    uint8_t     cipher[256] = {0}, mac[32];
+    encrypt_variant(a_pub, b_prv, plain, padded, raw, keylen, cipher, mac);
+
+    uint8_t payload[256];
+    uint8_t plen = build_payload(payload, b_pub[0], a_pub[0], mac, cipher, padded);
+    uint8_t out[256] = {0};
+    int     tlen     = 0;
+    uint8_t secret[32];
+    bool    ok = mc_crypto_dm_decrypt(payload, plen, a_pub, b_prv, out, &tlen, secret);
+    CHECK(ok && memcmp(out + 5, text, strlen(text)) == 0, name);
+}
+
 int main(void) {
     uint8_t a_pub[32], a_prv[64], b_pub[32], b_prv[64], c_pub[32], c_prv[64];
     keypair(a_pub, a_prv, 0x11);
@@ -101,6 +148,19 @@ int main(void) {
     uint8_t secret3[32];
     CHECK(!mc_crypto_dm_decrypt(payload, payload_len, a_pub, b_prv, out3, &tlen3, secret3),
           "tampered ciphertext fails the MAC");
+
+    // The other three accept variants a peer may have keyed (the converted/32
+    // case above is the one mc_crypto_dm_encrypt produces).
+    test_variant("decrypts the raw-secret / 32-byte HMAC variant",       b_pub, a_pub, b_prv, true,  32);
+    test_variant("decrypts the converted-secret / 16-byte HMAC variant", b_pub, a_pub, b_prv, false, 16);
+    test_variant("decrypts the raw-secret / 16-byte HMAC variant",       b_pub, a_pub, b_prv, true,  16);
+
+    // A payload too short to hold dst|src|mac + one AES block is rejected.
+    uint8_t shortp[8] = {0};
+    int     stlen     = 0;
+    uint8_t ssecret[32];
+    CHECK(!mc_crypto_dm_decrypt(shortp, (uint8_t)sizeof shortp, a_pub, b_prv, out, &stlen, ssecret),
+          "a too-short DM payload is rejected");
 
     if (failures) {
         printf("%d check(s) failed\n", failures);
