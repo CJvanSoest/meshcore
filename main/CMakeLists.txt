@@ -7,17 +7,6 @@ endif()
 idf_component_register(
 	SRCS
 		"main.c"
-		"input.c"
-		"render.c"
-		"render_settings.c"
-		"render_settings_icons.c"
-		"render_nodes.c"
-		"render_chat.c"
-		"render_channel.c"
-		"render_home.c"
-		"render_about.c"
-		"render_map.c"
-		"emoji.c"
 	PRIV_REQUIRES
 		mc_common
 		mc_proto
@@ -25,6 +14,7 @@ idf_component_register(
 		mc_domain
 		mc_radio
 		mc_net
+		mc_ui
 		vendor
 		esp_lcd
 		esp_app_format
