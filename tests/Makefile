@@ -30,10 +30,12 @@ SRC_GPS_NMEA    = ../components/mc_proto/gps_parser.c
 SRC_COMP_PROTO  = ../components/mc_proto/companion-radio-protocol/mc_companion_command_parser.c \
                   ../components/mc_proto/companion-radio-protocol/mc_companion_serial_interface.c
 SRC_MC_CRYPTO   = ../components/mc_crypto/mc_crypto.c
+SRC_PAYLOADS    = ../components/mc_proto/meshcore/payload/grp_txt.c \
+                  ../components/mc_proto/meshcore/payload/advert.c
 
 .PHONY: all test clean
 
-all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto
+all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads
 
 test_ed25519: test_ed25519.c $(SRC_ED25519)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
@@ -74,13 +76,21 @@ test_meshcore_packet: test_meshcore_packet.c ../components/mc_proto/meshcore/pac
 test_mc_crypto: test_mc_crypto.c $(SRC_MC_CRYPTO)
 	$(CC) $(CFLAGS) -I../components/mc_crypto -o $@ $^ $(LDLIBS)
 
-test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto
+# GRP_TXT + ADVERT payload-codec round-trips. packet.c is covered by
+# test_meshcore_packet; these guard the two payload bodies that ride inside it.
+# -D_GNU_SOURCE: advert.c uses strnlen (POSIX), which strict -std=c11 hides;
+# the IDF build defines _GNU_SOURCE already, so match it for the host link.
+test_meshcore_payloads: test_meshcore_payloads.c $(SRC_PAYLOADS)
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -I../components/mc_proto -Wno-type-limits -Wno-sign-compare -o $@ $^
+
+test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads
 	./test_ed25519
 	./test_gps_nmea
 	./test_companion_protocol
 	./test_region_limits
 	./test_meshcore_packet
 	./test_mc_crypto
+	./test_meshcore_payloads
 
 clean:
-	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads
