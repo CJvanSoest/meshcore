@@ -11,7 +11,6 @@ idf_component_register(
 		"contacts.c"
 		"identity.c"
 		"settings_nvs.c"
-		"nvs_helpers.c"
 		"nodes.c"
 		"chat.c"
 		"channels.c"
@@ -30,16 +29,15 @@ idf_component_register(
 		"map.c"
 		"gps_task.c"
 		"emoji.c"
-		"gps.c"
 		"companion_transport.c"
 		"ble_companion.c"
 		"wifi_keepalive.c"
 		"http_server.c"
-		"cert_gen.c"
 		"sounds.c"
 	PRIV_REQUIRES
 		mc_common
 		mc_proto
+		mc_io
 		vendor
 		esp_lcd
 		esp_app_format
