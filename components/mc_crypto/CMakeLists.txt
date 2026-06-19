@@ -3,10 +3,12 @@
 idf_component_register(
     SRCS
         "mc_crypto.c"
+        "mc_crypto_dm.c"
     INCLUDE_DIRS
         "."
     REQUIRES
         mc_proto
     PRIV_REQUIRES
         mbedtls
+        vendor
 )

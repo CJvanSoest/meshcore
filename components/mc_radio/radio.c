@@ -388,9 +388,6 @@ static bool decrypt_grp_txt(meshcore_grp_txt_t *grp, const uint8_t *key) {
 bool send_dm_message(const char *text, const uint8_t *target_pub, uint8_t ack_crc_out[4]) {
     if (!c6_available || !identity_is_ready()) return false;
 
-    uint8_t shared[32];
-    ed25519_key_exchange(shared, target_pub, node_prv_key);
-
     uint32_t ts = (uint32_t)time(NULL);
     uint8_t  plain[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
     size_t   text_len  = strlen(text);
@@ -410,16 +407,8 @@ bool send_dm_message(const char *text, const uint8_t *target_pub, uint8_t ack_cr
     }
 
     uint8_t cipher[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
-    mbedtls_aes_context aes;
-    mbedtls_aes_init(&aes);
-    mbedtls_aes_setkey_enc(&aes, shared, 128);
-    for (size_t i = 0; i < padded / 16; i++)
-        mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, &plain[i * 16], &cipher[i * 16]);
-    mbedtls_aes_free(&aes);
-
     uint8_t mac[32];
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                    shared, 32, cipher, padded, mac);
+    mc_crypto_dm_encrypt(target_pub, node_prv_key, plain, padded, cipher, mac);
 
     meshcore_message_t msg = {0};
     msg.type           = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
@@ -672,50 +661,12 @@ static bool find_sender_by_hash(uint8_t src_hash, bool include_contacts,
 // timestamp[4] + flags[1] header is included in the buffer), and copies
 // the winning secret to out_good_secret so the caller can reuse it for
 // PATH_RETURN encryption.
+// Thin wrapper over the host-tested pure implementation in mc_crypto.
 static bool dm_decrypt(const meshcore_message_t *msg, const uint8_t sender_pub[32],
                        uint8_t *out_plaintext, int *out_text_len,
                        uint8_t out_good_secret[32]) {
-    const uint8_t *mac_ct     = &msg->payload[2];
-    int            mac_ct_len = msg->payload_length - 2;
-    if (mac_ct_len < MESHCORE_CIPHER_MAC_SIZE + 16) return false;
-
-    const uint8_t *ciphertext = mac_ct + MESHCORE_CIPHER_MAC_SIZE;
-    int            ct_len     = mac_ct_len - MESHCORE_CIPHER_MAC_SIZE;
-
-    uint8_t secret[32], secret_raw[32];
-    ed25519_key_exchange    (secret,     sender_pub, node_prv_key);
-    ed25519_key_exchange_raw(secret_raw, sender_pub, node_prv_key);
-
-    uint8_t hmac_conv[32], hmac_raw[32], hmac_conv16[32], hmac_raw16[32];
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                    secret,     32, ciphertext, ct_len, hmac_conv);
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                    secret_raw, 32, ciphertext, ct_len, hmac_raw);
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                    secret,     16, ciphertext, ct_len, hmac_conv16);
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                    secret_raw, 16, ciphertext, ct_len, hmac_raw16);
-
-    uint8_t exp0 = mac_ct[0], exp1 = mac_ct[1];
-    const uint8_t *good = NULL;
-    if      (hmac_conv  [0]==exp0 && hmac_conv  [1]==exp1) good = secret;
-    else if (hmac_raw   [0]==exp0 && hmac_raw   [1]==exp1) good = secret_raw;
-    else if (hmac_conv16[0]==exp0 && hmac_conv16[1]==exp1) good = secret;
-    else if (hmac_raw16 [0]==exp0 && hmac_raw16 [1]==exp1) good = secret_raw;
-    if (!good) return false;
-
-    mbedtls_aes_context aes_ctx;
-    mbedtls_aes_init(&aes_ctx);
-    mbedtls_aes_setkey_dec(&aes_ctx, good, 128);
-    for (int bi = 0; bi + 16 <= ct_len; bi += 16) {
-        mbedtls_aes_crypt_ecb(&aes_ctx, MBEDTLS_AES_DECRYPT,
-                              ciphertext + bi, out_plaintext + bi);
-    }
-    mbedtls_aes_free(&aes_ctx);
-
-    *out_text_len = ct_len - 5;
-    memcpy(out_good_secret, good, 32);
-    return true;
+    return mc_crypto_dm_decrypt(msg->payload, msg->payload_length, sender_pub,
+                                node_prv_key, out_plaintext, out_text_len, out_good_secret);
 }
 
 // Build + transmit the PATH_RETURN packet that acknowledges a received DM.

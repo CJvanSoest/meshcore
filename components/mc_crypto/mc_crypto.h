@@ -36,3 +36,22 @@ void mc_crypto_grp_encrypt(const uint8_t *key, const uint8_t *plain,
 void mc_crypto_ack_crc(const uint8_t head5[5], const char *text, size_t text_len,
                        const uint8_t pubkey[MESHCORE_PUB_KEY_SIZE],
                        uint8_t out_crc[4]);
+
+// Direct-message (TXT_MSG) encrypt: ed25519 ECDH(target_pub, my_prv) shared
+// secret, AES-128-ECB encrypt `plain` (zero-padded to a 16-byte multiple) into
+// out_cipher, and HMAC-SHA256(shared, cipher) into out_mac (32 bytes; the wire
+// keeps the first two). my_prv is the 64-byte ed25519 private key.
+void mc_crypto_dm_encrypt(const uint8_t target_pub[MESHCORE_PUB_KEY_SIZE],
+                          const uint8_t *my_prv, const uint8_t *plain,
+                          size_t padded_len, uint8_t *out_cipher,
+                          uint8_t out_mac[32]);
+
+// Direct-message decrypt of an on-wire TXT_MSG payload (dst[1] src[1] mac[2]
+// cipher[...]). Tries the four candidate shared secrets (ed25519 conv/raw x
+// 16/32-byte HMAC key), accepts on the first whose HMAC[0..1] matches the wire
+// mac, then AES-128-ECB decrypts into out_plaintext. Returns false for a wrong
+// key. out_good_secret receives the 32-byte secret that verified.
+bool mc_crypto_dm_decrypt(const uint8_t *payload, uint8_t payload_len,
+                          const uint8_t sender_pub[MESHCORE_PUB_KEY_SIZE],
+                          const uint8_t *my_prv, uint8_t *out_plaintext,
+                          int *out_text_len, uint8_t out_good_secret[32]);

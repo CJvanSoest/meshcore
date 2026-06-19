@@ -35,10 +35,13 @@ SRC_PAYLOADS    = ../components/mc_proto/meshcore/payload/grp_txt.c \
 SRC_INTEGRATION = ../components/mc_crypto/mc_crypto.c \
                   ../components/mc_proto/meshcore/packet.c \
                   ../components/mc_proto/meshcore/payload/grp_txt.c
+SRC_DM          = ../components/mc_crypto/mc_crypto_dm.c \
+                  ../components/vendor/ed25519.c \
+                  ../components/vendor/ed25519_mpi.c
 
 .PHONY: all test clean
 
-all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message
+all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm
 
 test_ed25519: test_ed25519.c $(SRC_ED25519)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
@@ -102,7 +105,14 @@ test_gps_parser_edge: test_gps_parser_edge.c $(SRC_GPS_NMEA)
 test_integration_message: test_integration_message.c $(SRC_INTEGRATION)
 	$(CC) $(CFLAGS) -I../components/mc_proto -I../components/mc_crypto -Wno-type-limits -Wno-sign-compare -o $@ $^ $(LDLIBS)
 
-test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message
+# DM (TXT_MSG) ed25519-ECDH crypto round-trip. Links the vendored ed25519.c
+# (ECDH) + ed25519_mpi.c (keypair) shipped on the badge, with tests/stubs for
+# esp_random. -Wno-unused-function: ed25519.c keeps sign/verify statics this
+# call graph does not reach.
+test_mc_crypto_dm: test_mc_crypto_dm.c $(SRC_DM)
+	$(CC) $(CFLAGS) -Wno-unused-function -Istubs -I../components/mc_crypto -o $@ $^ $(LDLIBS)
+
+test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm
 	./test_ed25519
 	./test_gps_nmea
 	./test_companion_protocol
@@ -113,6 +123,7 @@ test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test
 	./test_region_lookup
 	./test_gps_parser_edge
 	./test_integration_message
+	./test_mc_crypto_dm
 
 clean:
-	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm
