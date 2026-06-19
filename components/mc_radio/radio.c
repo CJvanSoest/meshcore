@@ -157,15 +157,6 @@ static void dc_record_tx(uint32_t airtime_ms) {
     dc_last_tx_blocked       = false;  // recovered — a TX got through
 }
 
-// ── ADVERT TX ────────────────────────────────────────────────────────────────
-
-
-
-
-
-
-
-
 // ── RX dedup (drop flood retransmits) ────────────────────────────────────────
 // meshcore-c has no dedup; flood-routed packets arrive multiple times via
 // different repeaters. Headers/transport_codes vary between retransmits but the
@@ -209,23 +200,6 @@ static void noise_floor_task(void *arg) {
         }
     }
 }
-
-// ── LoRa RX task ─────────────────────────────────────────────────────────────
-// Receive loop + per-packet-type handlers. The task itself is a thin
-// dispatch shell; each MESHCORE_PAYLOAD_TYPE_* gets its own handler so
-// crypto, UI side-effects, and outgoing TX live close together but are
-// otherwise scoped to one packet variant.
-
-
-
-
-// ── Per-packet-type handlers ────────────────────────────────────────────────
-
-
-
-
-
-// ── Task dispatch shell ────────────────────────────────────────────────────
 
 // ── RX sink + shared TX primitive ───────────────────────────────────────────
 // The RX path is domain-free: radio deserializes + dedups and hands the raw
