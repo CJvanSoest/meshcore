@@ -1,10 +1,6 @@
-# mc_proto — pure protocol + regulatory + parser core.
-#
-# No ESP-IDF dependencies on purpose (only C stdlib / POSIX), so every source
-# here is unit-tested on the host (see tests/, run by 'make test' in CI) and
-# stays the upstream protocol mirror (see docs/ARCHITECTURE.md "Wire-boundary
-# discipline"). Do not add esp_*, FreeRTOS, pax or BSP includes to this
-# component; that is what keeps it host-buildable.
+# mc_proto — pure protocol + regulatory + parser core (upstream mirror).
+# Do NOT add esp_*, FreeRTOS, pax or BSP includes — C stdlib / POSIX only; that
+# is what keeps it host-testable. See docs/wiki/Components.md.
 idf_component_register(
     SRCS
         "meshcore/packet.c"

@@ -1,7 +1,5 @@
-# mc_radio — the radio layer (L3): the MeshCore packet RX/TX engine (radio.c)
-# and the P4<->C6 system-protocol client. It sits above mc_domain because RX
-# handling writes straight into chat/contacts/nodes and reads identity/settings.
-# radio.h only exposes freertos + lora_* types, so mc_domain stays private here.
+# mc_radio — LoRa RX/TX engine (radio.c) + P4<->C6 system-protocol client.
+# See docs/wiki/Components.md.
 idf_build_get_property(idf_target IDF_TARGET)
 if("${idf_target}" STREQUAL "esp32p4")
 list(APPEND extra_requires esp-hosted-tanmatsu)

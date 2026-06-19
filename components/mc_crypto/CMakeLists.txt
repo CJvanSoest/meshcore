@@ -1,7 +1,5 @@
-# mc_crypto — pure MeshCore symmetric crypto (channel decrypt/encrypt + the ACK
-# binding CRC), lifted out of radio.c. mbedtls only, so every function is host
-# unit-tested in tests/ (see test_mc_crypto.c). Keep it free of ESP-IDF, radio
-# and domain state; that is what keeps the security-critical paths testable.
+# mc_crypto — pure channel crypto + ACK CRC, mbedtls only, host-tested.
+# Keep it free of ESP-IDF / radio / domain state. See docs/wiki/Components.md.
 idf_component_register(
     SRCS
         "mc_crypto.c"

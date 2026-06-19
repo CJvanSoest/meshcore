@@ -1,9 +1,6 @@
-# mc_domain — application domain (L2): identity, contacts, channels, chat,
-# nodes, history, the NVS-backed settings store, and the settings-driven sound
-# player. This is the stateful core the UI and radio sit on top of; sounds lives
-# here (not in mc_net) so radio and the UI can share it without depending on a
-# higher layer. It REQUIRES tanmatsu-lora publicly because nodes.h and
-# settings_nvs.h expose lora_* types in their interfaces.
+# mc_domain — stateful app core (identity, contacts, channels, chat, nodes,
+# history, settings, sounds). Public REQUIRES tanmatsu-lora because nodes.h /
+# settings_nvs.h expose lora_* types. See docs/wiki/Components.md.
 idf_component_register(
     SRCS
         "identity.c"

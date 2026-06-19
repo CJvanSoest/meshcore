@@ -1,10 +1,6 @@
-# Third-party vendored libraries, kept verbatim from upstream. This is not
-# first-party code: do not refactor it to local style or "fix" its TODOs.
-# Credits and licences are in the README.
-#   lodepng        - Lode Vandevenne (PNG; decoder-only build, see flags below)
-#   qrcodegen      - Project Nayuki
-#   ed25519        - NaCl/SUPERCOP ref10 + ESP32 mbedtls adaptation
-#   emoji_bitmaps  - generated Twemoji glyph data
+# Third-party vendored libraries (lodepng, qrcodegen, ed25519, emoji_bitmaps),
+# kept verbatim from upstream — do not restyle them or "fix" their TODOs.
+# Credits + licences in AUTHORS. The lodepng decoder-only flags are set below.
 idf_component_register(
     SRCS
         "lodepng.c"

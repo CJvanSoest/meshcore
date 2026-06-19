@@ -1,8 +1,5 @@
-# mc_net — connectivity + peripherals (L4): the HTTPS config server, BLE
-# companion link, serial companion transport, WiFi keepalive, the GPS task, and
-# the map renderer. These sit above mc_domain because they read settings and
-# feed the domain. Public headers expose settings_nvs (mc_domain), config_types
-# (mc_common), and pax_gfx (badge-bsp), so those are public REQUIRES.
+# mc_net — connectivity + peripherals: HTTP server, BLE, companion transport,
+# WiFi keepalive, GPS task, map. See docs/wiki/Components.md.
 idf_build_get_property(idf_target IDF_TARGET)
 if("${idf_target}" STREQUAL "esp32p4")
 list(APPEND extra_requires esp-hosted-tanmatsu)

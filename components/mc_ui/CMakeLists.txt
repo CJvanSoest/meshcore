@@ -1,6 +1,5 @@
-# mc_ui — presentation layer (L4): the pax-based renderers, input handling, and
-# the emoji picker. It sits on top of everything it draws — domain state, radio
-# status, and the net/peripheral modules — and pulls in pax-gfx for drawing.
+# mc_ui — presentation: pax renderers, input handling, emoji picker.
+# See docs/wiki/Components.md.
 idf_component_register(
     SRCS
         "render.c"
