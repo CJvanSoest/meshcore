@@ -9,6 +9,10 @@ rationale and how to program here) and [Architecture.md](Architecture.md) (the
 enforced rules). If you work with Claude or another AI pair programmer, the same
 model is written as a handbook in [`.claude/`](../.claude/Guidelines.md).
 
+When your change is user visible, add a bullet to the `[Unreleased]` section of
+[CHANGELOG.md](CHANGELOG.md), following the fixed format and entry style in
+[Releases.md](Releases.md).
+
 ## Build and test
 
 ```sh

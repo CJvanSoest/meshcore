@@ -48,3 +48,6 @@ For end-user setup see the [README](../README.md).
 - **[C6 radio communication](C6-Radio.md)** — `lora_rpc`, RSSI/SNR patches, supported frequencies
 - **[Firmware versions](Firmware-Versions.md)** — our radio/lora/launcher forks vs. Nicolai upstream, and what has converged
 - **[Build / Deploy](Build-Deploy.md)** — IDF env, badgelink upload, launcher dependency, partition layout
+- **[Releases](Releases.md)** — the fixed release format, entry style, and how to cut a release
+- **[Changelog](CHANGELOG.md)** — the release history
+- **[Contributing](CONTRIBUTING.md)** — the contributor checklist and code rules

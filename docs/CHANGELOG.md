@@ -3,7 +3,9 @@
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/).
+and this project adheres to [Semantic Versioning](https://semver.org/). The exact
+release format, entry style and the steps for cutting a release are fixed in
+[Releases.md](Releases.md); follow it rather than inventing per release wording.
 
 Sections per release:
 - **Added** — new features

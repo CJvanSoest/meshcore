@@ -169,4 +169,5 @@ badge; the host suite cannot prove it. Say so honestly when you report.
 - [Architecture.md](Architecture.md) — the enforceable rules
 - [Components.md](Components.md) — the component map and constants
 - [Overview.md](Overview.md) — descriptive module + task overview
+- [Releases.md](Releases.md) — the fixed release format and how to cut a release
 - `.claude/` — the same model as a working handbook for AI contributors
