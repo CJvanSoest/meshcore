@@ -124,6 +124,24 @@ int main(void) {
            "direct lat expected %d, got %d",
            direct_lat, pkt.command_set_advert_latlon_args.latitude);
 
+    // ── Argument-length + opcode validation (the table that gates every host
+    //    command the companion app can issue). ────────────────────────────────
+    {
+        companion_command_packet_t p;
+        uint8_t empty[1] = {0};
+        EXPECT(mc_companion_parse_command(empty, 0, &p) == COMPANION_COMMAND_PARSER_ERROR_INVALID_COMMAND,
+               "empty input is an invalid command");
+        uint8_t unknown[1] = {0xEE};
+        EXPECT(mc_companion_parse_command(unknown, 1, &p) == COMPANION_COMMAND_PARSER_ERROR_INVALID_COMMAND,
+               "undefined opcode is an invalid command");
+        uint8_t over[2] = {COMPANION_CMD_GET_DEVICE_TIME, 0x00};
+        EXPECT(mc_companion_parse_command(over, 2, &p) == COMPANION_COMMAND_PARSER_ERROR_INVALID_ARGUMENTS,
+               "extra args on a zero-arg command is invalid arguments");
+        uint8_t under[1] = {COMPANION_CMD_SET_ADVERT_NAME};
+        EXPECT(mc_companion_parse_command(under, 1, &p) == COMPANION_COMMAND_PARSER_ERROR_INVALID_ARGUMENTS,
+               "too few args on a min-1 command is invalid arguments");
+    }
+
     if (failures == 0) {
         printf("OK -- all companion-protocol test vectors passed\n");
         return 0;

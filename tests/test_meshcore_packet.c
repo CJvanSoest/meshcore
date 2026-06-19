@@ -142,6 +142,65 @@ int main(void) {
         EXPECT(meshcore_serialize(&m, buf, &size) == -1, "oversized payload rejected");
     }
 
+    // ── TV5: 3-byte-per-hop path round-trips (the 10 -> bph 3 decode). ───────
+    {
+        meshcore_message_t m;
+        memset(&m, 0, sizeof(m));
+        m.type          = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
+        m.route         = MESHCORE_ROUTE_TYPE_FLOOD;
+        m.bytes_per_hop = 3;
+        m.path_length   = 6;  // 2 hops * 3 bytes
+        uint8_t path[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+        memcpy(m.path, path, 6);
+
+        EXPECT(meshcore_serialize(&m, buf, &size) == 0, "TV5 bph=3 serialize ok");
+        meshcore_message_t d;
+        EXPECT(meshcore_deserialize(buf, size, &d) == 0, "TV5 bph=3 deserialize ok");
+        EXPECT(d.bytes_per_hop == 3, "TV5 bph decodes back to 3, got %u", d.bytes_per_hop);
+        EXPECT(d.path_length == 6 && memcmp(d.path, path, 6) == 0, "TV5 3-byte path survives");
+    }
+
+    // ── TV6: the remaining wire-boundary guards. ────────────────────────────
+    {
+        meshcore_message_t m, d;
+
+        // serialize: bytes_per_hop above the 2-bit field.
+        memset(&m, 0, sizeof(m));
+        m.route = MESHCORE_ROUTE_TYPE_FLOOD;
+        m.bytes_per_hop = 4;
+        EXPECT(meshcore_serialize(&m, buf, &size) == -1, "bph > 3 rejected");
+
+        // serialize: hop_count above the 6-bit field (64 hops of 1 byte).
+        memset(&m, 0, sizeof(m));
+        m.route = MESHCORE_ROUTE_TYPE_FLOOD;
+        m.bytes_per_hop = 1;
+        m.path_length   = 64;
+        EXPECT(meshcore_serialize(&m, buf, &size) == -1, "hop_count > 0x3F rejected");
+
+        // serialize: path_length beyond the max.
+        memset(&m, 0, sizeof(m));
+        m.route = MESHCORE_ROUTE_TYPE_FLOOD;
+        m.bytes_per_hop = 1;
+        m.path_length   = MESHCORE_MAX_PATH_SIZE + 1;
+        EXPECT(meshcore_serialize(&m, buf, &size) == -1, "path_length > max rejected");
+
+        // deserialize: header byte = FLOOD route + TXT_MSG type.
+        uint8_t hdr = (uint8_t)((MESHCORE_ROUTE_TYPE_FLOOD & 0x03) |
+                                ((MESHCORE_PAYLOAD_TYPE_TXT_MSG & 0x0F) << 2));
+
+        // path-length byte claims a 10-byte path the buffer does not contain.
+        uint8_t over[3] = {hdr, 10 /* bph 1, hop 10 */, 0x00};
+        EXPECT(meshcore_deserialize(over, 3, &d) == -1, "path exceeding the buffer rejected");
+
+        // path-length byte decodes to path_length 189 (bph 3, 63 hops) > max.
+        uint8_t big[2] = {hdr, (uint8_t)((2 << 6) | 0x3F)};
+        EXPECT(meshcore_deserialize(big, 2, &d) == -1, "decoded path_length > max rejected");
+
+        // top two bits 11 decode to bph 4, above the 3-byte ceiling.
+        uint8_t bph4[2] = {hdr, (uint8_t)(3 << 6)};
+        EXPECT(meshcore_deserialize(bph4, 2, &d) == -1, "decoded bph 4 rejected");
+    }
+
     if (failures == 0) {
         printf("OK -- all MeshCore packet codec vectors passed\n");
         return 0;

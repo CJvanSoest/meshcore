@@ -137,6 +137,8 @@ int main(void) {
            "NULL country → conducted power unchanged");
     // Upper clamp at +127 (int8_t saturation).
     EXPECT(region_effective_power_dbm(au, 127, 100) == 127, "EIRP clamps at +127");
+    // Lower clamp at -128: conducted + gain - 2 underflows the int8_t.
+    EXPECT(region_effective_power_dbm(de, -120, -20) == -128, "ERP clamps at the int8 floor");
 
     // ── region_dc_budget_ms_per_hour: permille × 3600 ────────────────────────
     // JP/KR/RU bands use 100 permille (10%) and 1 permille (0.1%).
