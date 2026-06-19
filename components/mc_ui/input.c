@@ -518,8 +518,9 @@ static void nav_chat(uint32_t key) {
             }
             if (dm_inbox_cursor < idx_count) {
                 int e = idx_map[dm_inbox_cursor];
-                if (e >= 0) {
+                if (e >= 0 && xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
                     dm_select_target(contacts[e].pub_key, contacts[e].alias);
+                    xSemaphoreGive(node_mutex);
                 }
                 dm_inbox_mode  = false;
                 led_dm_pending = false;
@@ -541,9 +542,10 @@ static void nav_chat(uint32_t key) {
                             r = node_list[ni].role; break;
                         }
                     }
+                    // contacts[] is shared with the RX task; ensure under the lock.
+                    contact_ensure(dm_target_pub, dm_target_name, (uint8_t)r);
                     xSemaphoreGive(node_mutex);
                 }
-                contact_ensure(dm_target_pub, dm_target_name, (uint8_t)r);
             } else {
                 chat_add_message("(geen DM-target — kies een node in Nodes-tab)", false);
             }
@@ -1088,23 +1090,31 @@ static void key_chat(char c) {
             memcpy(target_pub, dm_target_pub, MESHCORE_PUB_KEY_SIZE);
             strncpy(target_name, dm_target_name, sizeof(target_name) - 1);
             target_name[sizeof(target_name) - 1] = '\0';
-            ci = contact_find(dm_target_pub);
             dm_target_set = false;
             memset(chat_msgs, 0, sizeof(chat_msgs));
             chat_head = chat_count = chat_scroll = 0;
-        } else {
-            ci = e;
-            memcpy(target_pub, contacts[ci].pub_key, MESHCORE_PUB_KEY_SIZE);
-            strncpy(target_name, contacts[ci].alias, sizeof(target_name) - 1);
-            target_name[sizeof(target_name) - 1] = '\0';
+        }
+        // contacts[] is shared with the RX task; resolve the slot + shift it out
+        // under node_mutex. history_delete_dm does SD I/O, so it stays outside.
+        if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            if (e == -1) {
+                ci = contact_find(target_pub);
+            } else {
+                ci = e;
+                memcpy(target_pub, contacts[ci].pub_key, MESHCORE_PUB_KEY_SIZE);
+                strncpy(target_name, contacts[ci].alias, sizeof(target_name) - 1);
+                target_name[sizeof(target_name) - 1] = '\0';
+            }
+            xSemaphoreGive(node_mutex);
         }
 
         history_delete_dm(target_pub);
-        if (ci >= 0) {
+        if (ci >= 0 && xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             for (int j = ci; j < contact_count - 1; j++) contacts[j] = contacts[j + 1];
             memset(&contacts[contact_count - 1], 0, sizeof(contact_t));
             contact_count--;
             contacts_save();
+            xSemaphoreGive(node_mutex);
         }
         if (dm_inbox_cursor > 0) dm_inbox_cursor--;
         ESP_LOGI(TAG, "DM deleted by user (D): %s", target_name);

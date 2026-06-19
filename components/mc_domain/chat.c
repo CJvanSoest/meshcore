@@ -300,11 +300,17 @@ void chat_set_meta_channel(uint8_t hops) {
 }
 
 void chat_arm_ack_dm(const uint8_t ack_crc[4]) {
-    if (chat_count == 0) return;
-    chat_msg_t *m = &chat_msgs[last_idx(chat_head)];
-    if (!m->is_mine) return;
-    m->ack_state = 1;
-    memcpy(m->ack_crc, ack_crc, 4);
+    // Writes ack_state/ack_crc that the RX task reads under chat_mutex in
+    // chat_mark_ack_by_crc; take the lock so that scan never sees a torn crc.
+    if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+    if (chat_count > 0) {
+        chat_msg_t *m = &chat_msgs[last_idx(chat_head)];
+        if (m->is_mine) {
+            m->ack_state = 1;
+            memcpy(m->ack_crc, ack_crc, 4);
+        }
+    }
+    xSemaphoreGive(chat_mutex);
 }
 
 bool chat_mark_ack_by_crc(const uint8_t ack_crc[4]) {
