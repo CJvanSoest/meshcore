@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 CJ van Soest
 // SPDX-License-Identifier: MIT
+// SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 //
 // Pure emoji table + UTF-8 decode. No pax / drawing dependency (that lives in
 // emoji.c). Moved here verbatim from emoji.c so chat.c and other non-UI code

@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 CJ van Soest
 // SPDX-License-Identifier: MIT
+// SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 //
 // Twemoji-based inline emoji rendering. Wire format is full UTF-8 (Unicode
 // codepoints from the U+1F6xx Emoticons block) so messages round-trip 1:1

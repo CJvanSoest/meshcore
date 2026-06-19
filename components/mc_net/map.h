@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 CJ van Soest
 // SPDX-License-Identifier: MIT
+// SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 //
 // Slippy-map tile pipeline for VIEW_MAP. Slippy-map math converts a
 // (lat, lon, zoom) triple into a tile index + sub-tile offset; the tile

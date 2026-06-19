@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 CJ van Soest
 // SPDX-License-Identifier: MIT
+// SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 //
 // Background GPS task. Polls the PA1010D on the QWIIC bus at a cadence
 // chosen by the user-selected transport profile (Walking / Cycling /

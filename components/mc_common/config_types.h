@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 CJ van Soest
 // SPDX-License-Identifier: MIT
+// SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 //
 // Shared config enums plus their runtime globals, in a neutral low header so
 // settings_nvs (the L1 config store) can read and write them without
