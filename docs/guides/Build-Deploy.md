@@ -111,7 +111,7 @@ Built separately from the
 same IDF version). Flash via esptool over USB with the C6 in DFU mode
 (power-cycle into bootloader via BSP). End users update the C6 through
 **Launcher → Tools → Firmware update** instead. Full instructions in
-[C6 Radio](C6-Radio.md#firmware-update-workflow).
+[C6 Radio](../reference/C6-Radio.md#firmware-update-workflow).
 
 ## Build env quirks
 

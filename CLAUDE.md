@@ -11,7 +11,7 @@ plus the `app_main` event loop. C11.
 
 ## Start here
 
-Before changing code, read the contributor handbook in [`.claude/`](.claude/).
+Before changing code, read the contributor handbook in [`.claude/`](.claude).
 It is the same model as the docs, written as working rules for an AI pair
 programmer or any contributor:
 
@@ -32,8 +32,8 @@ programmer or any contributor:
   or shipped broken behaviour. Read before trusting a tool or assumption.
 
 The design rationale and the "how to program here" model are in
-[docs/Blueprint.md](docs/Blueprint.md); the enforceable rules in
-[docs/Architecture.md](docs/Architecture.md).
+[docs/architecture/Blueprint.md](docs/architecture/Blueprint.md); the enforceable rules in
+[docs/architecture/Architecture.md](docs/architecture/Architecture.md).
 
 ## Build, flash, test
 
@@ -45,16 +45,16 @@ cd tests && make test            # host gcc tests, run in CI before any IDF buil
 ```
 
 The Tanmatsu IDF toolchain must be set up first (see
-[docs/Build-Deploy.md](docs/Build-Deploy.md)). Other board targets
+[docs/guides/Build-Deploy.md](docs/guides/Build-Deploy.md)). Other board targets
 live in `sdkconfigs/` (mch2022, hackerhotel-2024, heltecv3, kami, konsool,
 esp32-p4-function-ev-board).
 
 ## Where things live
 
 - `components/` — first-party source, split into `mc_*` components (see
-  [docs/Architecture.md](docs/Architecture.md)); `main/` is just `main.c`. The
-  module map and FreeRTOS task list are in [docs/Overview.md](docs/Overview.md).
-- [docs/Architecture.md](docs/Architecture.md) — **the authoritative discipline doc**:
+  [docs/architecture/Architecture.md](docs/architecture/Architecture.md)); `main/` is just `main.c`. The
+  module map and FreeRTOS task list are in [docs/architecture/Overview.md](docs/architecture/Overview.md).
+- [docs/architecture/Architecture.md](docs/architecture/Architecture.md) — **the authoritative discipline doc**:
   the six layers (L0 foundation … L5 app entry), the forbidden-include rules
   (grep-checkable, also enforced by `tests/lint/check-arch-rules.sh`), and the
   wire-boundary rules. Read it before moving code between files.
@@ -74,7 +74,7 @@ esp32-p4-function-ev-board).
    compiler flags a warning in `meshcore/`, suppress it at the call site (CI
    target) rather than editing the mirror, as the test Makefile already does.
 3. **Layer direction is one-way.** Higher layers include lower; never the
-   reverse. `render_*.c` must not include `meshcore/`. See docs/Architecture.md for
+   reverse. `render_*.c` must not include `meshcore/`. See docs/architecture/Architecture.md for
    the exact grep checks.
 4. **Add a host test for any pure logic you touch.** Pure modules with no
    ESP-IDF / pax / mbedtls dependency (region_limits, meshcore codecs,

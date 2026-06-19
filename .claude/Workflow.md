@@ -7,7 +7,7 @@ rules behind each step are in [Guidelines.md](Guidelines.md); the traps are in
 ## 1. Understand before editing
 
 - Read the relevant `docs/` page and the component the change touches. Trace the
-  data flow in `docs/Components.md` so you edit where the cause is, not where the
+  data flow in `docs/architecture/Components.md` so you edit where the cause is, not where the
   symptom shows.
 - Decide the component and layer. If you cannot name them, you are not ready to
   write yet.

@@ -12,7 +12,7 @@ cd tests && make test            # host tests, no IDF toolchain needed
 ```
 
 The Tanmatsu ESP-IDF v5.5.1 toolchain must be set up first (see
-[docs/Build-Deploy.md](../docs/Build-Deploy.md)). The default board is tanmatsu
+[docs/guides/Build-Deploy.md](../docs/guides/Build-Deploy.md)). The default board is tanmatsu
 (ESP32-P4 app processor + ESP32-C6 radio). Other targets live in `sdkconfigs/`
 (mch2022, hackerhotel-2024, heltecv3, kami, konsool,
 esp32-p4-function-ev-board) and are selected through the `SDKCONFIG_DEFAULTS`

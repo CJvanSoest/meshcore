@@ -74,7 +74,7 @@ and the TX composers) lives one layer up in `mc_rx`. The two are decoupled
 through `radio_set_rx_sink(fn)` for receive and the single `radio_tx_message()`
 primitive for send. This is the move that lets the protocol brain be changed
 without touching the transport, and vice versa. The runtime flows are drawn in
-[`.claude/Data-Flows.md`](../.claude/Data-Flows.md).
+[`.claude/Data-Flows.md`](../../.claude/Data-Flows.md).
 
 ### The wire boundary is sacred
 
@@ -97,7 +97,7 @@ X25519 ECDH path are two separate vendored translation units that divide by
 symbol, not by "main vs variant". Signing correctness is gated by host vectors
 and by a boot self-test that `abort()`s on mismatch; the signable byte layout is
 gated separately. The full picture, including the trap that hid a broken signer
-for months, is in [`.claude/Crypto.md`](../.claude/Crypto.md).
+for months, is in [`.claude/Crypto.md`](../../.claude/Crypto.md).
 
 ### No dead weight, and test-or-it-did-not-happen
 
@@ -171,5 +171,5 @@ badge; the host suite cannot prove it. Say so honestly when you report.
 - [Architecture.md](Architecture.md) — the enforceable rules
 - [Components.md](Components.md) — the component map and constants
 - [Overview.md](Overview.md) — descriptive module + task overview
-- [Releases.md](Releases.md) — the fixed release format and how to cut a release
+- [Releases.md](../guides/Releases.md) — the fixed release format and how to cut a release
 - `.claude/` — the same model as a working handbook for AI contributors

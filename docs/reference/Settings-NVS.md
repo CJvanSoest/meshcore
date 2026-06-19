@@ -50,7 +50,7 @@ shared with the launcher for `owner_name`).
 #### `http_cert` namespace (per-badge HTTPS cert)
 
 Per-badge ECDSA P-256 self-signed cert generated on first boot and
-persisted across reflashes. See [GPS sources → HTTPS `/ping`](GPS-Sources.md#3-https-ping-endpoint--)
+persisted across reflashes. See [GPS sources → HTTPS `/ping`](../features/GPS-Sources.md#3-https-ping-endpoint--)
 for the iPhone profile install dance.
 
 | Key | Type | Purpose |

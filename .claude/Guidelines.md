@@ -25,9 +25,9 @@ guidance set. Read the one that matches what you are about to do:
   real users here. Read it before you trust a tool or an assumption.
 
 Read these together with the root [CLAUDE.md](../CLAUDE.md),
-[docs/Blueprint.md](../docs/Blueprint.md) (the design rationale and how to
-program here), [docs/Architecture.md](../docs/Architecture.md) (the rulebook) and
-[docs/Components.md](../docs/Components.md) (the component and data flow tour).
+[docs/architecture/Blueprint.md](../docs/architecture/Blueprint.md) (the design rationale and how to
+program here), [docs/architecture/Architecture.md](../docs/architecture/Architecture.md) (the rulebook) and
+[docs/architecture/Components.md](../docs/architecture/Components.md) (the component and data flow tour).
 This `.claude/` set is the same model as the Blueprint, written as working rules.
 When this set and Architecture.md ever disagree, Architecture.md wins and you
 should fix this file.
