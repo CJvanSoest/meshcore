@@ -57,7 +57,7 @@ status strip is rendered in Pager colours and overlays every view.
 | View | Enum | Entry behaviour |
 |---|---|---|
 | Home | `VIEW_HOME` | 4×2 tile-grid (Nodes / DM / Channel / Map / Advert / Settings / About / QR); WSAD or D-pad to focus, Enter opens |
-| Settings | `VIEW_SETTINGS` | Tile-grid of 6 categories → Enter drills in to that category's field list |
+| Settings | `VIEW_SETTINGS` | Tile-grid of 7 categories (+ a hidden Advert category) → Enter drills in to that category's field list |
 | Nodes | `VIEW_NODES` | Live heard-node list with column header (Role / Name / RSSI / SNR / #Pkt / Dist / Seen) |
 | DM | `VIEW_CHAT` | If no target: inbox view (saved contacts + active DM target). If target set: per-peer conversation |
 | Channel | `VIEW_CHANNEL` | Public channel chat |
@@ -105,10 +105,17 @@ name on the left instead of a view name; same right-side stats.
 Two levels:
 
 1. **Category list** (`settings_category_list_mode == true`) — 4-column
-   Pager tile grid, six tiles: Identity / Regulatory / Radio / Network /
-   Region & Location / Brightness. Each tile has its own PAX-drawn
-   category icon. Multi-line labels via embedded `\n` so the wider
-   "Region & Location" wraps onto two lines.
+   Pager tile grid, seven tiles: Identity / Regulatory / Radio / Network /
+   Region & Location / Brightness / Sounds. (An eighth category, Advert, is
+   hidden from this grid and reached via the Home -> Advert tile.) Each tile has
+   its own PAX-drawn category icon. Multi-line labels via embedded `\n` so the
+   wider "Region & Location" wraps onto two lines. The per-category field lists
+   live in `s_categories[]` (`render_settings.c`): Identity = owner/advert name
+   + radio firmware; Regulatory = country, antenna gain, duty cycle; Radio =
+   freq, SF, BW, CR, power, sync, preamble, preset; Network = role, path hash,
+   WiFi, HTTP endpoint, BLE; Region & Location = region scope, GPS coordinates,
+   GPS source/profile, map style; Brightness = display, keyboard, RGB LED,
+   auto-blank; Sounds = volume + per-event toggles + previews.
 2. **Drilldown** (`settings_category_list_mode == false`) — Tokyo Night
    row list, but only the fields belonging to `settings_category_active`.
    The category title is the amber page header.

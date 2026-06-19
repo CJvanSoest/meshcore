@@ -65,7 +65,7 @@ Two consequences worth internalising:
 |---|---|---|
 | Pure protocol / codec / regulatory / parser logic | `mc_proto` | No ESP-IDF, pax or BSP. Host testable. Holds the upstream mirror under `meshcore/` plus first-party pure helpers in the root. |
 | Symmetric channel crypto | `mc_crypto` | Host tested. Add a vector for anything you touch. |
-| DM crypto (ed25519 ECDH) | `mc_crypto_dm` | Split from `mc_crypto` so the channel tests stay ed25519 free. |
+| DM crypto (ed25519 ECDH) | `mc_crypto` (`mc_crypto_dm.c`) | A file in the `mc_crypto` component, not a separate component; split so the channel tests stay ed25519 free. |
 | Persisted state and app data | `mc_domain` | Settings, nodes, contacts, chat, channels, identity. |
 | Platform I/O wrappers | `mc_io` | NVS, GPS, certs, SD. Thin shims over ESP-IDF. |
 | LoRa transport | `mc_radio` | Send and receive primitives, duty cycle, region scope. **Domain free**: it builds no MeshCore payloads. |

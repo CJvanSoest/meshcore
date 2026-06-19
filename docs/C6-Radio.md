@@ -5,10 +5,10 @@ and the **ESP32-C6** drives the **SX1262** LoRa transceiver. The P4 talks
 to the C6 over a hosted-WiFi-like SDIO/SPI link via Nicolai Electronics'
 `tanmatsu-lora` IDF component (which exposes `lora.h`).
 
-**Standard radio firmware: `tanmatsu-radio` v3.1.1** (stock upstream).
+**Standard radio firmware: `tanmatsu-radio` v3.2.0** (stock upstream).
 That's what the Launcher's Tools → Firmware update path installs, and
 what MeshCore expects. The on-device Information tab shows the live
-version via the v3.1.1 system-protocol `get_information` query.
+version via the v3.2.0 system-protocol `get_information` query.
 
 ## RPC surface (`lora.h`)
 
@@ -84,7 +84,7 @@ front-end is optimised for 868/915 MHz.
 **End users — update via the Launcher:** open the **Launcher → Tools →
 Firmware update**. This pulls the latest stable launcher *and* the C6
 radio firmware from `ota.tanmatsu.cloud` in one go. The OTA bundle
-ships `tanmatsu-radio` v3.1.1 + the `tanmatsu-lora` component MeshCore
+ships `tanmatsu-radio` v3.2.0 + the `tanmatsu-lora` component MeshCore
 expects.
 
 > **Do this before installing MeshCore on a freshly-recovered device.**
@@ -99,7 +99,7 @@ The app's response-length fallback accepts both:
 - **24 bytes** = `lora_protocol_config_params_t` 16-byte form (`tanmatsu-lora` v0.2.1)
 - **25 bytes** = 17-byte form including `rx_boost` (`tanmatsu-lora` v0.3.0+)
 
-so the same build runs on both stock v3.1.1 (currently shipping v0.2.1)
+so the same build runs on both stock v3.2.0 (currently shipping v0.2.1)
 and on a future radio bundle that picks up v0.3.0.
 
 **Developers — flash a custom C6 build via esptool:** put the C6 into
@@ -128,9 +128,9 @@ LoRa config.
 
 The Tanmatsu launcher checks the live C6 version string against an
 embedded expected version. **Stock setup (launcher v0.1.6 + radio
-v3.1.1) matches exactly → no warning, no "Update radio" tile.** The
+v3.2.0) matches exactly → no warning, no "Update radio" tile.** The
 warning only appears when one side runs an off-tag build — for example
-a developer running a git-described radio (`v3.1.1-1-g<sha>`) or a
+a developer running a git-described radio (`v3.2.0-1-g<sha>`) or a
 launcher that doesn't yet recognise the radio's tag. If you see it on
 a stock device, *don't* press "Update Radio" on the home screen — that
 hits `ota.tanmatsu.cloud/radio2/instructions.json` which currently

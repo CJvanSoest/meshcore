@@ -8,10 +8,15 @@ interoperable with the iOS/Android client.
 
 | Type | Direction | Purpose |
 |---|---|---|
-| `0x01` ADVERT | TX & RX | Node identity broadcast |
-| `0x02` GRP_TXT | TX & RX | Public-channel chat (AES-128-ECB, shared key) |
-| `0x03` DIRECT | TX & RX | Encrypted DM (AES-128-ECB inner, ECDH outer) |
-| `0x08` PATH_RETURN | RX | Returned by recipient; carries ACK |
+| `0x02` TXT_MSG | TX & RX | Encrypted DM (AES-128-ECB inner, ECDH outer) |
+| `0x03` ACK | RX | Delivery acknowledgement (carried inside a PATH return) |
+| `0x04` ADVERT | TX & RX | Node identity broadcast |
+| `0x05` GRP_TXT | TX & RX | Public channel chat (AES-128-ECB, shared key) |
+| `0x08` PATH | RX | Returned by the recipient; carries the ACK |
+
+These are payload types (`meshcore_payload_type_t` in `meshcore/packet.h`).
+`DIRECT` is a **route** type (`MESHCORE_ROUTE_TYPE_DIRECT = 0x2`), not a payload
+type: a DM is a `TXT_MSG` payload sent on the `DIRECT` route.
 
 ## ADVERT
 

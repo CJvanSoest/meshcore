@@ -13,11 +13,12 @@ shared with the launcher for `owner_name`).
 | `freq` | u32 | 869_618_000 Hz | EU 868 ISM band |
 | `sf` | u8 | 8 | 7..12 |
 | `bw` | u32 | 62 (kHz) | 7, 10, 15, 20, 31, 41, 62, 125, 250, 500 |
-| `cr` | u8 | 6 | 5..8 (4/5..4/8) |
+| `cr` | u8 | 8 | 5..8 (4/5..4/8) |
 | `pwr` | i8 | 22 dBm | -9..22 (chip limit) |
 | `sync` | u8 | 0x2B | 0x00..0xFF (0x12 = public LoRa) |
 | `preamble` | u16 | 16 | 6..65535 |
-| `adv_int` | u32 | 1800 s | 30s..24h |
+| `fldadv_s` | u16 | 0 (off) | 0, else 30s..24h — periodic flood advert |
+| `diradv_s` | u16 | 0 (off) | 0, else 30s..24h — periodic direct advert |
 | `role` | u8 | `CHAT_NODE` | `CHAT_NODE` / `REPEATER` / `ROOM_SERVER` / `SENSOR` |
 | `path_h` | u8 | 1 | 1..3 (see protocol page) |
 | `country` | str(4) | `"--"` | ISO 3166-1 alpha-2; `"--"` = none (no checks) |
@@ -68,7 +69,7 @@ be repeated after a regen.
 | `snd_vol` | u8 | 50 | Master volume 0..100 % |
 | `snd_dm` | u8 | 1 | WAV slot for DM RX (0=off, 1..4 = `/sd/meshcore/sounds/<n>.wav`) |
 | `snd_ch` | u8 | 2 | WAV slot for channel RX |
-| `snd_err` | u8 | 3 | WAV slot for errors (currently not wired — reserved) |
+| `snd_err` | u8 | 3 | WAV slot for the error event (played on error paths and the Sounds preview) |
 | `snd_boot` | u8 | 4 | WAV slot played at end of `app_main` init |
 
 ### `ui` keys (per-app brightness, in `system` namespace)

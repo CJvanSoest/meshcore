@@ -64,7 +64,8 @@ slots is plenty for a 5 × 5 visible window + ring + history.
 └── topo/tiles/<z>/<x>/<y>.png   ← MAP_PROFILE_TOPO
 ```
 
-Switch profile under **Settings → Region & Location → Map → Style**.
+Switch profile under **Settings → Region & Location → Style** (the
+`FIELD_MAP_PROFILE` row).
 Switching profiles clears the LRU cache, so the first frame after a
 switch shows placeholders until tiles come back from SD.
 
@@ -87,7 +88,8 @@ time if you need to fit four profiles on a 32 GB SD.
 
 - **Pan** — D-pad / arrow keys. One press = quarter-tile step.
 - **Zoom** — `+` / `-` (or whatever your keymap binds in `input.c`).
-- **Lock** — toggles in **Settings → Region & Location → Map → Lock**.
+- **Lock** — toggled inside the map view itself (persisted to the `map.lock`
+  NVS key); there is no Settings row for it.
   When locked the crosshair stays at the GPS fix and the map follows
   you; when unlocked you can pan freely without the next GPS push
   dragging the view away.

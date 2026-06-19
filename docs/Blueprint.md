@@ -89,7 +89,9 @@ project has shipped were here. See Architecture.md "Wire-boundary discipline".
 
 ### Crypto is split and double-gated
 
-Channel crypto lives in `mc_crypto`, DM crypto in `mc_crypto_dm` (split so the
+Channel crypto and DM crypto both live in the `mc_crypto` component, in
+`mc_crypto.c` and `mc_crypto_dm.c` respectively (a file split, not a separate
+component, so the
 channel tests stay free of the ed25519 dependency). The Ed25519 signer and the
 X25519 ECDH path are two separate vendored translation units that divide by
 symbol, not by "main vs variant". Signing correctness is gated by host vectors

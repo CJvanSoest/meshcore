@@ -12,7 +12,7 @@ slot in **Settings → Sounds**, done.
 /sd/meshcore/sounds/
   1.wav     # default DM slot
   2.wav     # default channel slot
-  3.wav     # default error slot (currently not wired — reserved)
+  3.wav     # default error slot (played on error paths + the Sounds preview)
   4.wav     # default boot slot
 ```
 
