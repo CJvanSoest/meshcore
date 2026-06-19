@@ -22,8 +22,9 @@ live in `sdkconfigs/`.
 1. **`cd tests && make test` is green.** Host tests link against the shipping
    translation units, so a crypto, parser, regulatory or packet-codec
    regression fails here.
-2. **`tests/check-arch-rules.sh` is green.** It enforces the layer rules from
-   [ARCHITECTURE.md](../ARCHITECTURE.md) (CI runs it too).
+2. **`tests/check-arch-rules.sh` and `tests/check-structure.sh` are green.**
+   They enforce the include-direction and file-placement rules from
+   [ARCHITECTURE.md](../ARCHITECTURE.md) (CI runs them too).
 3. **`tests/check-cppcheck.sh` is green.** Static analysis over first-party code
    (warning/performance/portability). Needs `cppcheck`; CI runs it too.
 4. **`make build DEVICE=tanmatsu` is green.**

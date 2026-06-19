@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 CJ van Soest
+// SPDX-License-Identifier: MIT
+//
 // Tanmatsu radio system-protocol client (Nicolai-compat boundary).
 //
 // upstream:  github.com/Nicolai-Electronics/tanmatsu-radio

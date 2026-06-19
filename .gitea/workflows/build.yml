@@ -16,6 +16,9 @@ jobs:
       - name: Check architecture include rules
         run: tests/check-arch-rules.sh
 
+      - name: Check structure rules
+        run: tests/check-structure.sh
+
       - name: Install build + analysis tooling
         run: |
           apt-get update

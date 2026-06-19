@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 CJ van Soest
+// SPDX-License-Identifier: MIT
+
 #include "radio_system_protocol_client.h"
 #include <stdbool.h>
 #include <stdint.h>
