@@ -16,6 +16,8 @@ over LoRa.
   <img src="assets/screenshots/screen-channel.svg" width="400" alt="Channel">
 </p>
 
+_All views: [screenshots](docs/Screenshots.md)._
+
 ## Features
 
 - **End to end encryption** — Ed25519 identity, DMs over ECDH + AES, channels
