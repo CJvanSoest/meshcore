@@ -18,10 +18,10 @@ just by convention — a backward include fails to compile.
 | L1 | Data state | `mc_domain` | `nodes`, `chat`, `channels`, `contacts`, `identity`, `history`, `settings_nvs`, `sounds` — in-memory tables + NVS config, mutex-protected |
 | L2 | Wire protocol | `mc_proto` | MeshCore packet/payload codecs, region limits, GPS/companion parsers — mirror of upstream, host-tested |
 | L2 | Channel crypto | `mc_crypto` | GRP_TXT decrypt/encrypt + the ACK-binding CRC, mbedtls only, host-tested |
-| L3 | Comm bridge | `mc_radio` | `radio.*`, `radio_system_protocol_client.*` — LoRa TX/RX, system-protocol queries. Composes L1+L2 with HW. |
+| L3 | Transport | `mc_radio` | `radio.*`, `radio_system_protocol_client.*` — LoRa send/receive primitives, duty-cycle, region scope, config. Domain-free; the RX+TX handlers live in `mc_rx`. |
 | L4 | Connectivity | `mc_net` | HTTP server, BLE, companion transport, WiFi keepalive, GPS task, map |
 | L4 | UI | `mc_ui` | `input.*`, `render*.c`, `emoji.*` — user-facing |
-| L5 | RX app | `mc_rx` | MeshCore receive handlers behind the radio sink: decrypt, domain writes, notifications, PATH_RETURN ACK |
+| L5 | MeshCore app | `mc_rx` | RX handlers (behind the radio sink) + TX composers (called by the UI): decrypt/encrypt, domain writes, notifications, ADVERT signing, ACK |
 | L5 | App entry | `main` | `main.c` — `app_main()`, boot sequence, event loop |
 | — | Third-party | `vendor` | lodepng, qrcodegen, ed25519, emoji_bitmaps — kept verbatim |
 
@@ -101,10 +101,12 @@ main
                  └─ mc_common, mc_proto, vendor   (leaves)
 ```
 
-`mc_rx` is the RX application layer: the radio transport deserializes + dedups a
-received packet and hands it to a registered sink (`radio_set_rx_sink`), which
-`mc_rx` implements. The RX decrypt + domain writes live in `mc_rx`, so the radio
-layer stays domain-free on receive (the TX composers still live in `mc_radio`).
+`mc_rx` is the MeshCore application layer: the radio transport deserializes +
+dedups a received packet and hands it to a registered sink (`radio_set_rx_sink`)
+that `mc_rx` implements; the UI calls `mc_rx`'s TX composers to send. Both the RX
+decrypt/delivery and the TX composition live in `mc_rx`, so `mc_radio` is pure
+transport — it builds no MeshCore payloads and touches no domain message state
+(it only reads LoRa/region config).
 
 If a new include would point "up" this list, that is a design smell: either the
 code sits in the wrong component, or the shared type belongs in a lower one
@@ -133,7 +135,7 @@ HMAC prefix). They get the strictest rules.
 |---|---|
 | `components/mc_proto/meshcore/packet.{c,h}` + `meshcore/payload/*` | MeshCore protocol — Scott Powell / rippleradios.com |
 | `components/mc_radio/radio_system_protocol_client.{c,h}` | Tanmatsu radio system-protocol — Nicolai-Electronics/tanmatsu-radio |
-| `components/mc_radio/radio.c` (transport-codes, region-scope HMAC, ADVERT signing) | MeshCore wire-format with our region-scope additions |
+| `components/mc_radio/radio.c` (region-scope HMAC) + `components/mc_rx/mc_rx.c` (payload composition, ADVERT signing, DM/channel framing) | MeshCore wire-format with our region-scope additions |
 
 Rules at this boundary:
 

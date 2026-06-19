@@ -12,13 +12,16 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 
 #include "esp_log.h"
 #include "mbedtls/aes.h"
 #include "mbedtls/md.h"
+#include "mbedtls/sha256.h"
 
 #include "ed25519.h"
 #include "meshcore/packet.h"
@@ -395,3 +398,282 @@ static void mc_rx_dispatch(const meshcore_message_t *msg, const radio_rx_meta_t 
 }
 
 void mc_rx_init(void) { radio_set_rx_sink(mc_rx_dispatch); }
+
+// ── TX composers (moved out of radio.c; radio is transport-only) ─────────────
+// c6_available + last_advert_ms are radio/main globals (radio.h / main.c).
+extern bool c6_available;
+
+// Background-task payload: pub-key hashes pre-computed under a brief node_mutex
+// hold, plus the path-hash byte-count, passed to send_advert_internal one
+// packet at a time.
+typedef struct {
+    int     n;
+    uint8_t bph;
+    uint8_t hashes[];
+} adv_direct_args_t;
+
+static void send_advert_internal(bool direct_route, const uint8_t *dst_hash, uint8_t bph) {
+    if (!c6_available || !identity_is_ready()) return;
+
+    meshcore_advert_t advert = {0};
+    memcpy(advert.pub_key, node_pub_key, MESHCORE_PUB_KEY_SIZE);
+    // UNIX epoch — matches upstream MeshCore convention and what the other
+    // payload paths in this file use. Earlier versions accidentally used
+    // xTaskGetTickCount-derived uptime here, which other clients rejected
+    // because the timestamp looked decades old (~15 since boot).
+    advert.timestamp = (uint32_t)time(NULL);
+    advert.role      = lora_role;
+
+    const char *adv_src = lora_advert_name[0] ? lora_advert_name :
+                          ((owner_name[0] && owner_name[0] != '(') ? owner_name : NULL);
+    if (adv_src) {
+        strncpy(advert.name, adv_src, MESHCORE_MAX_NAME_SIZE);
+        advert.name_valid = true;
+    }
+
+    if (gps_position_valid) {
+        advert.position_valid = true;
+        advert.position_lat   = gps_lat_e6;
+        advert.position_lon   = gps_lon_e6;
+    }
+
+    uint8_t payload[MESHCORE_MAX_PAYLOAD_SIZE];
+    uint8_t payload_len = 0;
+    if (meshcore_advert_serialize(&advert, payload, &payload_len) < 0) return;
+
+    // Signature covers pub_key + timestamp + flags + name (everything except sig).
+    // Layout: pub_key[32] | timestamp[4] | sig[64] | flags[1] | name
+    uint8_t to_sign[MESHCORE_MAX_PAYLOAD_SIZE];
+    uint8_t to_sign_len = 0;
+    memcpy(to_sign, payload, MESHCORE_PUB_KEY_SIZE + 4);
+    to_sign_len = MESHCORE_PUB_KEY_SIZE + 4;
+    uint8_t after_sig_offset = MESHCORE_PUB_KEY_SIZE + 4 + MESHCORE_SIGNATURE_SIZE;
+    if (payload_len > after_sig_offset) {
+        memcpy(to_sign + to_sign_len, payload + after_sig_offset, payload_len - after_sig_offset);
+        to_sign_len += payload_len - after_sig_offset;
+    }
+
+    ed25519_sign(advert.signature, to_sign, to_sign_len, node_pub_key, node_prv_key);
+
+    if (meshcore_advert_serialize(&advert, payload, &payload_len) < 0) return;
+
+    meshcore_message_t msg = {0};
+    msg.type           = MESHCORE_PAYLOAD_TYPE_ADVERT;
+    msg.route          = direct_route ? MESHCORE_ROUTE_TYPE_DIRECT
+                                       : MESHCORE_ROUTE_TYPE_FLOOD;
+    msg.bytes_per_hop  = path_hash_size;
+    if (direct_route && dst_hash && bph > 0) {
+        // Populate path with dst hash so upstream receivers match this as
+        // a direct-routed packet addressed to them (or to a peer they
+        // route for).
+        uint8_t cap = bph > MESHCORE_MAX_PATH_SIZE ? MESHCORE_MAX_PATH_SIZE : bph;
+        memcpy(msg.path, dst_hash, cap);
+        msg.path_length = cap;
+    }
+    msg.payload_length = payload_len;
+    memcpy(msg.payload, payload, payload_len);
+    if (radio_tx_message(&msg)) {
+        last_advert_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        ESP_LOGI(TAG, "ADVERT sent (%s) pub=%02X%02X%02X%02X",
+                 advert.name_valid ? advert.name : "(no name)",
+                 node_pub_key[0], node_pub_key[1], node_pub_key[2], node_pub_key[3]);
+    }
+}
+
+void send_advert(void) { send_advert_internal(false, NULL, 0); }
+
+static void send_advert_direct_task(void *arg) {
+    adv_direct_args_t *a = (adv_direct_args_t *)arg;
+    if (a->n == 0) {
+        send_advert_internal(true, NULL, 0);
+    } else {
+        for (int i = 0; i < a->n; i++) {
+            send_advert_internal(true, a->hashes + i * 32, a->bph);
+            // 250 ms gap — a bit more generous than the flood path's 150 ms
+            // so 16 sequential TXs stay under ~1 % of the 1-hour duty budget.
+            vTaskDelay(pdMS_TO_TICKS(250));
+        }
+    }
+    free(a);
+    vTaskDelete(NULL);
+}
+
+// DIRECT advert: stock MeshCore receivers drop direct packets with no
+// destination match, so we send one direct-route advert per *contact*
+// (user-favorited / DM'd peers, MAX_CONTACTS = 16), addressed by
+// sha256(pub_key)[0..bph-1]. Iterating every background-discovered node
+// (up to 200) wastes airtime — most of those are out-of-route repeaters
+// the user has no relationship with. Limiting to contacts caps the worst
+// case at ~16 × (TX + 200 ms gap) ≈ 5-6 seconds of activity and a few
+// tenths of a percent duty-cycle hit.
+void send_advert_direct(void) {
+    if (!c6_available || !identity_is_ready()) return;
+    uint8_t bph = path_hash_size ? path_hash_size : 1;
+
+    // Worst case MAX_CONTACTS × 32-byte hashes = 512 B. Allocate from heap
+    // so the task can run on a modest stack.
+    size_t cap = sizeof(adv_direct_args_t) + (size_t)MAX_CONTACTS * 32u;
+    adv_direct_args_t *a = (adv_direct_args_t *)malloc(cap);
+    if (!a) {
+        // OOM — fall back to the single no-dst direct so the user still
+        // gets feedback (toast is set by the caller after this returns).
+        send_advert_internal(true, NULL, 0);
+        return;
+    }
+    a->n   = 0;
+    a->bph = bph;
+    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        for (int i = 0; i < contact_count && a->n < MAX_CONTACTS; i++) {
+            mbedtls_sha256(contacts[i].pub_key, MESHCORE_PUB_KEY_SIZE,
+                           a->hashes + a->n * 32, 0);
+            a->n++;
+        }
+        xSemaphoreGive(node_mutex);
+    }
+    BaseType_t r = xTaskCreate(send_advert_direct_task, "adv_direct",
+                               4096, a, 3, NULL);
+    if (r != pdPASS) {
+        free(a);
+        send_advert_internal(true, NULL, 0);
+    }
+}
+
+// ── ADVERT broadcast task ────────────────────────────────────────────────────
+// Honours both flood + direct interval settings. Value 0 on either = that
+// schedule is off. Manual sends via the Advert UI keep working in both
+// cases. Re-reads the interval each second so retuning in Settings takes
+// effect immediately.
+static void advert_task(void *arg) {
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    uint32_t flood_elapsed_ms  = 0;
+    uint32_t direct_elapsed_ms = 0;
+    while (1) {
+        uint16_t flood_int  = flood_advert_interval_s;
+        uint16_t direct_int = direct_advert_interval_s;
+
+        if (flood_int > 0 && flood_elapsed_ms >= (uint32_t)flood_int * 1000u) {
+            send_advert();
+            flood_elapsed_ms = 0;
+        }
+        if (direct_int > 0 && direct_elapsed_ms >= (uint32_t)direct_int * 1000u) {
+            send_advert_direct();
+            direct_elapsed_ms = 0;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        flood_elapsed_ms  += 1000;
+        direct_elapsed_ms += 1000;
+
+        // Reset elapsed counters when their schedule is off so re-enabling
+        // doesn't trigger an immediate emit.
+        if (flood_int  == 0) flood_elapsed_ms  = 0;
+        if (direct_int == 0) direct_elapsed_ms = 0;
+    }
+}
+
+// ── DM TX (TXT_MSG) ──────────────────────────────────────────────────────────
+bool send_dm_message(const char *text, const uint8_t *target_pub, uint8_t ack_crc_out[4]) {
+    if (!c6_available || !identity_is_ready()) return false;
+
+    uint32_t ts = (uint32_t)time(NULL);
+    uint8_t  plain[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
+    size_t   text_len  = strlen(text);
+    size_t   plain_len = 5 + text_len;
+    size_t   padded    = ((plain_len + 15) / 16) * 16;
+    if (padded > MESHCORE_MAX_PAYLOAD_SIZE - 4) return false;
+
+    memcpy(plain, &ts, 4);
+    plain[4] = 0;  // flags
+    memcpy(&plain[5], text, text_len);
+
+    // ACK CRC: the receiver computes SHA256(plain[0..5] || text || OUR pubkey)[0:4]
+    // to bind the ACK to this specific message. Mirror that here so the caller
+    // can store it on the chat_msg and detect the matching PATH_RETURN later.
+    if (ack_crc_out) {
+        mc_crypto_ack_crc(plain, text, text_len, node_pub_key, ack_crc_out);
+    }
+
+    uint8_t cipher[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
+    uint8_t mac[32];
+    mc_crypto_dm_encrypt(target_pub, node_prv_key, plain, padded, cipher, mac);
+
+    meshcore_message_t msg = {0};
+    msg.type           = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
+    msg.route          = MESHCORE_ROUTE_TYPE_FLOOD;
+    msg.version        = 0;
+    msg.bytes_per_hop  = path_hash_size;
+    msg.path_length    = 0;
+    msg.payload[0]     = target_pub[0];     // dest hash
+    msg.payload[1]     = node_pub_key[0];   // src  hash
+    msg.payload[2]     = mac[0];
+    msg.payload[3]     = mac[1];
+    memcpy(&msg.payload[4], cipher, padded);
+    msg.payload_length = (uint8_t)(4 + padded);
+    return radio_tx_message(&msg);
+}
+
+// ── Public-channel TX (GRP_TXT) ──────────────────────────────────────────────
+bool send_chat_message(const char *text) {
+    if (!c6_available) return false;
+
+    uint32_t ts = (uint32_t)time(NULL);
+    uint8_t  plain[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
+    size_t   text_len = strlen(text);
+
+    // Prefix with name so other clients can attribute the message.
+    const char *name_src = lora_advert_name[0] ? lora_advert_name :
+                           ((owner_name[0] && owner_name[0] != '(') ? owner_name : NULL);
+    char prefixed[MAX_MSG_TEXT];
+    if (name_src) {
+        snprintf(prefixed, sizeof(prefixed), "%s: %s", name_src, text);
+    } else {
+        snprintf(prefixed, sizeof(prefixed), "%s", text);
+    }
+    text_len = strlen(prefixed);
+
+    size_t plain_len = 4 + 1 + text_len;
+    size_t padded    = ((plain_len + 15) / 16) * 16;
+    if (padded > sizeof(plain)) return false;
+
+    memcpy(plain, &ts, 4);
+    plain[4] = 0;  // text_type = normal
+    memcpy(&plain[5], prefixed, text_len);
+
+    // Pick the active channel's key + hash; fall back to Public (idx 0) if
+    // active_channel_idx is somehow out of range.
+    int ch_idx = (active_channel_idx >= 0 && active_channel_idx < channel_count &&
+                  channels[active_channel_idx].active)
+                 ? active_channel_idx : 0;
+    const uint8_t *ch_secret = channels[ch_idx].secret;
+    uint8_t        ch_hash   = channels[ch_idx].hash;
+
+    uint8_t cipher[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
+    uint8_t mac[32];
+    mc_crypto_grp_encrypt(ch_secret, plain, padded, cipher, mac);
+
+    meshcore_grp_txt_t grp = {0};
+    grp.channel_hash = ch_hash;
+    memcpy(grp.mac, mac, MESHCORE_CIPHER_MAC_SIZE);
+    grp.data_length = (uint8_t)padded;
+    memcpy(grp.data, cipher, padded);
+
+    uint8_t payload[MESHCORE_MAX_PAYLOAD_SIZE];
+    uint8_t payload_len = 0;
+    if (meshcore_grp_txt_serialize(&grp, payload, &payload_len) < 0) return false;
+
+    meshcore_message_t msg = {0};
+    msg.type           = MESHCORE_PAYLOAD_TYPE_GRP_TXT;
+    msg.route          = MESHCORE_ROUTE_TYPE_FLOOD;
+    msg.version        = 0;
+    msg.bytes_per_hop  = path_hash_size;
+    msg.path_length    = 0;
+    msg.payload_length = payload_len;
+    memcpy(msg.payload, payload, payload_len);
+    bool ok = radio_tx_message(&msg);
+    if (ok) ESP_LOGI(TAG, "Chat sent: %s", prefixed);
+    return ok;
+}
+
+void mc_rx_start_advert_task(void) {
+    xTaskCreate(advert_task, "lora_advert", 6144, NULL, 4, NULL);
+}

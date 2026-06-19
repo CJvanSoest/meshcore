@@ -17,9 +17,6 @@ idf_component_register(
         mc_proto
     PRIV_REQUIRES
         mc_domain
-        mc_crypto
-        mc_common
-        vendor
         mbedtls
         ${extra_requires}
 )

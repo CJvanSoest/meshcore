@@ -72,21 +72,6 @@ extern volatile bool     dc_last_tx_blocked;
 // Call after radio + identity + nodes/chat are initialised.
 void radio_start_tasks(void);
 
-// ── TX entry points (called from UI input) ───────────────────────────────────
-// Broadcast a signed ADVERT (FLOOD) with our pub_key + role + name.
-void send_advert(void);
-// Same advert, route=DIRECT + path_length=0. Reaches LoRa neighbours only
-// (no repeater forwarding), low-traffic alternative to flood.
-void send_advert_direct(void);
-
-// Send an encrypted DM (TXT_MSG) to a specific node by pub_key.
-// If ack_crc_out != NULL, returns the 4-byte CRC the receiver will echo back
-// inside their PATH_RETURN — caller can store it on the chat_msg to track ACK.
-bool send_dm_message(const char *text, const uint8_t *target_pub, uint8_t ack_crc_out[4]);
-
-// Send an encrypted public-channel message (GRP_TXT, FLOOD).
-bool send_chat_message(const char *text);
-
 // ── RX sink (radio decodes + dedups; the app layer handles delivery) ─────────
 // lora_rx_task deserializes each packet, drops flood duplicates, and hands the
 // raw typed message to the registered sink. The sink (mc_rx) owns decrypt,

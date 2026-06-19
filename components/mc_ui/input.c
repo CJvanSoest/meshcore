@@ -30,6 +30,7 @@
 #include "map.h"
 #include "nodes.h"
 #include "radio.h"
+#include "mc_rx.h"
 #include "region_limits.h"
 #include "render.h"
 #include "render_internal.h"

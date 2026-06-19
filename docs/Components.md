@@ -45,11 +45,13 @@ here (not in `mc_net`) so radio and the UI can share it without depending on a
 higher layer. Publicly `REQUIRES tanmatsu-lora` because `nodes.h` and
 `settings_nvs.h` expose `lora_*` types.
 
-### `mc_radio` — comm bridge (L3)
-The LoRa RX/TX engine (`radio.c`) and the P4↔C6 system-protocol client. RX
-handling decodes a packet via `mc_proto`, decrypts via `mc_crypto`, and writes
-straight into `mc_domain` (chat/contacts/nodes); TX composes the reverse. It
-`REQUIRES mc_domain`, which is a legal downward edge.
+### `mc_radio` — transport (L3)
+The LoRa transport: `radio.c`'s send/receive primitives over the P4↔C6 link,
+duty-cycle accounting, region scope, and the system-protocol client. RX
+deserializes + dedups and hands the raw message to a registered sink; TX is the
+`radio_tx_message` tail (region scope + serialize + duty-cycle gate + send). It
+builds no MeshCore payloads and touches no domain message state — that lives in
+`mc_rx`. Only reads LoRa/region config from `settings_nvs`.
 
 ### `mc_net` — connectivity + peripherals (L4)
 The HTTPS config server, BLE companion link, serial companion transport, WiFi
@@ -92,12 +94,10 @@ SX1262 → C6 radio → P4 (esp-hosted)
 
 ```
 mc_ui: input
-  → mc_domain: compose (active channel / contact, identity)
-  → mc_radio: send_chat_message / send_dm_message
-  → mc_crypto: grp_encrypt / DM encrypt
-  → mc_proto: meshcore_serialize + apply region scope (region_limits)
-  → mc_radio: duty-cycle budget gate
-  → C6 radio: lora_send_packet
+  → mc_rx: send_chat_message / send_dm_message / send_advert
+           (compose from the active channel/contact + identity)
+  → mc_crypto: grp_encrypt / dm_encrypt
+  → mc_radio: radio_tx_message — region scope + serialize + duty-cycle gate + lora_send
 ```
 
 The duty-cycle gate and the region-scope clamp are the regulatory guardrails;

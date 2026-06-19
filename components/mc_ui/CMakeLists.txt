@@ -26,6 +26,7 @@ idf_component_register(
     PRIV_REQUIRES
         mc_io
         mc_proto
+        mc_rx
         vendor
         wifi-manager
         esp_app_format

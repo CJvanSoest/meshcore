@@ -438,6 +438,7 @@ void app_main(void) {
                 DIAG(COL_GREEN, "  RX mode OK - starting tasks");
                 mc_rx_init();  // register the RX sink before the rx task starts
                 radio_start_tasks();
+                mc_rx_start_advert_task();
             } else {
                 DIAG(COL_YELLOW, "  RX mode failed (%d)", mode_res);
             }
