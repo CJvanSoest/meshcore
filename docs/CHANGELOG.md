@@ -21,6 +21,8 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-06-19
+
 ### Changed
 - **The screensaver also blanks the keyboard backlight**, and now wakes on any
   key instead of only F3. A key press while blanked restores the screen and
