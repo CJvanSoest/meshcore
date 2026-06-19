@@ -36,7 +36,7 @@ of merged PR titles since the previous tag.
   `nodes_mark_dirty` / `nodes_dirty`, `save_wifi`, the unused
   `nvs_{load,save}_{u16,u32,i32}` scalar wrappers,
   `http_server_is_running`, `map_tile_to_latlon`, and the `icon_placeholder`
-  home tile. See the "Unused code" section in `docs/ARCHITECTURE.md`.
+  home tile. See the "Unused code" section in `docs/Architecture.md`.
 
 ## [2.5.0] - 2026-06-18
 
@@ -155,7 +155,7 @@ of merged PR titles since the previous tag.
   artifact (PR #1).
 - PR template (`.gitea/PULL_REQUEST_TEMPLATE.md`) — five sections:
   What / Why / Test plan / Breaking changes / Screenshots (PR #2).
-- `ARCHITECTURE.md` — six-layer model, three forbidden-include
+- `Architecture.md` — six-layer model, three forbidden-include
   rules, wire-boundary discipline for upstream-compat (PR #3).
 - Upstream-tracking comment on `radio_system_protocol_client.h` —
   demonstrates the per-file boundary-tracking pattern.

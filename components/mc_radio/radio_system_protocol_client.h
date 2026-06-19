@@ -8,7 +8,7 @@
 //            protocol/system_protocol.{h,c}
 // tracks:    v3.2.0 (commit d83ad84) — bump on every sync
 //
-// See docs/ARCHITECTURE.md "Wire-boundary discipline" for the rules that
+// See docs/Architecture.md "Wire-boundary discipline" for the rules that
 // apply to this file (tracking comment, tolerant parsers, no local
 // struct extensions).
 

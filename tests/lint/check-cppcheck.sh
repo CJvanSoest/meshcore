@@ -8,7 +8,7 @@
 # Deliberately NOT linted: components/vendor (third-party, kept verbatim) and
 # the upstream protocol mirror under components/mc_proto/meshcore and
 # components/mc_proto/companion-radio-protocol (tracked upstream, see
-# docs/ARCHITECTURE.md "Wire-boundary discipline").
+# docs/Architecture.md "Wire-boundary discipline").
 #
 # Severity choice: warning + performance + portability catch real issues; the
 # "style" category is left off so the gate flags defects, not bikeshedding.

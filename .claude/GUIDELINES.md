@@ -1,69 +1,137 @@
 # Working on this project with Claude
 
-Rules and context for an AI pair-programmer (or any contributor using one) on
-MeshCore for Tanmatsu. Read this together with the root [CLAUDE.md](../CLAUDE.md),
-[docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) (the rulebook) and
-[docs/Components.md](../docs/Components.md) (the component + data-flow tour)
-before changing code.
+Rules and context for an AI pair programmer (or any contributor using one) on
+MeshCore for the Tanmatsu badge. This is the entry point for the `.claude/`
+guidance set:
 
-## Before you touch anything
+- **GUIDELINES.md** (this file): the mental model, where code goes, the hard
+  rules, conventions, and the green gate.
+- **[WORKFLOW.md](WORKFLOW.md)**: how to actually carry out a change from first
+  read to merged commit, including how to verify the firmware build and CI.
+- **[PITFALLS.md](PITFALLS.md)**: the traps that have already cost real time or
+  real users on this project. Read it before you trust a tool or an assumption.
 
-1. The codebase is split into ESP-IDF **components** under `components/`. The
-   `REQUIRES` graph enforces the layer direction — a backward include fails to
-   compile, not just review. Know which component your change belongs in
-   (see ARCHITECTURE.md "Developing within the architecture").
-2. `main/` is `main.c` only. New first-party code goes in a component, never
-   back into `main/`. `tests/lint/check-structure.sh` enforces this.
+Read these together with the root [CLAUDE.md](../CLAUDE.md),
+[docs/Architecture.md](../docs/Architecture.md) (the rulebook) and
+[docs/Components.md](../docs/Components.md) (the component and data flow tour).
+When this set and Architecture.md ever disagree, Architecture.md wins and you
+should fix this file.
+
+## What this project is
+
+A MeshCore LoRa mesh chat client for the Tanmatsu badge: an ESP32-P4 app
+processor talking to an ESP32-C6 radio coprocessor over a system protocol, with
+an SX1262 doing the actual LoRa. One ESP-IDF v5.5.1 image, C11. Concurrency is a
+handful of FreeRTOS tasks plus the `app_main` event loop, not threads with
+shared heaps everywhere. Most state lives behind a mutex or inside one task.
+
+## The mental model
+
+The code is split into ESP-IDF **components** under `components/`, layered L0
+(foundation) to L5 (app entry). The layering is not a convention you remember,
+it is enforced by each component's `REQUIRES` / `PRIV_REQUIRES` graph: a
+backward include fails to **compile**, so you find out at build time, not in
+review. Before writing a line, know which component your change belongs in and
+which layer it sits on. Architecture.md "Layers" and "Forbidden includes" are
+the authority.
+
+Two consequences worth internalising:
+
+- A change often does not go where the symptom is. A UI glitch may be a domain
+  write under the wrong lock, a dropped advert may be a transport or a framing
+  issue. Trace the data flow (Components.md) before picking a file.
+- If your fix wants a lower layer to include a higher one, the design is telling
+  you the code is in the wrong place, not that the rule is wrong. Move the code,
+  add a callback, or pass data down. Do not reach for a backward include.
 
 ## Where code goes
 
-- Pure, host-testable protocol/codec/regulatory logic → `mc_proto` (no ESP-IDF).
-- Symmetric crypto → `mc_crypto` (channel) / `mc_crypto_dm` (DM, ed25519). Both
-  are host-tested; add a vector for anything you touch.
-- Persisted state / app data → `mc_domain`. Platform I/O wrappers → `mc_io`.
-- LoRa transport (send/receive primitives, duty-cycle, region scope) →
-  `mc_radio`. It is **domain-free**: it builds no MeshCore payloads.
-- MeshCore receive handlers + TX composers → `mc_rx` (it owns decrypt/encrypt,
-  domain writes, notifications, ACK; radio just hands it raw packets via the
-  sink and `radio_tx_message`).
-- Screens / input / rendering → `mc_ui`. Connectivity + peripherals → `mc_net`.
+| Kind of code | Component | Notes |
+|---|---|---|
+| Pure protocol / codec / regulatory / parser logic | `mc_proto` | No ESP-IDF, pax or BSP. Host testable. Holds the upstream mirror under `meshcore/` plus first-party pure helpers in the root. |
+| Symmetric channel crypto | `mc_crypto` | Host tested. Add a vector for anything you touch. |
+| DM crypto (ed25519 ECDH) | `mc_crypto_dm` | Split from `mc_crypto` so the channel tests stay ed25519 free. |
+| Persisted state and app data | `mc_domain` | Settings, nodes, contacts, chat, channels, identity. |
+| Platform I/O wrappers | `mc_io` | NVS, GPS, certs, SD. Thin shims over ESP-IDF. |
+| LoRa transport | `mc_radio` | Send and receive primitives, duty cycle, region scope. **Domain free**: it builds no MeshCore payloads. |
+| MeshCore receive handlers and TX composers | `mc_rx` | Owns decrypt, encrypt, domain writes, notifications, ACK. Radio hands it raw packets via the RX sink and `radio_tx_message`. |
+| Screens, input, rendering | `mc_ui` | The `render_*.c` files. Must not include `meshcore/`. |
+| Connectivity and peripherals | `mc_net` | HTTP server, maps, WiFi glue. |
+| Third party drops and generated assets | `vendor` | See hard rules. Leaf component, never imports first-party code. |
+
+`main/` is `main.c` only: the cold start sequence and the event loop. New
+first-party code goes in a component, never back into `main/`.
+`tests/lint/check-structure.sh` enforces both this and a clean repo root.
 
 ## Hard rules (these have bitten real users)
 
-- **Do not modify vendored code** (`components/vendor/*`: lodepng, qrcodegen,
-  ed25519, emoji_bitmaps). Their TODO markers are upstream, not work items.
+- **Do not modify vendored code.** `components/vendor/*` (lodepng, qrcodegen,
+  ed25519, emoji_bitmaps) are third party drops kept close to upstream. Their
+  TODO markers are upstream comments, not work items. If a vendored function
+  looks unused, it usually is, and it stays anyway so the file matches upstream.
+  See [PITFALLS.md](PITFALLS.md) on dead code and on the ed25519 split.
 - **`components/mc_proto/meshcore/` is the upstream protocol mirror.** Keep it
-  free of ESP-IDF / pax / BSP / L1 headers. Never grow a wire-format struct
-  locally — take it upstream and re-pin. Local additions go in `mc_radio`
-  (region scope) or `mc_rx` (framing), never in `meshcore/`.
-- **The wire boundary is fragile.** `radio.c` (region-scope HMAC), `mc_rx`
-  (payload composition, ADVERT signing) and `radio_system_protocol_client.c`
-  track upstream byte-for-byte. Use tolerant parsers; never assume an exact
-  struct size. See ARCHITECTURE.md "Wire-boundary discipline".
+  free of ESP-IDF, pax, BSP and L1 headers. Never grow a wire format struct
+  locally: take the change upstream and re-pin the dependency. Local additions
+  live in `mc_radio` (region scope) or `mc_rx` (framing), or as a pure
+  first-party helper in `mc_proto` root, never inside `meshcore/`.
+- **The wire boundary is fragile.** `radio.c` (region scope HMAC), `mc_rx`
+  (payload composition, ADVERT signing, DM and channel framing) and
+  `radio_system_protocol_client.c` track upstream byte for byte. Use tolerant
+  parsers and never assume an exact struct size. Architecture.md "Wire-boundary
+  discipline" lists the offsets and the past bugs.
+- **Crypto correctness is gated twice and you keep it that way.** Signing math
+  is proven by host vectors (`test_ed25519`, RFC 8032) and by a runtime boot
+  self-test in `identity_init()` that calls `abort()` on mismatch. The signed
+  byte **layout** is proven by `test_advert_sign`. If you touch signing, both
+  gates must still pass and a new layout needs a new vector. The original
+  direct-advert bug hid for months because a sender never sees rejections.
 - **Behaviour that only shows on the badge is validated on a badge.** The host
-  tests and the IDF build cannot prove radio/display runtime behaviour.
+  tests and the IDF build prove that code compiles and that pure logic is
+  correct. They do not run the radio, the display or the C6 link. Anything in
+  that space needs a hardware smoke test, and you say so plainly rather than
+  implying CI covered it.
 
 ## Conventions
 
 - Every first-party C source starts with an SPDX header
-  (`SPDX-FileCopyrightText` + `SPDX-License-Identifier: MIT`); add an
-  `SPDX-FileContributor` line for new authorship.
-- Comments are sparse — explain the non-obvious (a wire quirk, a locking
-  coupling), not the obvious. Format with `.clang-format`.
-- All repo text (code, comments, commits, docs) is in English.
-- Commit messages: short and clear, imperative subject, no AI-attribution
-  trailer.
+  (`SPDX-FileCopyrightText: 2026 CJ van Soest` and
+  `SPDX-License-Identifier: MIT`). Add an `SPDX-FileContributor` line for new
+  authorship. Do not add a copyright line for a contributor and do not write
+  licence waiver prose.
+- Comments are sparse. Explain the non-obvious (a wire quirk, a locking
+  coupling, why a workaround exists), never restate what the code says. If a
+  block needs a paragraph, the paragraph probably belongs in `docs/`.
+- All repo text (code, comments, commit messages, docs) is in English. Chat with
+  the user can be in their language.
+- Write plainly. No em dash, no coined hyphen-adjectives, no serial comma. This
+  applies to comments and docs too.
+- Format touched files with `.clang-format`.
+- Commit messages: imperative subject, short body, at most a few lines, no AI
+  attribution trailer and no co-author line.
 
-## Before you commit — all green
+## Dead code policy
+
+First-party code carries no dead weight. A function with no caller anywhere in
+`components/`, `main/` or `tests/` is removed together with its declaration.
+`cppcheck --enable=unusedFunction` is the starting signal only and it reports
+several live symbols as unused: cross-check with grep first. The deliberate
+keeps (vendored libraries, the upstream mirror, `app_main`, callback tables,
+test-only symbols) are documented in Architecture.md "Unused code" and the
+mechanics of the false positives are in [PITFALLS.md](PITFALLS.md).
+
+## Before you commit: all green
 
 ```sh
-cd tests && make test                  # host unit + integration tests
-tests/lint/check-arch-rules.sh         # include-direction discipline
+cd tests && make test                  # host unit + integration tests + crypto vectors
+tests/lint/check-arch-rules.sh         # include direction discipline
 tests/lint/check-structure.sh          # file placement (main/ thin, root clean)
 tests/lint/check-test-wiring.sh        # every test_*.c is wired into the Makefile
 tests/lint/check-cppcheck.sh           # static analysis, first-party only
 make build DEVICE=tanmatsu             # the firmware actually builds
 ```
 
-Add a host test in `tests/` for any pure logic you add or change, and wire it
-into `tests/Makefile` (the wiring lint will catch you if you forget).
+Add a host test in `tests/` for any pure logic you add or change and wire it
+into `tests/Makefile`. The wiring lint fails the build if you forget. The full
+change loop, including how to run the firmware build when you do not have the
+IDF toolchain locally, is in [WORKFLOW.md](WORKFLOW.md).

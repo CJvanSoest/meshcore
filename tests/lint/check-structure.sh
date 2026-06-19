@@ -6,7 +6,7 @@
 # Structural hygiene checks that keep the component layout from rotting back
 # into a fat main/ or a cluttered root. Complements check-arch-rules.sh (which
 # guards include direction); this one guards file placement. Documented in
-# docs/ARCHITECTURE.md "Structure rules". Run from anywhere:
+# docs/Architecture.md "Structure rules". Run from anywhere:
 #   tests/lint/check-structure.sh
 # Exit 0 when clean, 1 on any violation.
 

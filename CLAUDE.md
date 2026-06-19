@@ -26,9 +26,9 @@ esp32-p4-function-ev-board).
 ## Where things live
 
 - `components/` — first-party source, split into `mc_*` components (see
-  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)); `main/` is just `main.c`. The
+  [docs/Architecture.md](docs/Architecture.md)); `main/` is just `main.c`. The
   module map and FreeRTOS task list are in [docs/Overview.md](docs/Overview.md).
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — **the authoritative discipline doc**:
+- [docs/Architecture.md](docs/Architecture.md) — **the authoritative discipline doc**:
   the six layers (L0 foundation … L5 app entry), the forbidden-include rules
   (grep-checkable, also enforced by `tests/lint/check-arch-rules.sh`), and the
   wire-boundary rules. Read it before moving code between files.
@@ -48,7 +48,7 @@ esp32-p4-function-ev-board).
    compiler flags a warning in `meshcore/`, suppress it at the call site (CI
    target) rather than editing the mirror, as the test Makefile already does.
 3. **Layer direction is one-way.** Higher layers include lower; never the
-   reverse. `render_*.c` must not include `meshcore/`. See docs/ARCHITECTURE.md for
+   reverse. `render_*.c` must not include `meshcore/`. See docs/Architecture.md for
    the exact grep checks.
 4. **Add a host test for any pure logic you touch.** Pure modules with no
    ESP-IDF / pax / mbedtls dependency (region_limits, meshcore codecs,

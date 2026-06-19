@@ -5,7 +5,7 @@
 // Host-side test for the MeshCore packet codec in components/mc_proto/meshcore/packet.c.
 //
 // This is the wire boundary that has cost the most real-user pain in this
-// project (see docs/ARCHITECTURE.md "Wire-boundary discipline"). The test links
+// project (see docs/Architecture.md "Wire-boundary discipline"). The test links
 // against the SAME translation unit the firmware ships and round-trips a
 // message through serialize → deserialize, so a regression in the header
 // bit-packing, the transport-code gating, or the path length-byte encoding
