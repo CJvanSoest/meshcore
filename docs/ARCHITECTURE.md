@@ -156,6 +156,12 @@ Rules at this boundary:
    `mc_proto/meshcore/`** — `meshcore/` is the upstream mirror and stays
    pure; the symmetric crypto lifted out of `radio.c` lives in `mc_crypto`,
    and the RX handlers (decrypt + delivery + ACK) in `mc_rx`.
+5. **Pure layout descriptors may live in `mc_proto` root** (alongside
+   `region_limits.c`), never under `meshcore/`. `mc_proto/advert_sign.c`
+   defines the ADVERT signable-byte range as a pure function so the layout
+   is host-tested (`test_advert_sign`) independently of the ed25519 math;
+   `mc_rx` does the actual signing. Splitting "which bytes" (testable) from
+   "sign them" (needs the key + RNG) keeps both halves gated in CI.
 
 ## When to add a new layer
 

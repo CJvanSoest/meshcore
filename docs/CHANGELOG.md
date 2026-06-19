@@ -19,6 +19,18 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+### Added
+- `test_advert_sign` host test: locks the ADVERT signature layout (the
+  `to_sign` byte range) with an offset check plus a golden signature, so a
+  regression in the signed-bytes construction goes red in CI rather than
+  only showing up as silently-rejected adverts on hardware.
+
+### Changed
+- Extracted the ADVERT signable-bytes construction out of
+  `send_advert_internal` into the pure, host-tested
+  `meshcore_advert_signable_bytes` (`mc_proto/advert_sign.c`). No wire
+  change; both flood and direct adverts sign the same bytes as before.
+
 ### Removed
 - Dead first-party functions with no caller in the tree or tests:
   `nodes_mark_dirty` / `nodes_dirty`, `save_wifi`, the unused

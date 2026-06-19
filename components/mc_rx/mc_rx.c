@@ -24,6 +24,7 @@
 #include "mbedtls/sha256.h"
 
 #include "ed25519.h"
+#include "advert_sign.h"
 #include "meshcore/packet.h"
 #include "meshcore/payload/advert.h"
 #include "meshcore/payload/grp_txt.h"
@@ -441,17 +442,8 @@ static void send_advert_internal(bool direct_route, const uint8_t *dst_hash, uin
     uint8_t payload_len = 0;
     if (meshcore_advert_serialize(&advert, payload, &payload_len) < 0) return;
 
-    // Signature covers pub_key + timestamp + flags + name (everything except sig).
-    // Layout: pub_key[32] | timestamp[4] | sig[64] | flags[1] | name
     uint8_t to_sign[MESHCORE_MAX_PAYLOAD_SIZE];
-    uint8_t to_sign_len = 0;
-    memcpy(to_sign, payload, MESHCORE_PUB_KEY_SIZE + 4);
-    to_sign_len = MESHCORE_PUB_KEY_SIZE + 4;
-    uint8_t after_sig_offset = MESHCORE_PUB_KEY_SIZE + 4 + MESHCORE_SIGNATURE_SIZE;
-    if (payload_len > after_sig_offset) {
-        memcpy(to_sign + to_sign_len, payload + after_sig_offset, payload_len - after_sig_offset);
-        to_sign_len += payload_len - after_sig_offset;
-    }
+    uint8_t to_sign_len = meshcore_advert_signable_bytes(payload, payload_len, to_sign);
 
     ed25519_sign(advert.signature, to_sign, to_sign_len, node_pub_key, node_prv_key);
 
