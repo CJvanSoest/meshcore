@@ -21,6 +21,7 @@ just by convention — a backward include fails to compile.
 | L3 | Comm bridge | `mc_radio` | `radio.*`, `radio_system_protocol_client.*` — LoRa TX/RX, system-protocol queries. Composes L1+L2 with HW. |
 | L4 | Connectivity | `mc_net` | HTTP server, BLE, companion transport, WiFi keepalive, GPS task, map |
 | L4 | UI | `mc_ui` | `input.*`, `render*.c`, `emoji.*` — user-facing |
+| L5 | RX app | `mc_rx` | MeshCore receive handlers behind the radio sink: decrypt, domain writes, notifications, PATH_RETURN ACK |
 | L5 | App entry | `main` | `main.c` — `app_main()`, boot sequence, event loop |
 | — | Third-party | `vendor` | lodepng, qrcodegen, ed25519, emoji_bitmaps — kept verbatim |
 
@@ -93,12 +94,17 @@ version for keeping the tree tidy:
 
 ```
 main
- └─ mc_ui, mc_net
+ └─ mc_ui, mc_net, mc_rx
      └─ mc_radio ─ mc_crypto
          └─ mc_domain
              └─ mc_io
                  └─ mc_common, mc_proto, vendor   (leaves)
 ```
+
+`mc_rx` is the RX application layer: the radio transport deserializes + dedups a
+received packet and hands it to a registered sink (`radio_set_rx_sink`), which
+`mc_rx` implements. The RX decrypt + domain writes live in `mc_rx`, so the radio
+layer stays domain-free on receive (the TX composers still live in `mc_radio`).
 
 If a new include would point "up" this list, that is a design smell: either the
 code sits in the wrong component, or the shared type belongs in a lower one
@@ -146,7 +152,8 @@ Rules at this boundary:
    devlog EN lesson 61).
 4. **Region-scope and other local extensions live in `mc_radio`, not in
    `mc_proto/meshcore/`** — `meshcore/` is the upstream mirror and stays
-   pure; the symmetric crypto lifted out of `radio.c` lives in `mc_crypto`.
+   pure; the symmetric crypto lifted out of `radio.c` lives in `mc_crypto`,
+   and the RX handlers (decrypt + delivery + ACK) in `mc_rx`.
 
 ## When to add a new layer
 

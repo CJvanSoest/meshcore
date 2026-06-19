@@ -15,6 +15,7 @@ idf_component_register(
 		mc_radio
 		mc_net
 		mc_ui
+		mc_rx
 		vendor
 		esp_lcd
 		esp_app_format

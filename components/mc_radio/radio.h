@@ -11,6 +11,7 @@
 #include "freertos/semphr.h"
 
 #include "lora.h"  // lora_protocol_lora_packet_t
+#include "meshcore/packet.h"  // meshcore_message_t for the RX sink + TX primitive
 
 // Shared LoRa radio handle (radio v3.0.0 handle-based API).
 // Defined in radio.c; used by main.c and settings_nvs.c too.
@@ -85,6 +86,27 @@ bool send_dm_message(const char *text, const uint8_t *target_pub, uint8_t ack_cr
 
 // Send an encrypted public-channel message (GRP_TXT, FLOOD).
 bool send_chat_message(const char *text);
+
+// ── RX sink (radio decodes + dedups; the app layer handles delivery) ─────────
+// lora_rx_task deserializes each packet, drops flood duplicates, and hands the
+// raw typed message to the registered sink. The sink (mc_rx) owns decrypt,
+// domain writes and notifications, so the radio layer stays domain-free on RX.
+typedef struct {
+    int8_t              rssi_dbm;
+    int8_t              snr_db_x4;
+    int8_t              signal_rssi_dbm;
+    uint32_t            now_ms;
+    lora_packet_stats_t stats;  // raw C6 stats (the advert handler stores them)
+} radio_rx_meta_t;
+
+typedef void (*radio_rx_sink_fn)(const meshcore_message_t *msg, const radio_rx_meta_t *meta);
+void radio_set_rx_sink(radio_rx_sink_fn sink);
+
+// Finalize + transmit a composed message: apply region scope, serialize, gate
+// on the duty-cycle budget, then send over the C6. Returns false on a
+// serialize failure or an exhausted budget. Used by the TX paths and by the
+// RX ACK return in mc_rx.
+bool radio_tx_message(meshcore_message_t *msg);
 
 // Reconcile the LoRa config in NVS with the live C6 radio over lora_handle.
 // load_lora_config pulls from NVS then prefers/pushes against the C6; save

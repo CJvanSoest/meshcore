@@ -94,6 +94,7 @@ app_view_t current_view = VIEW_HOME;
 // ── Radio (TX/RX/stats) ──────────────────────────────────────────────────────
 // rx_buf + rx_count + RF stats + send_*/lora_rx_task all live in radio.c/h.
 #include "radio.h"
+#include "mc_rx.h"
 
 // ── Node list ─────────────────────────────────────────────────────────────────
 // Storage + update_node + build_node_display + role_label live in nodes.c/h.
@@ -435,6 +436,7 @@ void app_main(void) {
             if (mode_res == ESP_OK) {
                 lora_rx_ok = true;
                 DIAG(COL_GREEN, "  RX mode OK - starting tasks");
+                mc_rx_init();  // register the RX sink before the rx task starts
                 radio_start_tasks();
             } else {
                 DIAG(COL_YELLOW, "  RX mode failed (%d)", mode_res);

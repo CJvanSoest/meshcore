@@ -60,6 +60,15 @@ domain, so they sit above it.
 The pax-based renderers (`render*.c`), input handling, and the emoji picker. Top
 of the stack: it draws domain state and radio status, and pulls in `pax-gfx`.
 
+### `mc_rx` — RX application layer (L5)
+The MeshCore receive handlers, lifted out of `radio.c` so the radio transport
+stays domain-free on receive. `radio.c` deserializes + dedups each packet and
+calls the registered sink (`radio_set_rx_sink`); `mc_rx` implements it and owns
+the channel/DM decrypt (via `mc_crypto`), the domain writes (chat, contacts,
+nodes, channels), the notifications (LED + sounds), and the PATH_RETURN ACK
+(sent back through `radio_tx_message`). Registered from `main` at boot; nothing
+depends on it (the sink is a callback).
+
 ### `main` — app entry (L5)
 Just `main.c`: `app_main()`, the boot sequence, and the event loop. Nothing else
 belongs in `main/` (enforced by `tests/lint/check-structure.sh`).
@@ -68,16 +77,15 @@ belongs in `main/` (enforced by `tests/lint/check-structure.sh`).
 
 ```
 SX1262 → C6 radio → P4 (esp-hosted)
-  → mc_radio: lora_rx_task
-  → mc_proto: meshcore_deserialize        (frame → typed message)
-  → by payload type:
+  → mc_radio: lora_rx_task — deserialize (mc_proto) + dedup, then call the sink
+  → mc_rx: dispatch by payload type
       GRP_TXT  → mc_crypto: grp_decrypt (try each channel key; MAC = channel-match)
                  → mc_domain: ch_add_message_for + LED/sound
-      TXT_MSG  → mc_radio: dm_decrypt (ed25519 ECDH + AES)
-                 → mc_domain: chat_add_message
-                 → mc_radio: dm_send_path_return (ACK, CRC via mc_crypto)
+      TXT_MSG  → mc_crypto: dm_decrypt (ed25519 ECDH + AES)
+                 → mc_domain: chat_add_dm
+                 → mc_rx: dm_send_path_return (ACK, CRC via mc_crypto, sent via radio_tx_message)
       ADVERT   → mc_domain: contacts / nodes
-      PATH     → mc_radio: ACK matching against tracked DMs
+      PATH     → mc_rx: ACK matching against tracked DMs
 ```
 
 ## TX flow (the user sends)

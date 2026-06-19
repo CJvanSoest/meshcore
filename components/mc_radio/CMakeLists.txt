@@ -14,9 +14,9 @@ idf_component_register(
     REQUIRES
         freertos
         tanmatsu-lora
+        mc_proto
     PRIV_REQUIRES
         mc_domain
-        mc_proto
         mc_crypto
         mc_common
         vendor
