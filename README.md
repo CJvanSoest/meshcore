@@ -1,5 +1,7 @@
 # MeshCore for Tanmatsu
 
+[![CI](https://github.com/CJvanSoest/meshcore/actions/workflows/ci.yml/badge.svg)](https://github.com/CJvanSoest/meshcore/actions/workflows/ci.yml)
+
 A [MeshCore](https://meshcore.co.uk) LoRa mesh communication app for the
 **[Tanmatsu](https://tanmatsu.cloud) badge**.
 
@@ -46,60 +48,23 @@ views (Settings → Nodes → DM → Channel) for keyboard power users.
 
 ## Highlights
 
-- **Full MeshCore interoperability** with the iOS/Android app (DM send/receive
-  with delivery acknowledgement, channel chat)
-- **End-to-end encryption** — Ed25519 keypair generated on first boot; DMs
-  encrypted with ECDH + AES-128-ECB; channel uses shared key
-- **Persistent chat history** on microSD (AES-CBC encrypted, self-heals on
-  identity change)
-- **Multi-channel** — public channel + user-added `#channels`, picker UI
-  with add/delete, brute-force MAC verify on RX, region scope visible in header
-- **Region scope on the wire** — `ROUTE_TYPE_TRANSPORT_FLOOD` with
-  HMAC-SHA256 transport codes per upstream MeshCore (mc-radar compatible)
-- **Regulatory compliance helper** — pick your country for per-sub-band
-  frequency / power (ERP/EIRP) limits, off-band & over-power warnings, and
-  **hard duty-cycle enforcement** (TX blocked when the rolling 1-hour airtime
-  budget is spent); 30+ countries across EU 868/433, US/AU/NZ 915, JP, KR, IN, RU
-- **Per-message metadata** — local time, hop count, ACK state inline under
-  each chat bubble
-- **Unread badges** on the home tiles + the Pager status strip for missed
-  DM / channel messages — visible no matter which view you're in
-- **Per-app brightness** — independent display backlight, keyboard backlight
-  and RGB LED brightness sliders (5/10/25/50/75/100 %, NVS-persisted) that
-  override the launcher globals while MeshCore is running
-- **GPS coordinates from multiple sources** — Manual entry, PA1010D module
-  on the QWIIC bus (one-press auto-fill), USB-CDC push from a companion,
-  BLE companion (iPhone MeshCore app), or HTTPS `/ping` (MeshMapper /
-  iOS Shortcuts / OwnTracks). The active source is surfaced in Settings;
-  full details in [GPS sources](docs/GPS-Sources.md).
-- **On-device map** — a slippy OSM-tile map rendered from SD with a live GPS
-  overlay, pan and zoom (levels 6–14), crosshair, scale bar, and
-  Ripple / Carto / Cycle / Topo style profiles (Settings → Region & Location →
-  Map). See [Maps](docs/Maps.md).
-- **Notification sounds** — drop your own WAVs on `/sd/meshcore/sounds/{1..4}.wav`,
-  pick one per event (DM / Channel / Error / Boot) in Settings → Sounds.
-  Volume + on/off per event, all NVS-persisted.
-  See [Sounds](docs/Sounds.md) for the WAV format, recommended free
-  catalogues, and the `ffmpeg` + `badgelink` upload recipe.
-- **On-device HTTPS** — each badge generates its own ECDSA P-256
-  self-signed cert on first boot, persisted to NVS. mDNS publishes
-  `tanmatsu.local:8443`; iOS installs the cert once and `/ping` accepts
-  GPS pushes from OwnTracks, iOS Shortcuts and MeshMapper without per-IP
-  cert juggling.
-- **BLE companion radio** (toggle in Settings) — pair with the official
-  MeshCore iPhone app to use the badge as its radio while the iPhone
-  drives the UI.
-- **Twemoji-based emoji picker** — 8 base smileys, UTF-8 round-trip with
-  other MeshCore clients
-- **QR contact sharing** — show a QR that the mobile app can scan directly
-- **Saved contacts** — favourites stay in the list even when out of range
-- **Live RSSI / SNR / noise floor** per heard node and as a glance line on
-  both the home screen footer and the Settings drilldown bottom row
-- **Message LED + battery indicator** on every screen
-- **Time from the C6 RTC** (synced by the launcher); last known time persisted to NVS
+- **Full MeshCore interoperability** with the iOS/Android app: encrypted DMs
+  with delivery acknowledgement, and public channel chat.
+- **End to end encryption** — Ed25519 identity, DMs via ECDH + AES-128-ECB,
+  channels via a shared key. See [protocol](docs/MeshCore-Protocol.md).
+- **Multi channel** with user added `#channels`, plus persistent chat history on
+  microSD (AES-CBC, self healing on identity change).
+- **Regulatory compliance helper** — per country sub-band frequency and power
+  limits with off-band / over-power warnings and hard duty cycle enforcement.
+- **GPS from several sources** (manual, PA1010D, USB-CDC, BLE companion, HTTPS
+  `/ping`) and an on-device OSM map. See [GPS](docs/GPS-Sources.md), [Maps](docs/Maps.md).
+- **On-device HTTPS** with a self generated cert and mDNS, **BLE companion
+  radio**, **notification sounds** ([Sounds](docs/Sounds.md)), and a QR contact card.
+- **Pager style UI** — unread badges, per-app brightness, live RSSI / SNR /
+  noise floor, per-message hop and ACK metadata. See [UI](docs/UI-UX.md).
 
-For the full feature list, packet protocol, encryption details and key bindings,
-see the [docs](docs/README.md).
+For the full feature set, protocol, encryption and key bindings, see the
+[docs](docs/README.md).
 
 ---
 
@@ -126,56 +91,17 @@ developers.
 
 ## Regulatory compliance
 
-LoRa runs in licence-exempt ISM bands whose rules differ per country —
-permitted frequencies, maximum transmit power and (in the EU) a duty-cycle
-ceiling. Set your **Country** in the Settings tab and the app helps you stay
-within them:
+LoRa runs in licence-exempt ISM bands whose rules differ per country. Set your
+**Country** in Settings and the app keeps you inside them: red warnings when the
+frequency or your effective radiated power (TX power + antenna gain, as
+ERP/EIRP) leaves the allowed sub-band, and **hard duty cycle enforcement** (a
+rolling 1-hour airtime budget per sub-band; TX is blocked when it is spent).
+30+ countries are covered across EU 868/433, US/AU/NZ 915, JP, KR, IN and RU.
 
-- **Frequency & power — soft warnings.** The Frequency, TX power and Country
-  rows turn **red** when the frequency falls outside every allowed sub-band, or
-  when your *effective* radiated power (TX power + antenna gain, as ERP/EIRP)
-  exceeds the sub-band limit. The footer spells out the active sub-band's limits.
-- **Antenna gain** — a dedicated field (editable only once a country is set)
-  feeds the ERP/EIRP calculation so the power check reflects your real antenna.
-- **Duty cycle — hard enforced.** A rolling 1-hour airtime budget is tracked per
-  sub-band (Semtech time-on-air formula). When it is spent, transmits are
-  **blocked** until airtime frees up. The Duty cycle row shows
-  `used% (used s / budget s)` and `BLOCKED` when capped.
-
-> Guidance helper, **not legal advice** — you remain responsible for operating
+> Guidance helper, **not legal advice**. You remain responsible for operating
 > within your local regulations.
 
-### EU 863–870 MHz sub-bands (ERP)
-
-The Netherlands and 18 other EU/EU-aligned countries use the full ETSI
-EN 300 220 sub-band plan:
-
-| Band | Range (MHz) | Max power | Duty cycle |
-|---|---|---|---|
-| g | 863.0–865.0 | 14 dBm ERP | 0.1% |
-| g1 | 865.0–868.0 | 14 dBm ERP | 1% |
-| g1' | 868.0–868.6 | 14 dBm ERP | 1% |
-| g2 | 868.7–869.2 | 14 dBm ERP | 0.1% |
-| **g3** | **869.4–869.65** | **27 dBm ERP** | **10%** |
-| g4 | 869.7–870.0 | 14 dBm ERP | 1% |
-
-> The default **869.618 MHz** sits in **g3** — the high-power, 10%-duty
-> "MeshCore" band. The SX1262's 22 dBm conducted ceiling stays comfortably
-> under the 27 dBm ERP limit.
-
-### Other regions
-
-| Region | Countries | Range (MHz) | Max power | Duty cycle |
-|---|---|---|---|---|
-| EU 433 | 433 SRD | 433.05–434.79 | 10 dBm ERP | 10% |
-| US 915 | US, CA, MX | 902–928 | 30 dBm EIRP | none |
-| AU/NZ 915 | AU, NZ | 915–928 | 30 dBm EIRP | none |
-| JP 920 | JP | 920.5–923.5 | 13 dBm EIRP | 10% + LBT |
-| KR 920 | KR | 920.0–923.0 | 14 dBm EIRP | 10% |
-| IN 865 | IN | 865.0–867.0 | 30 dBm EIRP | none |
-| RU 864/869 | RU | 864–865 / 868.7–869.2 | 14 dBm ERP | 0.1% |
-
-Full per-country table and the data schema live in
+The full per-country sub-band, power and duty-cycle tables live in
 [Settings / NVS → Regulatory compliance](docs/Settings-NVS.md#regulatory-compliance).
 
 ---
@@ -231,29 +157,10 @@ make build  DEVICE=tanmatsu       # produces build/tanmatsu/*.bin
 make upload DEVICE=tanmatsu       # badgelink appfs upload — keeps the launcher
 ```
 
-### Install with custom tile icon
-
-`make upload` puts the binary in AppFS; the launcher shows a generic
-"app" icon for AppFS entries. For the custom MeshCore tile icon (see
-`assets/`), drop the bundle on SD instead:
-
-```sh
-SLUG=nl.cj.meshcore
-BL=path/to/badgelink.sh
-
-$BL fs mkdir   /sd/apps/$SLUG
-$BL fs upload  /sd/apps/$SLUG/metadata.json  assets/metadata.json
-$BL fs upload  /sd/apps/$SLUG/icon32.png     assets/icon-32.png
-$BL fs upload  /sd/apps/$SLUG/meshcore.bin   build/tanmatsu/application.bin
-```
-
-The launcher's `create_list_of_apps_from_directory` reads `metadata.json`,
-loads the 32×32 PNG into the tile, and registers `meshcore.bin` as the
-executable. Same bundle is the artifact for a future appstore upload.
-
-Full toolchain setup, partition layout, launcher patches, and C6 radio
-firmware flashing are documented in
-[Build / Deploy](docs/Build-Deploy.md).
+`make upload` puts the binary in AppFS with a generic launcher icon. For the
+custom MeshCore tile icon, drop the `assets/` bundle on SD instead. That recipe,
+plus the full toolchain setup, partition layout, launcher patches and C6 radio
+firmware flashing, is in [Build / Deploy](docs/Build-Deploy.md).
 
 ---
 
