@@ -4,7 +4,7 @@ One-page discipline doc: the enforceable rules. For the design rationale and the
 "how to program in this project" model, see [`Blueprint.md`](Blueprint.md). For
 the descriptive module overview, FreeRTOS tasks, cold-start sequence and render
 split, see [`Overview.md`](Overview.md). AI contributors: the same model as a
-working handbook lives in [`.claude/`](../.claude/Guidelines.md).
+working handbook lives in [`.claude/`](../../.claude/Guidelines.md).
 
 ## Layers
 
@@ -201,7 +201,7 @@ Everything else with no caller is gone.
 
 - [`Overview.md`](Overview.md) — descriptive
   module overview, FreeRTOS tasks, cold-start sequence, render split
-- [`Settings-NVS.md`](Settings-NVS.md) — NVS key
+- [`Settings-NVS.md`](../reference/Settings-NVS.md) — NVS key
   scheme and migration history
 - Memory references (CLAUDE/CJ session-only):
   `tanmatsu-meshcore-workflow` (branch protection + PR flow),

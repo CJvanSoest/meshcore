@@ -4,13 +4,13 @@ Thanks for helping out with MeshCore for Tanmatsu. This is a community build,
 not the official MeshCore app; bug reports and feature ideas go to
 [the issue tracker](https://github.com/CJvanSoest/meshcore/issues).
 
-Before your first change, read [Blueprint.md](Blueprint.md) (the design
-rationale and how to program here) and [Architecture.md](Architecture.md) (the
+Before your first change, read [Blueprint.md](../architecture/Blueprint.md) (the design
+rationale and how to program here) and [Architecture.md](../architecture/Architecture.md) (the
 enforced rules). If you work with Claude or another AI pair programmer, the same
-model is written as a handbook in [`.claude/`](../.claude/Guidelines.md).
+model is written as a handbook in [`.claude/`](../../.claude/Guidelines.md).
 
 When your change is user visible, add a bullet to the `[Unreleased]` section of
-[CHANGELOG.md](CHANGELOG.md), following the fixed format and entry style in
+[CHANGELOG.md](../CHANGELOG.md), following the fixed format and entry style in
 [Releases.md](Releases.md).
 
 ## Build and test
@@ -34,7 +34,7 @@ live in `sdkconfigs/`.
 2. **`tests/lint/check-arch-rules.sh`, `tests/lint/check-structure.sh` and
    `tests/lint/check-test-wiring.sh` are green.** They enforce the
    include-direction and file-placement rules from
-   [Architecture.md](Architecture.md), and that every `tests/test_*.c` is wired
+   [Architecture.md](../architecture/Architecture.md), and that every `tests/test_*.c` is wired
    into the Makefile (CI runs them too).
 3. **`tests/lint/check-cppcheck.sh` is green.** Static analysis over first-party code
    (warning/performance/portability). Needs `cppcheck`; CI runs it too.
@@ -48,7 +48,7 @@ live in `sdkconfigs/`.
 ## Code rules
 
 These keep the codebase reasoned-about rather than just compiling. Full detail
-in [Architecture.md](Architecture.md) and [CLAUDE.md](../CLAUDE.md).
+in [Architecture.md](../architecture/Architecture.md) and [CLAUDE.md](../../CLAUDE.md).
 
 - **Respect the layers.** Higher layers include lower, never the reverse.
   `render_*.c` does not speak the wire protocol. The component `REQUIRES`
@@ -76,4 +76,4 @@ in [Architecture.md](Architecture.md) and [CLAUDE.md](../CLAUDE.md).
 ## License
 
 By contributing you agree your work is released under the project's MIT
-license (see [LICENSE](LICENSE)).
+license (see [LICENSE](../../LICENSE)).

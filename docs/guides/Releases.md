@@ -2,7 +2,7 @@
 
 The fixed format for every release of MeshCore for Tanmatsu, so release entries
 and notes always read the same way. This is the single source for how a release
-looks; [CHANGELOG.md](CHANGELOG.md) is where the entries live. Follow this
+looks; [CHANGELOG.md](../CHANGELOG.md) is where the entries live. Follow this
 exactly rather than inventing per release wording.
 
 ## Versioning
@@ -96,6 +96,6 @@ and nothing differently worded.
 
 ## See also
 
-- [CHANGELOG.md](CHANGELOG.md) — the entries themselves
-- [Blueprint.md](Blueprint.md) — how to program in this project
+- [CHANGELOG.md](../CHANGELOG.md) — the entries themselves
+- [Blueprint.md](../architecture/Blueprint.md) — how to program in this project
 - [CONTRIBUTING.md](CONTRIBUTING.md) — the contributor checklist

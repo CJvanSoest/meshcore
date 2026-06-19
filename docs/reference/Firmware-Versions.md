@@ -90,7 +90,7 @@ behavioural diff vs. upstream v0.1.6 is the WiFi auto-connect on boot.
 Not a Nicolai fork — entirely ours. Consumes upstream
 `nicolaielectronics/tanmatsu-lora ^0.3.0` directly from the IDF
 component registry. Current release: **v2.2.0** (2026-06-04) — see the
-[docs index](README.md) for the v2.2.0 highlights.
+[docs index](../README.md) for the v2.2.0 highlights.
 
 ## Recovery vs. OTA — why "Tools → Firmware update" is required after recovery
 

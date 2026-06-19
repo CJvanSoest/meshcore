@@ -3,7 +3,7 @@
 Per-component map for an AI contributor: what each component owns, what it may
 depend on, the key files, and the traps specific to it. This is the "when I
 change X, where do I look and what must I not break" reference. The authority on
-the layer rules is [docs/Architecture.md](../docs/Architecture.md); this file is
+the layer rules is [docs/architecture/Architecture.md](../docs/architecture/Architecture.md); this file is
 the practical index. See [Data-Flows.md](Data-Flows.md) for how they talk at
 runtime.
 

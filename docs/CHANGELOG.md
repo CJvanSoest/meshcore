@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/). The exact
 release format, entry style and the steps for cutting a release are fixed in
-[Releases.md](Releases.md); follow it rather than inventing per release wording.
+[Releases.md](guides/Releases.md); follow it rather than inventing per release wording.
 
 Sections per release:
 - **Added** — new features
@@ -69,7 +69,7 @@ of merged PR titles since the previous tag.
   `nodes_mark_dirty` / `nodes_dirty`, `save_wifi`, the unused
   `nvs_{load,save}_{u16,u32,i32}` scalar wrappers,
   `http_server_is_running`, `map_tile_to_latlon`, and the `icon_placeholder`
-  home tile. See the "Unused code" section in `docs/Architecture.md`.
+  home tile. See the "Unused code" section in `docs/architecture/Architecture.md`.
 
 ## [2.5.0] - 2026-06-18
 

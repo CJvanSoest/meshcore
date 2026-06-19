@@ -160,5 +160,5 @@ upstream licence in lockstep with any clip rotation. Asking you to
 pick your own keeps that responsibility where the law puts it.
 
 ## Related
-- [Settings / NVS](Settings-NVS.md) — `snd.vol` / `snd.dm` / `snd.ch` / `snd.err` / `snd.boot` keys
-- [SD card layout](SD-Card-Layout.md) — `/sd/meshcore/` directory structure
+- [Settings / NVS](../reference/Settings-NVS.md) — `snd.vol` / `snd.dm` / `snd.ch` / `snd.err` / `snd.boot` keys
+- [SD card layout](../reference/SD-Card-Layout.md) — `/sd/meshcore/` directory structure

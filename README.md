@@ -16,7 +16,7 @@ over LoRa.
   <img src="assets/screenshots/screen-channel.svg" width="400" alt="Channel">
 </p>
 
-_All views: [screenshots](docs/Screenshots.md)._
+_All views: [screenshots](docs/features/Screenshots.md)._
 
 ## Features
 
@@ -50,23 +50,23 @@ Everything beyond this page lives in [`docs/`](docs/README.md).
 
 | Page | About |
 |---|---|
-| [Blueprint](docs/Blueprint.md) | Design rationale and how to program in this project |
-| [Architecture](docs/Architecture.md) | The enforced layers, forbidden includes, wire boundary |
-| [Overview](docs/Overview.md) | The `mc_*` components and how they interact |
-| [Protocol](docs/MeshCore-Protocol.md) | Packet types, encryption, ACK |
-| [UI / UX](docs/UI-UX.md) | Views, key bindings, edit-mode state machine |
-| [Settings / NVS](docs/Settings-NVS.md) | Persistent keys, defaults, regulatory tables |
-| [GPS sources](docs/GPS-Sources.md) | The five input paths and how to wire them |
-| [Maps](docs/Maps.md) · [Sounds](docs/Sounds.md) · [SD layout](docs/SD-Card-Layout.md) | Feature detail |
-| [C6 radio](docs/C6-Radio.md) · [Build / Deploy](docs/Build-Deploy.md) | Hardware and toolchain |
+| [Blueprint](docs/architecture/Blueprint.md) | Design rationale and how to program in this project |
+| [Architecture](docs/architecture/Architecture.md) | The enforced layers, forbidden includes, wire boundary |
+| [Overview](docs/architecture/Overview.md) | The `mc_*` components and how they interact |
+| [Protocol](docs/reference/MeshCore-Protocol.md) | Packet types, encryption, ACK |
+| [UI / UX](docs/features/UI-UX.md) | Views, key bindings, edit-mode state machine |
+| [Settings / NVS](docs/reference/Settings-NVS.md) | Persistent keys, defaults, regulatory tables |
+| [GPS sources](docs/features/GPS-Sources.md) | The five input paths and how to wire them |
+| [Maps](docs/features/Maps.md) · [Sounds](docs/features/Sounds.md) · [SD layout](docs/reference/SD-Card-Layout.md) | Feature detail |
+| [C6 radio](docs/reference/C6-Radio.md) · [Build / Deploy](docs/guides/Build-Deploy.md) | Hardware and toolchain |
 
 ## Contributing
 
 The app is split into ESP-IDF components with a compiler enforced dependency
 graph; pure logic is host tested off device. Start with
-[docs/Blueprint.md](docs/Blueprint.md) and the
-[contributor checklist](docs/CONTRIBUTING.md). AI pair programmers: the same
-model is in [`.claude/`](.claude/). Issues and ideas go to
+[docs/architecture/Blueprint.md](docs/architecture/Blueprint.md) and the
+[contributor checklist](docs/guides/CONTRIBUTING.md). AI pair programmers: the same
+model is in [`.claude/`](.claude). Issues and ideas go to
 [the tracker](https://github.com/CJvanSoest/meshcore/issues). This is a
 community build, not the official MeshCore app.
 
