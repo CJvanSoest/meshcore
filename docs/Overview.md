@@ -96,7 +96,7 @@ groups.
 4. Boot DIAG screen begins drawing
 5. WiFi stack init (brings up the P4↔C6 link; it does **not** connect or scan)
 6. Time comes from the C6 RTC (`bsp_rtc_update_time`); NVS time restore as
-   fallback. There is no SNTP path (the old `identity_sntp_sync_cb` is dead).
+   fallback. There is no in-app SNTP path; time comes from the C6 RTC.
 7. Owner / advert / region / contacts load from NVS
 8. `history_init(node_prv_key)` → mounts SD, derives AES-CBC key from identity
 9. `lora_init(16)` → talks to the C6

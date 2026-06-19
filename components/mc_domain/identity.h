@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 CJ van Soest
 // SPDX-License-Identifier: MIT
+// SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 
 #pragma once
 
@@ -18,12 +19,6 @@ bool identity_sntp_synced(void);
 // Generate-or-restore the keypair. Run once at boot before any code that
 // signs or decrypts messages.
 void identity_init(void);
-
-// SNTP sync callback — call from your esp_sntp_set_time_sync_notification_cb
-// hook to mark identity_sntp_synced() = true and persist the last-known time
-// to NVS for offline-boot restore.
-struct timeval;
-void identity_sntp_sync_cb(struct timeval *tv);
 
 // Mark the system clock as authoritative and persist the current epoch to
 // NVS as last-known-good. Call after a successful bsp_rtc_update_time()

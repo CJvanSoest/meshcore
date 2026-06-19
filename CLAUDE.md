@@ -69,8 +69,7 @@ esp32-p4-function-ev-board).
 
 - **Time comes from the C6 RTC, not SNTP.** `app_main` brings up the P4↔C6
   stack but does not connect WiFi or run SNTP; it reads the clock via
-  `bsp_rtc_update_time`. `identity_sntp_sync_cb` is a leftover from the old
-  SNTP path and is never registered.
+  `bsp_rtc_update_time`. There is no in-app SNTP path.
 - **The contacts table is protected by `node_mutex`**, not a contacts-specific
   mutex (`send_advert_direct` walks `contacts[]` under `node_mutex`). Hold the
   right lock when touching either table.

@@ -92,7 +92,7 @@ views (Settings → Nodes → DM → Channel) for keyboard power users.
 - **Live RSSI / SNR / noise floor** per heard node and as a glance line on
   both the home screen footer and the Settings drilldown bottom row
 - **Message LED + battery indicator** on every screen
-- **Real timestamps** via SNTP; last known time persisted to NVS
+- **Time from the C6 RTC** (synced by the launcher); last known time persisted to NVS
 
 For the full feature list, packet protocol, encryption details and key bindings,
 see the [docs](docs/README.md).
@@ -258,7 +258,7 @@ firmware flashing are documented in
 | Page | About |
 |---|---|
 | [Architecture](docs/Overview.md) | Modules under `main/` and how they interact |
-| [MeshCore protocol](docs/MeshCore-Protocol.md) | Packet types, ADVERT/DM/Channel/PATH, encryption, ACK, SNTP |
+| [MeshCore protocol](docs/MeshCore-Protocol.md) | Packet types, ADVERT/DM/Channel/PATH, encryption, ACK |
 | [UI / UX](docs/UI-UX.md) | Tabs, key bindings, edit-mode state machine, QR overlay |
 | [Settings / NVS](docs/Settings-NVS.md) | Persistent keys, defaults, ranges, presets |
 | [GPS sources](docs/GPS-Sources.md) | All 5 input paths, what's tested vs preview, how to wire OwnTracks / iOS Shortcuts / MeshMapper |

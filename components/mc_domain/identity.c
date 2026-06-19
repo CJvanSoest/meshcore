@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 CJ van Soest
 // SPDX-License-Identifier: MIT
+// SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 
 #include "identity.h"
 
@@ -10,7 +11,6 @@
 
 #include "esp_log.h"
 #include "esp_random.h"
-#include "esp_sntp.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -32,17 +32,6 @@ bool ed25519_tv1_sign_ok    = false;
 
 bool identity_is_ready(void)     { return s_ready;       }
 bool identity_sntp_synced(void)  { return s_sntp_synced; }
-
-void identity_sntp_sync_cb(struct timeval *tv) {
-    s_sntp_synced = true;
-    // Persist to NVS so the next boot without WiFi can restore a sane time.
-    nvs_handle_t h;
-    if (nvs_open("system", NVS_READWRITE, &h) == ESP_OK) {
-        nvs_set_i64(h, NVS_LAST_TIME, (int64_t)tv->tv_sec);
-        nvs_commit(h);
-        nvs_close(h);
-    }
-}
 
 void identity_mark_time_synced(void) {
     s_sntp_synced = true;
