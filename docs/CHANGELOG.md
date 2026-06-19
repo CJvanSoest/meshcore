@@ -19,6 +19,15 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+### Fixed
+- **DM and ACK decrypt under a 1-byte sender-hash collision.** A TXT_MSG
+  carries only a 1-byte sender hash; receive resolved it to the first
+  node whose pubkey started with that byte, so when two nodes collided the
+  wrong key ran the ECDH and decrypt failed (send was unaffected because it
+  uses the full contact pubkey). `rx_handle_dm` and `rx_handle_path` now try
+  every candidate whose pubkey byte matches and let the MAC/ACK decide, the
+  same way channel RX brute-forces keys. Collisions are ~1/256 per node pair.
+
 ### Added
 - `test_advert_sign` host test: locks the ADVERT signature layout (the
   `to_sign` byte range) with an offset check plus a golden signature, so a

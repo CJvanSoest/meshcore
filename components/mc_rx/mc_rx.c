@@ -44,17 +44,22 @@
 
 static const char *TAG = "mc_rx";
 
-// Locate a sender by 1-byte src_hash (truncated pubkey). Always searches
-// node_list first; if include_contacts is true and node_list misses, falls
-// back to the contacts[] table. out_name + out_role may be NULL when the
-// caller (PATH handler) only needs the pubkey.
-static bool find_sender_by_hash(uint8_t src_hash, bool include_contacts,
-                                uint8_t out_pub[32],
-                                char *out_name, size_t name_cap,
-                                meshcore_device_role_t *out_role) {
-    bool found = false;
-    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        for (int ni = 0; ni < MAX_NODES; ni++) {
+// Enumerate senders whose 1-byte src_hash (truncated pubkey) matches, one
+// candidate per call, so the caller can try each one's key and let the MAC
+// decide which sender is real. A 1-byte hash collides about 1/256 per node
+// pair, and trusting the first match silently failed DMs and ACKs from the
+// loser. *cursor starts at 0: node_list is scanned as 0..MAX_NODES-1 and, when
+// include_contacts is set, contacts[] as MAX_NODES.. . Fills out_pub (plus
+// optional name/role) for the match and advances *cursor past it. Returns
+// false once no further candidate matches.
+static bool find_next_sender_by_hash(uint8_t src_hash, bool include_contacts,
+                                     int *cursor, uint8_t out_pub[32],
+                                     char *out_name, size_t name_cap,
+                                     meshcore_device_role_t *out_role) {
+    if (*cursor < MAX_NODES &&
+        xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        while (*cursor < MAX_NODES) {
+            int ni = (*cursor)++;
             if (node_list[ni].active && node_list[ni].pub_key[0] == src_hash) {
                 memcpy(out_pub, node_list[ni].pub_key, 32);
                 if (out_name && name_cap > 0) {
@@ -62,14 +67,18 @@ static bool find_sender_by_hash(uint8_t src_hash, bool include_contacts,
                     out_name[name_cap - 1] = '\0';
                 }
                 if (out_role) *out_role = node_list[ni].role;
-                found = true;
-                break;
+                xSemaphoreGive(node_mutex);
+                return true;
             }
         }
         xSemaphoreGive(node_mutex);
+    } else if (*cursor < MAX_NODES) {
+        *cursor = MAX_NODES;  // could not lock; skip the node_list phase
     }
-    if (!found && include_contacts) {
-        for (int ci = 0; ci < contact_count; ci++) {
+
+    if (include_contacts) {
+        while (*cursor < MAX_NODES + contact_count) {
+            int ci = (*cursor)++ - MAX_NODES;
             if (contacts[ci].pub_key[0] == src_hash) {
                 memcpy(out_pub, contacts[ci].pub_key, 32);
                 if (out_name && name_cap > 0) {
@@ -77,12 +86,11 @@ static bool find_sender_by_hash(uint8_t src_hash, bool include_contacts,
                     out_name[name_cap - 1] = '\0';
                 }
                 if (out_role) *out_role = (meshcore_device_role_t)contacts[ci].role;
-                found = true;
-                break;
+                return true;
             }
         }
     }
-    return found;
+    return false;
 }
 
 // ── GRP_TXT decrypt (private helper used by lora_rx_task) ────────────────────
@@ -276,25 +284,37 @@ static void rx_handle_dm(const meshcore_message_t *msg) {
     uint8_t sender_pub[32] = {0};
     char    sender_name[MESHCORE_MAX_ADVERT_DATA_SIZE + 1] = {0};
     meshcore_device_role_t sender_role = MESHCORE_DEVICE_ROLE_CHAT_NODE;
-    if (!find_sender_by_hash(src_hash, false, sender_pub,
-                             sender_name, sizeof(sender_name), &sender_role)) {
-        // Sender pubkey unknown (e.g. missed advert after reboot). Can't
-        // decrypt without pubkey — surface the truncated hash and wait for
-        // the next advert.
-        char unknown_msg[48];
-        snprintf(unknown_msg, sizeof(unknown_msg),
-                 "[?%02X] DM received (sender unknown)", src_hash);
-        chat_add_message(unknown_msg, false);
-        return;
-    }
 
     uint8_t plaintext[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
     int     text_len  = 0;
     uint8_t good_secret[32];
-    if (!dm_decrypt(msg, sender_pub, plaintext, &text_len, good_secret)) {
-        ESP_LOGW(TAG, "DM HMAC mismatch from %02X — wrong key or unsupported variant", src_hash);
+
+    // The 1-byte src_hash only narrows the field; the per-message MAC is the
+    // real disambiguator. Try every node whose pubkey starts with src_hash and
+    // let mc_crypto_dm_decrypt decide, so a 1-byte hash collision no longer
+    // fails a valid DM (the loser of the collision used to be picked blindly).
+    // On success sender_pub/name/role hold the winning candidate.
+    bool any_candidate = false;
+    bool decrypted     = false;
+    int  cursor        = 0;
+    while (find_next_sender_by_hash(src_hash, false, &cursor, sender_pub,
+                                    sender_name, sizeof(sender_name), &sender_role)) {
+        any_candidate = true;
+        if (dm_decrypt(msg, sender_pub, plaintext, &text_len, good_secret)) {
+            decrypted = true;
+            break;
+        }
+    }
+    if (!decrypted) {
         char dbg[48];
-        snprintf(dbg, sizeof(dbg), "[?%02X] DM decrypt failed", src_hash);
+        if (!any_candidate) {
+            // No node whose hash matches (e.g. missed advert after reboot).
+            // Surface the truncated hash and wait for the next advert.
+            snprintf(dbg, sizeof(dbg), "[?%02X] DM received (sender unknown)", src_hash);
+        } else {
+            ESP_LOGW(TAG, "DM HMAC mismatch from %02X — no candidate key verified", src_hash);
+            snprintf(dbg, sizeof(dbg), "[?%02X] DM decrypt failed", src_hash);
+        }
         chat_add_message(dbg, false);
         return;
     }
@@ -344,38 +364,44 @@ static void rx_handle_path(const meshcore_message_t *msg) {
     uint8_t src_hash  = msg->payload[1];
     if (dest_hash != node_pub_key[0]) return;
 
-    uint8_t sender_pub[32] = {0};
-    if (!find_sender_by_hash(src_hash, true, sender_pub, NULL, 0, NULL)) return;
-
-    // Derive shared secret (only ed25519 conv variant; PATH never used the
-    // raw fallback in the original flow). Decrypt one or two AES blocks and
-    // see if inner[1] = ACK and inner[2..5] matches a recent own DM's CRC.
-    uint8_t secret[32];
-    ed25519_key_exchange(secret, sender_pub, node_prv_key);
-
     size_t ct_len = msg->payload_length - 4;
     if (ct_len > 32) ct_len = 32;
     ct_len = (ct_len / 16) * 16;
     if (ct_len < 16) return;
 
-    uint8_t inner[32]      = {0};
-    uint8_t ciphertext[32] = {0};
-    memcpy(ciphertext, &msg->payload[4], ct_len);
-    mbedtls_aes_context aes_ctx;
-    mbedtls_aes_init(&aes_ctx);
-    mbedtls_aes_setkey_dec(&aes_ctx, secret, 128);
-    for (size_t bi = 0; bi + 16 <= ct_len; bi += 16) {
-        mbedtls_aes_crypt_ecb(&aes_ctx, MBEDTLS_AES_DECRYPT,
-                              ciphertext + bi, inner + bi);
-    }
-    mbedtls_aes_free(&aes_ctx);
+    // src_hash is a 1-byte hint; a collision would derive the wrong shared
+    // secret. Try each candidate sender (nodes + contacts) and let the
+    // decrypted ACK marker decide, mirroring the DM-RX candidate loop. Derive
+    // the shared secret per candidate (ed25519 conv variant; PATH never used
+    // the raw fallback), decrypt one or two AES blocks and see if inner[1] =
+    // ACK and inner[2..5] matches a recent own DM's CRC.
+    uint8_t sender_pub[32] = {0};
+    int     cursor         = 0;
+    while (find_next_sender_by_hash(src_hash, true, &cursor, sender_pub, NULL, 0, NULL)) {
+        uint8_t secret[32];
+        ed25519_key_exchange(secret, sender_pub, node_prv_key);
 
-    // inner[0] = path_len_byte, inner[1] = payload type.
-    if (inner[1] != MESHCORE_PAYLOAD_TYPE_ACK) return;
-    uint8_t ack_crc[4] = { inner[2], inner[3], inner[4], inner[5] };
-    if (chat_mark_ack_by_crc(ack_crc)) {
-        ESP_LOGI(TAG, "ACK matched: %02X%02X%02X%02X from %02X",
-                 ack_crc[0], ack_crc[1], ack_crc[2], ack_crc[3], src_hash);
+        uint8_t inner[32]      = {0};
+        uint8_t ciphertext[32] = {0};
+        memcpy(ciphertext, &msg->payload[4], ct_len);
+        mbedtls_aes_context aes_ctx;
+        mbedtls_aes_init(&aes_ctx);
+        mbedtls_aes_setkey_dec(&aes_ctx, secret, 128);
+        for (size_t bi = 0; bi + 16 <= ct_len; bi += 16) {
+            mbedtls_aes_crypt_ecb(&aes_ctx, MBEDTLS_AES_DECRYPT,
+                                  ciphertext + bi, inner + bi);
+        }
+        mbedtls_aes_free(&aes_ctx);
+
+        // inner[0] = path_len_byte, inner[1] = payload type. A wrong key yields
+        // garbage that almost never reads as ACK, so try the next candidate.
+        if (inner[1] != MESHCORE_PAYLOAD_TYPE_ACK) continue;
+        uint8_t ack_crc[4] = { inner[2], inner[3], inner[4], inner[5] };
+        if (chat_mark_ack_by_crc(ack_crc)) {
+            ESP_LOGI(TAG, "ACK matched: %02X%02X%02X%02X from %02X",
+                     ack_crc[0], ack_crc[1], ack_crc[2], ack_crc[3], src_hash);
+        }
+        return;  // this candidate produced a valid ACK block; done
     }
 }
 
