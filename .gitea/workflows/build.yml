@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check architecture include rules
         run: tests/lint/check-arch-rules.sh
@@ -42,7 +42,7 @@ jobs:
     needs: host-tests
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Build inside the ESP-IDF image via docker rather than a job `container:`,
       # so actions/checkout runs on the runner and we use the real published tag
@@ -59,7 +59,7 @@ jobs:
               -DFAT=0'
 
       - name: Upload application.bin
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: meshcore-tanmatsu-${{ github.sha }}
           path: build/tanmatsu/application.bin
