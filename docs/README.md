@@ -1,4 +1,4 @@
-# MeshCore for Tanmatsu — Wiki
+# MeshCore for Tanmatsu — Documentation
 
 Reference documentation for developers, contributors and curious users.
 

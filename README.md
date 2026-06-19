@@ -95,7 +95,7 @@ views (Settings → Nodes → DM → Channel) for keyboard power users.
 - **Real timestamps** via SNTP; last known time persisted to NVS
 
 For the full feature list, packet protocol, encryption details and key bindings,
-see the [wiki](docs/README.md).
+see the [docs](docs/README.md).
 
 ---
 

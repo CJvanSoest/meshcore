@@ -266,7 +266,7 @@ The chat-view header shows the active channel name on the first line and
 `Region: <scope>` on the second (amber `(set in Settings)` placeholder if
 `region_scope` NVS is empty). On the wire region scope is encoded as
 `transport_codes` on `ROUTE_TYPE_TRANSPORT_FLOOD` packets (see the
-MeshCore-Protocol wiki page).
+MeshCore-Protocol page).
 
 ## Emoji picker (`emoji_picker_active`)
 
