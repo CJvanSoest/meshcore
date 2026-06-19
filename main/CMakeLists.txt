@@ -7,8 +7,6 @@ endif()
 idf_component_register(
 	SRCS
 		"main.c"
-		"radio.c"
-		"radio_system_protocol_client.c"
 		"input.c"
 		"render.c"
 		"render_settings.c"
@@ -26,12 +24,12 @@ idf_component_register(
 		"ble_companion.c"
 		"wifi_keepalive.c"
 		"http_server.c"
-		"sounds.c"
 	PRIV_REQUIRES
 		mc_common
 		mc_proto
 		mc_io
 		mc_domain
+		mc_radio
 		vendor
 		esp_lcd
 		esp_app_format
