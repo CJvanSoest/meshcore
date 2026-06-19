@@ -144,20 +144,6 @@ static void icon_about(int cx, int cy, int sz, pax_col_t col) {
     pax_draw_text(&fb, col, FONT, sz * 3 / 4, cx - (int)csz.x / 2, cy - sz * 3 / 8, "i");
 }
 
-static void icon_placeholder(int cx, int cy, int sz, pax_col_t col) {
-    // Hollow rounded-rect-ish — four corner lines, signalling "coming soon".
-    int h = sz / 2;
-    int q = sz / 4;
-    pax_simple_line(&fb, col, cx - h, cy - h, cx - q, cy - h);
-    pax_simple_line(&fb, col, cx + q, cy - h, cx + h, cy - h);
-    pax_simple_line(&fb, col, cx - h, cy + h, cx - q, cy + h);
-    pax_simple_line(&fb, col, cx + q, cy + h, cx + h, cy + h);
-    pax_simple_line(&fb, col, cx - h, cy - h, cx - h, cy - q);
-    pax_simple_line(&fb, col, cx - h, cy + q, cx - h, cy + h);
-    pax_simple_line(&fb, col, cx + h, cy - h, cx + h, cy - q);
-    pax_simple_line(&fb, col, cx + h, cy + q, cx + h, cy + h);
-}
-
 // ── Tile definitions ─────────────────────────────────────────────────────────
 typedef void (*home_icon_fn)(int cx, int cy, int sz, pax_col_t col);
 

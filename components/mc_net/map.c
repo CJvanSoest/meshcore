@@ -74,16 +74,6 @@ void map_latlon_to_tile(double lat_deg, double lon_deg, int zoom,
     if (py_in_tile) *py_in_tile = (int)((yf - yi) * MAP_TILE_PX);
 }
 
-void map_tile_to_latlon(int tile_x, int tile_y, int zoom,
-                        double *lat_deg, double *lon_deg) {
-    double n  = (double)(1 << zoom);
-    double lon = (double)tile_x / n * 360.0 - 180.0;
-    double yn  = M_PI * (1.0 - 2.0 * (double)tile_y / n);
-    double lat = atan(sinh(yn)) * 180.0 / M_PI;
-    if (lat_deg) *lat_deg = lat;
-    if (lon_deg) *lon_deg = lon;
-}
-
 int map_wrap_tile_x(int tile_x, int zoom) {
     int span = 1 << zoom;
     int r    = tile_x % span;

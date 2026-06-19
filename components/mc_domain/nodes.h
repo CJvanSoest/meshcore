@@ -74,8 +74,6 @@ void update_node(const meshcore_advert_t *advert, uint32_t now_ms,
 // from SD we also have last_seen_unix so cross-reboot ordering stays stable.
 void nodes_load_from_sd(void);   // call once at boot after SD mount; no-op if SD unavailable
 void nodes_save_to_sd(void);     // explicit save; usually triggered by the dirty-flag task
-void nodes_mark_dirty(void);     // signal that an update happened; periodic save will catch up
-bool nodes_dirty(void);          // for the save task
 // Spin up a low-priority FreeRTOS task that wakes every ~30 s and saves
-// when nodes_dirty() is set. Safe to call once after the SD is mounted.
+// when the internal dirty flag is set. Safe to call once after the SD is mounted.
 void nodes_start_save_task(void);

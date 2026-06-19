@@ -49,10 +49,6 @@ void map_latlon_to_tile(double lat_deg, double lon_deg, int zoom,
                         int *tile_x, int *tile_y,
                         int *px_in_tile, int *py_in_tile);
 
-// Inverse: tile (x, y) at given zoom → lat/lon of its north-west corner.
-void map_tile_to_latlon(int tile_x, int tile_y, int zoom,
-                        double *lat_deg, double *lon_deg);
-
 // Wraps `tile_x` modulo 2^zoom so panning across the antimeridian works.
 int map_wrap_tile_x(int tile_x, int zoom);
 

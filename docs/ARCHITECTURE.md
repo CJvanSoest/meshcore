@@ -165,6 +165,30 @@ longer. Three similar lines beat premature abstraction. If the words
 `network_layer.h`, `repository.h`, `service.h` come to mind, you're
 probably over-engineering for a ~50-file C app.
 
+## Unused code
+
+First-party code carries no dead weight: a function with no caller anywhere
+in `components/`, `main/`, or `tests/` is removed together with its
+declaration, not left "for later". `cppcheck --enable=unusedFunction`
+(run by `tests/lint/check-cppcheck.sh`) is the starting signal, but it is
+advisory only — it reports several live symbols as unused and must be
+cross-checked by grep before anything is deleted. Four categories it flags
+are deliberately kept:
+
+- **Vendored libraries** (`components/vendor/` — lodepng, qrcodegen,
+  ed25519). Complete third-party drops; unused entry points stay so the
+  files match upstream. See rule 1 in `CLAUDE.md`.
+- **The upstream protocol mirror** (`mc_proto/companion-radio-protocol/`).
+  Kept byte-for-byte in sync with upstream; not edited locally.
+- **`app_main`** — the ESP-IDF entry point, called by the framework, so it
+  has no in-tree caller.
+- **Function-pointer callbacks and test-only symbols.** The Settings UI
+  installs `save_*` handlers into a field-dispatch table by address
+  (`render_settings.c`), and helpers such as `region_effective_power_dbm`
+  are exercised only from `tests/`. cppcheck counts neither as a call.
+
+Everything else with no caller is gone.
+
 ## See also
 
 - [`Overview.md`](Overview.md) — descriptive

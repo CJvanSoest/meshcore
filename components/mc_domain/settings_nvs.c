@@ -505,18 +505,6 @@ void load_wifi(void) {
     ESP_LOGI(TAG, "WiFi creds loaded: ssid=\"%s\"", wifi_ssid);
 }
 
-void save_wifi(void) {
-    wifi_settings_t ws = {0};
-    strncpy(ws.ssid,     wifi_ssid,     sizeof(ws.ssid)     - 1);
-    strncpy(ws.password, wifi_password, sizeof(ws.password) - 1);
-    // Force WPA2-PSK regardless of what may have been there before -- open
-    // networks aren't useful for our HTTPS-only use case anyway.
-    ws.authmode = WIFI_AUTH_WPA2_PSK;
-    esp_err_t res = wifi_settings_set(0, &ws);
-    if (res != ESP_OK) ESP_LOGE(TAG, "wifi_settings_set rc=%d", res);
-    else               ESP_LOGI(TAG, "WiFi creds saved: ssid=\"%s\"", wifi_ssid);
-}
-
 // ── LoRa config ──────────────────────────────────────────────────────────────
 void load_lora_from_nvs(void) {
     lora_cfg.frequency                  = LORA_DEF_FREQ;

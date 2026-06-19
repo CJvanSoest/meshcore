@@ -17,10 +17,6 @@
 // WiFi state. Call once at boot, after wifi_connection_init_stack().
 void http_server_supervisor_start(void);
 
-// Returns true if the HTTP server is currently listening. Used by the
-// Settings UI to show endpoint URL only when reachable.
-bool http_server_is_running(void);
-
 // Wipe NVS cert + key, generate a fresh self-signed cert, restart the
 // server with it. Triggered from the Settings "Regen Cert" action row.
 // After this the iPhone profile install must be repeated.

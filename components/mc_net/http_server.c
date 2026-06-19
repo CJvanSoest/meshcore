@@ -30,8 +30,6 @@ static const char *TAG = "http-srv";
 
 static httpd_handle_t s_server = NULL;
 
-bool http_server_is_running(void) { return s_server != NULL; }
-
 // ── /test GET ─────────────────────────────────────────────────────────────
 // Echoes back the source IP + a small status string. Lets the user verify
 // the WiFi+HTTP path end-to-end with a single curl from the same network:

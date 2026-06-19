@@ -19,6 +19,13 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+### Removed
+- Dead first-party functions with no caller in the tree or tests:
+  `nodes_mark_dirty` / `nodes_dirty`, `save_wifi`, the unused
+  `nvs_{load,save}_{u16,u32,i32}` scalar wrappers,
+  `http_server_is_running`, `map_tile_to_latlon`, and the `icon_placeholder`
+  home tile. See the "Unused code" section in `docs/ARCHITECTURE.md`.
+
 ## [2.5.0] - 2026-06-18
 
 ### Added

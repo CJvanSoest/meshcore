@@ -61,9 +61,6 @@ void nodes_init(void) {
     if (node_mutex == NULL) node_mutex = xSemaphoreCreateMutex();
 }
 
-void nodes_mark_dirty(void) { s_dirty = true; }
-bool nodes_dirty(void)      { return s_dirty; }
-
 const char *role_label(meshcore_device_role_t role) {
     switch (role) {
         case MESHCORE_DEVICE_ROLE_CHAT_NODE:   return "Chat";

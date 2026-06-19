@@ -19,10 +19,7 @@ static const char *TAG = "nvs_helpers";
     return true
 
 bool nvs_load_u8 (const char *ns, const char *key, uint8_t  *out) { LOAD_SCALAR(uint8_t,  nvs_get_u8 ); }
-bool nvs_load_u16(const char *ns, const char *key, uint16_t *out) { LOAD_SCALAR(uint16_t, nvs_get_u16); }
-bool nvs_load_u32(const char *ns, const char *key, uint32_t *out) { LOAD_SCALAR(uint32_t, nvs_get_u32); }
 bool nvs_load_i8 (const char *ns, const char *key, int8_t   *out) { LOAD_SCALAR(int8_t,   nvs_get_i8 ); }
-bool nvs_load_i32(const char *ns, const char *key, int32_t  *out) { LOAD_SCALAR(int32_t,  nvs_get_i32); }
 
 #undef LOAD_SCALAR
 
@@ -37,9 +34,6 @@ bool nvs_load_i32(const char *ns, const char *key, int32_t  *out) { LOAD_SCALAR(
     return r == ESP_OK
 
 bool nvs_save_u8 (const char *ns, const char *key, uint8_t  val) { SAVE_SCALAR(nvs_set_u8 ); }
-bool nvs_save_u16(const char *ns, const char *key, uint16_t val) { SAVE_SCALAR(nvs_set_u16); }
-bool nvs_save_u32(const char *ns, const char *key, uint32_t val) { SAVE_SCALAR(nvs_set_u32); }
 bool nvs_save_i8 (const char *ns, const char *key, int8_t   val) { SAVE_SCALAR(nvs_set_i8 ); }
-bool nvs_save_i32(const char *ns, const char *key, int32_t  val) { SAVE_SCALAR(nvs_set_i32); }
 
 #undef SAVE_SCALAR

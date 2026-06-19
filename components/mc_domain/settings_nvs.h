@@ -208,11 +208,9 @@ void save_ble_gps_pref(void);
 void load_advert_loc_policy(void);
 void save_advert_loc_policy(void);
 
-// Load/save WiFi creds. load_wifi pulls from the wifi-manager's NVS slot 0
-// into wifi_ssid / wifi_password. save_wifi pushes the in-RAM strings back
-// into the wifi-manager slot so wifi_connect_try_all() picks them up.
+// Load WiFi creds: pulls from the wifi-manager's NVS slot 0 into
+// wifi_ssid / wifi_password so wifi_connect_try_all() can use them.
 void load_wifi(void);
-void save_wifi(void);
 
 // Pull http_api_key from NVS; if missing/empty, generate a fresh one and
 // persist it. Idempotent: safe to call multiple times.
