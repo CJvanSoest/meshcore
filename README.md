@@ -304,6 +304,9 @@ implementation, and UI development.
 | Component | Author | License |
 |---|---|---|
 | `qrcodegen.{c,h}` | Project Nayuki | MIT |
+| `lodepng.{c,h}` | Lode Vandevenne | zlib |
 | `ed25519.{c,h}` | NaCl/SUPERCOP ref10 (D.J. Bernstein et al.) + ESP32 adaptation | Public domain + MIT |
+| `emoji_bitmaps.c` (Twemoji subset) | Twitter / jdecked | CC-BY 4.0 |
 | `meshcore/` | Scott Powell / rippleradios.com, Nicolai Electronics | MIT |
 | Badge BSP & template | Nicolai Electronics | MIT / CC0 |
+| pax-gfx | robotman2412 / Badge.Team | MIT |
