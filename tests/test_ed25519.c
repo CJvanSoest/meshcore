@@ -3,10 +3,14 @@
 //
 // Host-side RFC 8032 self-test for our Ed25519 implementation.
 //
-// Links against components/vendor/ed25519_mpi.c -- the SAME translation unit that ships in
-// the device firmware. Catches crypto regressions before merge so a broken
-// build can never reach the release pipeline. Runs under Gitea Actions
-// host-tests job; mirrors the device-side gate in identity_init().
+// Links against components/vendor/ed25519_mpi.c, which is the SAME translation
+// unit that ships in the device firmware: ed25519_sign and
+// ed25519_create_keypair are defined ONLY there, so mc_rx advert signing binds
+// to exactly this code. (ed25519.c is a separate TU that ships too but provides
+// only X25519 ECDH, exercised by test_mc_crypto_dm.) Catches signer regressions
+// before merge so a broken build can never reach the release pipeline. Runs
+// under Gitea Actions host-tests job; mirrors the device-side gate in
+// identity_init().
 //
 // Build (see tests/Makefile):
 //     gcc test_ed25519.c ../components/vendor/ed25519_mpi.c -lmbedcrypto -o test_ed25519

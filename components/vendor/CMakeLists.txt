@@ -5,6 +5,11 @@ idf_component_register(
     SRCS
         "lodepng.c"
         "qrcodegen.c"
+        # ed25519 is split by symbol, not by "main vs variant". ed25519.c
+        # provides only X25519 ECDH (ed25519_key_exchange*, pub_to_x25519);
+        # the signer (ed25519_sign, ed25519_create_keypair) lives ONLY in
+        # ed25519_mpi.c. Both ship. Do not delete ed25519_mpi.c as "unused":
+        # mc_rx advert signing and the identity boot self-test link to it.
         "ed25519.c"
         "ed25519_mpi.c"
         "emoji_bitmaps.c"
