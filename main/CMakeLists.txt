@@ -7,13 +7,6 @@ endif()
 idf_component_register(
 	SRCS
 		"main.c"
-		"history.c"
-		"contacts.c"
-		"identity.c"
-		"settings_nvs.c"
-		"nodes.c"
-		"chat.c"
-		"channels.c"
 		"radio.c"
 		"radio_system_protocol_client.c"
 		"input.c"
@@ -38,6 +31,7 @@ idf_component_register(
 		mc_common
 		mc_proto
 		mc_io
+		mc_domain
 		vendor
 		esp_lcd
 		esp_app_format
