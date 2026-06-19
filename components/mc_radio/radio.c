@@ -19,6 +19,8 @@
 #include "meshcore/payload/advert.h"
 #include "meshcore/payload/grp_txt.h"
 
+#include "mc_crypto.h"
+
 #include "app_config.h"
 #include "chat.h"
 #include "channels.h"
@@ -376,33 +378,9 @@ static void send_advert_internal(bool direct_route, const uint8_t *dst_hash, uin
 }
 
 // ── GRP_TXT decrypt (private helper used by lora_rx_task) ────────────────────
+// Thin wrapper over the host-tested pure implementation in mc_crypto.
 static bool decrypt_grp_txt(meshcore_grp_txt_t *grp, const uint8_t *key) {
-    uint8_t mac[32];
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                    key, MESHCORE_CIPHER_KEY_SIZE,
-                    grp->data, grp->data_length,
-                    mac);
-    if (memcmp(mac, grp->mac, MESHCORE_CIPHER_MAC_SIZE) != 0) return false;
-
-    grp->decrypted.data_length = grp->data_length;
-    memcpy(grp->decrypted.data, grp->data, grp->data_length);
-    mbedtls_aes_context aes;
-    mbedtls_aes_init(&aes);
-    mbedtls_aes_setkey_dec(&aes, key, 128);
-    for (int i = 0; i < grp->decrypted.data_length / MESHCORE_CIPHER_BLOCK_SIZE; i++) {
-        mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_DECRYPT,
-                               &grp->decrypted.data[i * MESHCORE_CIPHER_BLOCK_SIZE],
-                               &grp->decrypted.data[i * MESHCORE_CIPHER_BLOCK_SIZE]);
-    }
-    mbedtls_aes_free(&aes);
-
-    // Parse: timestamp(4) | text_type(1) | text
-    if (grp->decrypted.data_length < 5) return false;
-    memcpy(&grp->decrypted.timestamp, grp->decrypted.data, 4);
-    grp->decrypted.text_type = grp->decrypted.data[4];
-    grp->decrypted.data[grp->decrypted.data_length - 1] = '\0';
-    grp->decrypted.text = (char *)&grp->decrypted.data[5];
-    return true;
+    return mc_crypto_grp_decrypt(grp, key);
 }
 
 // ── DM TX (TXT_MSG) ──────────────────────────────────────────────────────────
@@ -427,16 +405,7 @@ bool send_dm_message(const char *text, const uint8_t *target_pub, uint8_t ack_cr
     // to bind the ACK to this specific message. Mirror that here so the caller
     // can store it on the chat_msg and detect the matching PATH_RETURN later.
     if (ack_crc_out) {
-        uint8_t sha_out[32];
-        mbedtls_sha256_context sha_ctx;
-        mbedtls_sha256_init(&sha_ctx);
-        mbedtls_sha256_starts(&sha_ctx, 0);
-        mbedtls_sha256_update(&sha_ctx, plain, 5);
-        mbedtls_sha256_update(&sha_ctx, (const uint8_t*)text, text_len);
-        mbedtls_sha256_update(&sha_ctx, node_pub_key, MESHCORE_PUB_KEY_SIZE);
-        mbedtls_sha256_finish(&sha_ctx, sha_out);
-        mbedtls_sha256_free(&sha_ctx);
-        memcpy(ack_crc_out, sha_out, 4);
+        mc_crypto_ack_crc(plain, text, text_len, node_pub_key, ack_crc_out);
     }
 
     uint8_t cipher[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
@@ -521,20 +490,8 @@ bool send_chat_message(const char *text) {
     uint8_t        ch_hash   = channels[ch_idx].hash;
 
     uint8_t cipher[MESHCORE_MAX_PAYLOAD_SIZE] = {0};
-    mbedtls_aes_context aes;
-    mbedtls_aes_init(&aes);
-    mbedtls_aes_setkey_enc(&aes, ch_secret, 128);
-    for (size_t i = 0; i < padded / MESHCORE_CIPHER_BLOCK_SIZE; i++) {
-        mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT,
-                               &plain[i * MESHCORE_CIPHER_BLOCK_SIZE],
-                               &cipher[i * MESHCORE_CIPHER_BLOCK_SIZE]);
-    }
-    mbedtls_aes_free(&aes);
-
     uint8_t mac[32];
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                    ch_secret, MESHCORE_CIPHER_KEY_SIZE,
-                    cipher, (uint16_t)padded, mac);
+    mc_crypto_grp_encrypt(ch_secret, plain, padded, cipher, mac);
 
     meshcore_grp_txt_t grp = {0};
     grp.channel_hash = ch_hash;
@@ -774,17 +731,8 @@ static void dm_send_path_return(const meshcore_message_t *msg, uint8_t src_hash,
     (void)text_len;  // dm_text already carries the NUL boundary via plaintext[5+text_len-1]=0
 
     // 1. ACK CRC = SHA256(timestamp+flags | text | sender_pub)[0..3]
-    uint8_t sha_out[32];
-    {
-        mbedtls_sha256_context sha_ctx;
-        mbedtls_sha256_init(&sha_ctx);
-        mbedtls_sha256_starts(&sha_ctx, 0);
-        mbedtls_sha256_update(&sha_ctx, plaintext, 5);
-        mbedtls_sha256_update(&sha_ctx, (const uint8_t *)dm_text, strlen(dm_text));
-        mbedtls_sha256_update(&sha_ctx, sender_pub, 32);
-        mbedtls_sha256_finish(&sha_ctx, sha_out);
-        mbedtls_sha256_free(&sha_ctx);
-    }
+    uint8_t sha_out[4];
+    mc_crypto_ack_crc(plaintext, dm_text, strlen(dm_text), sender_pub, sha_out);
 
     // 2. Build inner block. Reverse incoming hops so the receiver learns the
     // sequence of repeaters back to us. Cap so the inner buffer stays within

@@ -29,10 +29,11 @@ SRC_ED25519     = ../components/vendor/ed25519_mpi.c
 SRC_GPS_NMEA    = ../components/mc_proto/gps_parser.c
 SRC_COMP_PROTO  = ../components/mc_proto/companion-radio-protocol/mc_companion_command_parser.c \
                   ../components/mc_proto/companion-radio-protocol/mc_companion_serial_interface.c
+SRC_MC_CRYPTO   = ../components/mc_crypto/mc_crypto.c
 
 .PHONY: all test clean
 
-all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet
+all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto
 
 test_ed25519: test_ed25519.c $(SRC_ED25519)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
@@ -67,12 +68,19 @@ test_region_limits: test_region_limits.c ../components/mc_proto/region_limits.c
 test_meshcore_packet: test_meshcore_packet.c ../components/mc_proto/meshcore/packet.c
 	$(CC) $(CFLAGS) -I../components/mc_proto -Wno-type-limits -Wno-sign-compare -o $@ $^
 
-test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet
+# Channel crypto + ACK-binding test. Links the same mc_crypto.c shipped in the
+# firmware: GRP_TXT encrypt/decrypt round-trip, the channel-match property (a
+# wrong key fails the MAC), ciphertext-tamper rejection, and the ACK CRC.
+test_mc_crypto: test_mc_crypto.c $(SRC_MC_CRYPTO)
+	$(CC) $(CFLAGS) -I../components/mc_crypto -o $@ $^ $(LDLIBS)
+
+test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto
 	./test_ed25519
 	./test_gps_nmea
 	./test_companion_protocol
 	./test_region_limits
 	./test_meshcore_packet
+	./test_mc_crypto
 
 clean:
-	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto
