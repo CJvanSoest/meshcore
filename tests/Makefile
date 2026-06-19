@@ -61,7 +61,7 @@ test_region_limits: test_region_limits.c ../components/mc_proto/region_limits.c
 
 # MeshCore packet codec round-trip + error-path test. Guards the wire boundary
 # (header bit-packing, transport-code gating, path length-byte encoding).
-# packet.c is the upstream protocol mirror (see ARCHITECTURE.md "Wire-boundary
+# packet.c is the upstream protocol mirror (see docs/ARCHITECTURE.md "Wire-boundary
 # discipline") and must not diverge locally, so suppress two upstream warnings
 # here instead of editing the source: -Wtype-limits fires on the uint8_t size
 # bound check and -Wsign-compare on its int/size_t length math.

@@ -136,7 +136,7 @@ of merged PR titles since the previous tag.
   artifact (PR #1).
 - PR template (`.gitea/PULL_REQUEST_TEMPLATE.md`) — five sections:
   What / Why / Test plan / Breaking changes / Screenshots (PR #2).
-- `ARCHITECTURE.md` at repo root — six-layer model, three forbidden-include
+- `ARCHITECTURE.md` — six-layer model, three forbidden-include
   rules, wire-boundary discipline for upstream-compat (PR #3).
 - Upstream-tracking comment on `radio_system_protocol_client.h` —
   demonstrates the per-file boundary-tracking pattern.

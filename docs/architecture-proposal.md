@@ -5,7 +5,7 @@ deciding whether to take this direction.
 
 ## Why touch a working architecture
 
-The current layering (see [ARCHITECTURE.md](../ARCHITECTURE.md)) is sound for
+The current layering (see [ARCHITECTURE.md](ARCHITECTURE.md)) is sound for
 the domain, but it is enforced by **convention**: the six layers live in a doc
 and a grep lint, and every first-party file sits flat in `main/`. That has
 three concrete costs:

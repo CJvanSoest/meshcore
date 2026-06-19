@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 CJ van Soest
 # SPDX-License-Identifier: MIT
 #
-# Enforce the forbidden-include rules from ARCHITECTURE.md. These were always
+# Enforce the forbidden-include rules from docs/ARCHITECTURE.md. These were always
 # meant to migrate from a manual grep into CI ("grep-checkable, intended to
 # migrate into CI when the workflow grows a lint job"). This is that job.
 #

@@ -5,9 +5,10 @@ processor). Everything runs in one process; concurrency comes from a handful
 of FreeRTOS tasks plus the main event loop.
 
 > For the layer discipline (L0–L5), the forbidden-include rules and the
-> wire-boundary rules, see the root [ARCHITECTURE.md](../../ARCHITECTURE.md).
-> The pure protocol/parser core lives in the `mc_proto` component and the
-> third-party libraries in `vendor`; the rest is still the `main` component.
+> wire-boundary rules, see [ARCHITECTURE.md](../ARCHITECTURE.md).
+> First-party code is split into `mc_*` components under `components/`
+> (protocol core in `mc_proto`, channel crypto in `mc_crypto`, third-party in
+> `vendor`); `main` is just the entry point.
 > This page is the descriptive tour; ARCHITECTURE.md is the rulebook.
 
 ## Module overview
