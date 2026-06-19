@@ -49,7 +49,12 @@ jobs:
       # `v5.5.1` (the `-node` variant does not exist).
       - name: Build firmware
         run: |
-          docker run --rm -v "$PWD":/project -w /project espressif/idf:v5.5.1 \
+          # Use --volumes-from "$(hostname)" instead of -v "$PWD":/project: with
+          # act_runner's default bind_workdir:false the workspace is a Docker volume,
+          # so a host-path bind mount resolves to an empty dir on the outer daemon.
+          # Reusing the job container's volumes mounts the real checkout at
+          # $GITHUB_WORKSPACE inside the nested ESP-IDF container.
+          docker run --rm --volumes-from "$(hostname)" -w "$GITHUB_WORKSPACE" espressif/idf:v5.5.1 \
             bash -lc '. /opt/esp/idf/export.sh && idf.py \
               -B build/tanmatsu build \
               -DDEVICE=tanmatsu \
