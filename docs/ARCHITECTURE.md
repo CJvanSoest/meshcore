@@ -27,7 +27,7 @@ just by convention — a backward include fails to compile.
 ## Forbidden includes
 
 These rules are TRUE today. The point is to keep them true. They are
-grep-checkable and enforced in CI by `tests/check-arch-rules.sh`.
+grep-checkable and enforced in CI by `tests/lint/check-arch-rules.sh`.
 
 1. **`render_*.c` must not include `meshcore/*`** — UI doesn't speak the
    wire protocol; it reads and writes state through L1 (`chat`, `nodes`,
@@ -38,7 +38,7 @@ grep-checkable and enforced in CI by `tests/check-arch-rules.sh`.
 3. **L0–L3 files must not include `render*.h` or `input.h`** — data and
    protocol don't drive UI; UI subscribes to state.
 
-Manual check (output should be empty; `tests/check-arch-rules.sh` runs exactly
+Manual check (output should be empty; `tests/lint/check-arch-rules.sh` runs exactly
 these):
 
 ```sh
@@ -55,7 +55,7 @@ grep -rE '^#include "(render|input)\.h"' \
 
 ## Structure rules
 
-File placement matters as much as include direction. `tests/check-structure.sh`
+File placement matters as much as include direction. `tests/lint/check-structure.sh`
 enforces these in CI:
 
 1. **`main/` is a thin entry point** — only `main.c` plus the build files

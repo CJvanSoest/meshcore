@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 CJ van Soest
 # SPDX-License-Identifier: MIT
+# SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 #
 # Structural hygiene checks that keep the component layout from rotting back
 # into a fat main/ or a cluttered root. Complements check-arch-rules.sh (which
 # guards include direction); this one guards file placement. Documented in
 # docs/ARCHITECTURE.md "Structure rules". Run from anywhere:
-#   tests/check-structure.sh
+#   tests/lint/check-structure.sh
 # Exit 0 when clean, 1 on any violation.
 
 set -u
-cd "$(dirname "$0")/.." || exit 2
+cd "$(dirname "$0")/../.." || exit 2
 
 fail=0
 violation() { echo ">> VIOLATION: $1"; fail=1; }

@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 CJ van Soest
 // SPDX-License-Identifier: MIT
+// SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 //
 // Host-side test for the MeshCore packet codec in main/meshcore/packet.c.
 //

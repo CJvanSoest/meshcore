@@ -1,5 +1,9 @@
 // SPDX-FileCopyrightText: 2026 CJ van Soest
 // SPDX-License-Identifier: MIT
+// SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
+//
+// Ilias el Matani authored this file and claims no copyright or other rights
+// in it, contributing it freely for anyone to use and share.
 //
 // Pure MeshCore symmetric crypto, lifted out of radio.c so the security-
 // critical channel-decrypt, channel-encrypt and ACK-binding paths can be unit

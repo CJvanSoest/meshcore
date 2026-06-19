@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 CJ van Soest
 // SPDX-License-Identifier: MIT
+// SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 //
 // Host tests for the GRP_TXT and ADVERT payload codecs. packet.c (the outer
 // frame) already has test_meshcore_packet; these cover the two payload bodies

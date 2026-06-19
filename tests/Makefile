@@ -32,10 +32,13 @@ SRC_COMP_PROTO  = ../components/mc_proto/companion-radio-protocol/mc_companion_c
 SRC_MC_CRYPTO   = ../components/mc_crypto/mc_crypto.c
 SRC_PAYLOADS    = ../components/mc_proto/meshcore/payload/grp_txt.c \
                   ../components/mc_proto/meshcore/payload/advert.c
+SRC_INTEGRATION = ../components/mc_crypto/mc_crypto.c \
+                  ../components/mc_proto/meshcore/packet.c \
+                  ../components/mc_proto/meshcore/payload/grp_txt.c
 
 .PHONY: all test clean
 
-all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads
+all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message
 
 test_ed25519: test_ed25519.c $(SRC_ED25519)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
@@ -83,7 +86,23 @@ test_mc_crypto: test_mc_crypto.c $(SRC_MC_CRYPTO)
 test_meshcore_payloads: test_meshcore_payloads.c $(SRC_PAYLOADS)
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -I../components/mc_proto -Wno-type-limits -Wno-sign-compare -o $@ $^
 
-test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads
+# Deeper region_limits coverage: the country/sub-band lookup + power/duty helpers
+# that test_region_limits leaves thin (region_get_country, region_match_subband,
+# region_effective_power_dbm with the 2.15 dBi dipole offset, dc-budget).
+test_region_lookup: test_region_lookup.c ../components/mc_proto/region_limits.c
+	$(CC) $(CFLAGS) -o $@ $^
+
+# Extra gps_parser edge cases beyond test_gps_nmea (checksum rejects, void RMC,
+# hemisphere signs, boundary coordinates, unhandled sentences).
+test_gps_parser_edge: test_gps_parser_edge.c $(SRC_GPS_NMEA)
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+# Cross-component integration: a full GRP_TXT message lifecycle proving mc_crypto
+# and mc_proto compose (frame -> encrypt -> serialize -> deserialize -> decrypt).
+test_integration_message: test_integration_message.c $(SRC_INTEGRATION)
+	$(CC) $(CFLAGS) -I../components/mc_proto -I../components/mc_crypto -Wno-type-limits -Wno-sign-compare -o $@ $^ $(LDLIBS)
+
+test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message
 	./test_ed25519
 	./test_gps_nmea
 	./test_companion_protocol
@@ -91,6 +110,9 @@ test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test
 	./test_meshcore_packet
 	./test_mc_crypto
 	./test_meshcore_payloads
+	./test_region_lookup
+	./test_gps_parser_edge
+	./test_integration_message
 
 clean:
-	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message

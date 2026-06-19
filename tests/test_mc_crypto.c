@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 CJ van Soest
 // SPDX-License-Identifier: MIT
+// SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 //
 // Host tests for the security-critical MeshCore symmetric crypto extracted into
 // mc_crypto: channel (GRP_TXT) encrypt/decrypt, the channel-match property (a

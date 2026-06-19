@@ -7,10 +7,10 @@
 # migrate into CI when the workflow grows a lint job"). This is that job.
 #
 # Exit 0 when the layering holds, 1 on any violation (prints the offending
-# lines). Run from anywhere:  tests/check-arch-rules.sh
+# lines). Run from anywhere:  tests/lint/check-arch-rules.sh
 
 set -u
-cd "$(dirname "$0")/.." || exit 2
+cd "$(dirname "$0")/../.." || exit 2
 
 fail=0
 check() {

@@ -22,10 +22,10 @@ live in `sdkconfigs/`.
 1. **`cd tests && make test` is green.** Host tests link against the shipping
    translation units, so a crypto, parser, regulatory or packet-codec
    regression fails here.
-2. **`tests/check-arch-rules.sh` and `tests/check-structure.sh` are green.**
+2. **`tests/lint/check-arch-rules.sh` and `tests/lint/check-structure.sh` are green.**
    They enforce the include-direction and file-placement rules from
    [ARCHITECTURE.md](ARCHITECTURE.md) (CI runs them too).
-3. **`tests/check-cppcheck.sh` is green.** Static analysis over first-party code
+3. **`tests/lint/check-cppcheck.sh` is green.** Static analysis over first-party code
    (warning/performance/portability). Needs `cppcheck`; CI runs it too.
 4. **`make build DEVICE=tanmatsu` is green.**
 5. **`clang-format -i` on the files you touched** (`.clang-format` is the

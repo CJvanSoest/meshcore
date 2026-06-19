@@ -14,10 +14,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Check architecture include rules
-        run: tests/check-arch-rules.sh
+        run: tests/lint/check-arch-rules.sh
 
       - name: Check structure rules
-        run: tests/check-structure.sh
+        run: tests/lint/check-structure.sh
+
+      - name: Check test wiring
+        run: tests/lint/check-test-wiring.sh
 
       - name: Install build + analysis tooling
         run: |
@@ -26,7 +29,7 @@ jobs:
             build-essential libmbedtls-dev cppcheck
 
       - name: Static analysis (cppcheck, first-party)
-        run: tests/check-cppcheck.sh
+        run: tests/lint/check-cppcheck.sh
 
       - name: Build + run host tests
         working-directory: tests
