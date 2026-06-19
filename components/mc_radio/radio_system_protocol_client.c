@@ -5,6 +5,7 @@
 #include "radio_system_protocol_client.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 #include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -97,6 +98,7 @@ esp_err_t radio_system_protocol_get_information(radio_system_protocol_informatio
     }
     size_t  request_length = sizeof(radio_system_protocol_header_t) + sizeof(radio_system_protocol_information_t);
     uint8_t request[request_length];
+    memset(request, 0, request_length);  // only the header is filled; do not ship stack garbage as the body
     radio_system_protocol_header_t* header = (radio_system_protocol_header_t*)request;
     header->sequence_number                = radio_system_sequence_number;
     header->type                           = RADIO_SYSTEM_PROTOCOL_TYPE_GET_INFORMATION;

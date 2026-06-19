@@ -139,26 +139,37 @@ void update_node(const meshcore_advert_t *advert, uint32_t now_ms,
     // evicted before a freshly-heard live one. Fall back to last_seen_ms
     // when unix is zero (pre-SNTP-sync entries).
     if (slot < 0) {
-        int64_t oldest_unix = INT64_MAX;
-        uint32_t oldest_ms  = UINT32_MAX;
+        // Evict the least-recently-seen node. Prefer evicting an entry with a
+        // real (unix) timestamp; only fall back to a pre-sync entry
+        // (last_seen_unix == 0, ranked by boot-relative ms) when no unix-stamped
+        // node exists. Tracking the two clocks separately avoids the bug where
+        // one zero-unix node sets oldest_unix to 0 and then no later unix-stamped
+        // node can ever win the `u < oldest_unix` test.
+        int64_t  oldest_unix = INT64_MAX; int unix_slot = -1;
+        uint32_t oldest_ms   = UINT32_MAX; int ms_slot  = -1;
         for (int i = 0; i < MAX_NODES; i++) {
-            int64_t  u  = node_list[i].last_seen_unix;
-            uint32_t ms = node_list[i].last_seen_ms;
-            bool older = false;
-            if (u != 0 && oldest_unix != INT64_MAX) older = (u < oldest_unix);
-            else if (u != 0 && oldest_unix == INT64_MAX) older = true;
-            else if (u == 0) older = (ms < oldest_ms);
-            if (older) {
-                oldest_unix = u;
-                oldest_ms   = ms;
-                slot = i;
+            if (node_list[i].last_seen_unix != 0) {
+                if (node_list[i].last_seen_unix < oldest_unix) {
+                    oldest_unix = node_list[i].last_seen_unix;
+                    unix_slot   = i;
+                }
+            } else if (node_list[i].last_seen_ms < oldest_ms) {
+                oldest_ms = node_list[i].last_seen_ms;
+                ms_slot   = i;
             }
         }
+        slot = (unix_slot >= 0) ? unix_slot : ms_slot;
     }
 
     if (slot >= 0) {
         node_entry_t *n = &node_list[slot];
-        bool is_new = !n->active;
+        // is_new when this slot is being populated for a *different* identity
+        // than it currently holds: an empty slot, or one we just evicted. Only a
+        // genuine re-hit of the same pubkey is an update. Comparing pubkeys
+        // (not n->active) stops an evicted slot from inheriting the previous
+        // node's name, packet_count, position and signal stats.
+        bool is_new = memcmp(n->pub_key, advert->pub_key, MESHCORE_PUB_KEY_SIZE) != 0;
+        if (is_new) memset(n, 0, sizeof(*n));  // fresh identity takes over the slot
         n->active       = true;
         n->role         = advert->role;
         n->last_seen_ms = now_ms;

@@ -27,6 +27,28 @@ of merged PR titles since the previous tag.
   uses the full contact pubkey). `rx_handle_dm` and `rx_handle_path` now try
   every candidate whose pubkey byte matches and let the MAC/ACK decide, the
   same way channel RX brute-forces keys. Collisions are ~1/256 per node pair.
+- **Duty-cycle accounting data race.** The rolling-hour airtime buckets and
+  their cached sum were read-modified-written by several TX tasks (advert,
+  direct-advert, the RX-task ACK, UI sends) with no lock, despite a comment
+  claiming `rx_mutex` was held. A corrupted sum could let TX slip past the
+  regulatory budget. Now guarded by a dedicated `dc_mutex`.
+- **Node table eviction reused a slot as the wrong identity.** When the table
+  was full, the evicted slot kept the previous node's name, packet count,
+  position and signal stats while taking the new node's pubkey. A slot is now
+  treated as new whenever its pubkey differs from the advert, and reset.
+- **Node LRU eviction picked the wrong slot** once any pre-sync
+  (`last_seen_unix == 0`) node was scanned, because it poisoned the unix
+  comparison. The two clocks are now ranked in separate trackers.
+- **Contacts table touched without `node_mutex` on the RX task.** The sender
+  resolver read `contacts[]` unlocked, and `rx_handle_dm` wrote it via
+  `contact_ensure` / `contact_mark_unread` unlocked, racing UI-thread edits
+  that shift the array. All three now hold `node_mutex`.
+- **Settings keyboard navigation opened the wrong category.** The keyboard
+  Enter path used the visible-slot cursor as the real category index and
+  clamped with the real (not visible) count, diverging from the D-pad path;
+  it now translates through `settings_visible_category_real_idx`.
+- **System-protocol GET request shipped uninitialised stack bytes** to the C6
+  (only the header was filled). The request buffer is now zeroed.
 
 ### Added
 - `test_advert_sign` host test: locks the ADVERT signature layout (the

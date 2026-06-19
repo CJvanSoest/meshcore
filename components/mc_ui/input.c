@@ -966,7 +966,7 @@ static void key_settings(char c) {
     } else if ((c == 'a' || c == 'A') && settings_category_list_mode) {
         if (settings_category_cursor > 0) settings_category_cursor--;
     } else if ((c == 'd' || c == 'D') && settings_category_list_mode) {
-        if (settings_category_cursor < settings_category_count() - 1)
+        if (settings_category_cursor < settings_visible_category_count() - 1)
             settings_category_cursor++;
     } else if (c == '<' || c == ',') {
         if (edit_mode && !field_editing_text) field_adjust(selected, -1);
@@ -974,7 +974,13 @@ static void key_settings(char c) {
         if (edit_mode && !field_editing_text) field_adjust(selected, +1);
     } else if (c == '\r' || c == '\n') {
         if (settings_category_list_mode) {
-            settings_category_active    = settings_category_cursor;
+            // The grid cursor is in visible-slot space (Advert is hidden);
+            // translate to the real s_categories index, exactly like the D-pad
+            // RETURN path in nav_settings. Assigning the slot directly opened
+            // the wrong category for every slot at or after a hidden one.
+            int real = settings_visible_category_real_idx(settings_category_cursor);
+            if (real < 0) real = 0;
+            settings_category_active    = real;
             settings_category_list_mode = false;
             int first, last;
             settings_category_bounds(settings_category_active, &first, &last);
@@ -1124,9 +1130,9 @@ static void key_channel(char c) {
     if (active_channel_idx >= 0 && active_channel_idx < channel_count &&
         channels[active_channel_idx].active) {
         history_delete_channel(channels[active_channel_idx].secret);
+        ESP_LOGI(TAG, "Channel history cleared by user (R): %s",
+                 channels[active_channel_idx].name);
     }
-    ESP_LOGI(TAG, "Channel history cleared by user (R): %s",
-             channels[active_channel_idx].name);
 }
 
 void handle_key(char c) {

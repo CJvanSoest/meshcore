@@ -71,14 +71,19 @@ uint32_t last_advert_ms = 0;
 // ── Duty-cycle accounting (rolling 1-hour, 1-minute bucket granularity) ──────
 // 60 buckets of airtime-ms, indexed by wall-minute. Rotate on minute change.
 // `dc_total_ms` is the cached sum across all buckets so render can read it
-// without rescanning. Updated under `rx_mutex` (re-used to keep TX paths +
-// readers cheap). All TX paths feed `dc_record_tx(airtime_ms)`. The pre-TX
-// check `dc_budget_available()` blocks send when the configured country's
-// sub-band budget is exhausted; the budget is informational if country=="--".
+// without rescanning. The buckets + sum are mutated under `dc_mutex` because
+// several FreeRTOS tasks issue TX concurrently (the advert task, the direct-
+// advert task, a PATH_RETURN ACK from the RX task, and UI sends); without it
+// the read-modify-write of the rolling sum races and miscounts air time, which
+// can let TX slip past the regulatory duty-cycle budget. All TX paths feed
+// `dc_record_tx(airtime_ms)`. The pre-TX check `dc_budget_available()` blocks
+// send when the configured country's sub-band budget is exhausted; the budget
+// is informational if country=="--".
 static uint32_t dc_buckets[60]      = {0};
 static uint8_t  dc_head_min         = 0;
 static uint32_t dc_total_ms         = 0;
 static uint32_t dc_last_rotate_ms   = 0;
+static SemaphoreHandle_t dc_mutex   = NULL;
 volatile uint32_t dc_used_ms        = 0;   // mirror of dc_total_ms for render
 volatile uint32_t dc_budget_ms      = 0;   // from current sub-band, 0 = unlimited
 volatile bool     dc_last_tx_blocked = false;  // sticky flag, render clears via UI
@@ -136,25 +141,31 @@ static void dc_rotate_if_needed(uint32_t now_ms) {
 }
 
 static bool dc_budget_available(uint32_t need_ms) {
-    uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-    dc_rotate_if_needed(now_ms);
     const regulatory_subband_t *sb = active_subband();
     uint32_t budget = sb ? region_dc_budget_ms_per_hour(sb) : 0;
     dc_budget_ms = budget;
     // budget == 0 means either no sub-band match (country unset → don't enforce
     // anything) or 100% DC (no limit). Either way, allow.
     if (budget == 0 || budget >= 3600000u) return true;
-    return (dc_total_ms + need_ms) <= budget;
+    uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    uint32_t total;
+    if (dc_mutex) xSemaphoreTake(dc_mutex, portMAX_DELAY);
+    dc_rotate_if_needed(now_ms);
+    total = dc_total_ms;
+    if (dc_mutex) xSemaphoreGive(dc_mutex);
+    return (total + need_ms) <= budget;
 }
 
 static void dc_record_tx(uint32_t airtime_ms) {
     if (airtime_ms == 0) return;
     uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    if (dc_mutex) xSemaphoreTake(dc_mutex, portMAX_DELAY);
     dc_rotate_if_needed(now_ms);
     dc_buckets[dc_head_min] += airtime_ms;
     dc_total_ms             += airtime_ms;
     dc_used_ms               = dc_total_ms;
     dc_last_tx_blocked       = false;  // recovered — a TX got through
+    if (dc_mutex) xSemaphoreGive(dc_mutex);
 }
 
 // ── RX dedup (drop flood retransmits) ────────────────────────────────────────
@@ -293,6 +304,7 @@ static void lora_rx_task(void *arg) {
 
 void radio_start_tasks(void) {
     if (rx_mutex == NULL) rx_mutex = xSemaphoreCreateMutex();
+    if (dc_mutex == NULL) dc_mutex = xSemaphoreCreateMutex();
     xTaskCreate(lora_rx_task,     "lora_rx",     10240, NULL, 5, NULL);
     xTaskCreate(noise_floor_task, "noise_poll",   3072, NULL, 3, NULL);
 }

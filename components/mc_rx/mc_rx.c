@@ -56,24 +56,24 @@ static bool find_next_sender_by_hash(uint8_t src_hash, bool include_contacts,
                                      int *cursor, uint8_t out_pub[32],
                                      char *out_name, size_t name_cap,
                                      meshcore_device_role_t *out_role) {
-    if (*cursor < MAX_NODES &&
-        xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        while (*cursor < MAX_NODES) {
-            int ni = (*cursor)++;
-            if (node_list[ni].active && node_list[ni].pub_key[0] == src_hash) {
-                memcpy(out_pub, node_list[ni].pub_key, 32);
-                if (out_name && name_cap > 0) {
-                    strncpy(out_name, node_list[ni].name, name_cap - 1);
-                    out_name[name_cap - 1] = '\0';
-                }
-                if (out_role) *out_role = node_list[ni].role;
-                xSemaphoreGive(node_mutex);
-                return true;
+    // Hold node_mutex across BOTH phases: it guards node_list and contacts[],
+    // and a concurrent UI-thread contact edit shifts/zeroes contacts[] mid-scan.
+    // The lock is released before returning, so the caller's per-candidate
+    // ed25519 work runs outside it.
+    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(10)) != pdTRUE) return false;
+
+    while (*cursor < MAX_NODES) {
+        int ni = (*cursor)++;
+        if (node_list[ni].active && node_list[ni].pub_key[0] == src_hash) {
+            memcpy(out_pub, node_list[ni].pub_key, 32);
+            if (out_name && name_cap > 0) {
+                strncpy(out_name, node_list[ni].name, name_cap - 1);
+                out_name[name_cap - 1] = '\0';
             }
+            if (out_role) *out_role = node_list[ni].role;
+            xSemaphoreGive(node_mutex);
+            return true;
         }
-        xSemaphoreGive(node_mutex);
-    } else if (*cursor < MAX_NODES) {
-        *cursor = MAX_NODES;  // could not lock; skip the node_list phase
     }
 
     if (include_contacts) {
@@ -86,10 +86,12 @@ static bool find_next_sender_by_hash(uint8_t src_hash, bool include_contacts,
                     out_name[name_cap - 1] = '\0';
                 }
                 if (out_role) *out_role = (meshcore_device_role_t)contacts[ci].role;
+                xSemaphoreGive(node_mutex);
                 return true;
             }
         }
     }
+    xSemaphoreGive(node_mutex);
     return false;
 }
 
@@ -340,14 +342,22 @@ static void rx_handle_dm(const meshcore_message_t *msg) {
         uint8_t hops = (uint8_t)(msg->path_length / bph);
         chat_set_meta_dm(hops);
     }
-    contact_ensure(sender_pub, sender_name, (uint8_t)sender_role);
+    // contacts[] is guarded by node_mutex (the UI thread mutates it). These
+    // writes run on the RX task, so take the lock around them.
+    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        contact_ensure(sender_pub, sender_name, (uint8_t)sender_role);
+        xSemaphoreGive(node_mutex);
+    }
 
     bool viewing_sender = (current_view == VIEW_CHAT && !dm_inbox_mode &&
                            dm_target_set &&
                            memcmp(sender_pub, dm_target_pub, MESHCORE_PUB_KEY_SIZE) == 0);
     if (!viewing_sender) {
         led_dm_pending = true;
-        contact_mark_unread(sender_pub);
+        if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            contact_mark_unread(sender_pub);
+            xSemaphoreGive(node_mutex);
+        }
         update_notification_led();
         sounds_play_dm();
     }
