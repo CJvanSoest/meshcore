@@ -23,7 +23,7 @@ live in `sdkconfigs/`.
    translation units, so a crypto, parser, regulatory or packet-codec
    regression fails here.
 2. **`tests/check-arch-rules.sh` is green.** It enforces the layer rules from
-   [ARCHITECTURE.md](ARCHITECTURE.md) (CI runs it too).
+   [ARCHITECTURE.md](../ARCHITECTURE.md) (CI runs it too).
 3. **`tests/check-cppcheck.sh` is green.** Static analysis over first-party code
    (warning/performance/portability). Needs `cppcheck`; CI runs it too.
 4. **`make build DEVICE=tanmatsu` is green.**
@@ -36,7 +36,7 @@ live in `sdkconfigs/`.
 ## Code rules
 
 These keep the codebase reasoned-about rather than just compiling. Full detail
-in [ARCHITECTURE.md](ARCHITECTURE.md) and [CLAUDE.md](CLAUDE.md).
+in [ARCHITECTURE.md](../ARCHITECTURE.md) and [CLAUDE.md](../CLAUDE.md).
 
 - **Respect the layers.** Higher layers include lower, never the reverse.
   `render_*.c` does not speak the wire protocol. The component `REQUIRES`
