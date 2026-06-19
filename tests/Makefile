@@ -16,7 +16,7 @@
 # best-effort -- CI is the source of truth.
 
 CC        ?= gcc
-CFLAGS    += -std=c11 -Wall -Wextra -Werror -Wno-deprecated-declarations -O1 -I../main -I../components/mc_proto -I../components/vendor
+CFLAGS    += -std=c11 -Wall -Wextra -Werror -Wno-deprecated-declarations -O1 -I../components/mc_proto -I../components/vendor
 LDLIBS    += -lmbedcrypto
 # -Wno-deprecated-declarations: mbedtls 2.28 (Ubuntu 22.04 / Gitea runner)
 # marks mbedtls_sha512_{starts,update,finish} as deprecated in favour of the

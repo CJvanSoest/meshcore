@@ -23,7 +23,7 @@ check() {
 
 # 1. UI must not speak the wire protocol.
 check "render_*.c includes meshcore/" \
-    '^#include "meshcore/' main/render_*.c
+    '^#include "meshcore/' components/mc_ui/render_*.c
 
 # 2. The protocol mirror stays pure (no UI, BSP or L1 data headers).
 #    meshcore/ now lives in the mc_proto component.
@@ -34,9 +34,12 @@ check "meshcore/ includes UI/BSP/L1 headers" \
 # 3. Data and protocol layers do not drive UI.
 check "L0-L3 includes render.h or input.h" \
     '^#include "(render|input)\.h"' \
-    components/mc_proto/meshcore/ components/mc_proto/region_limits.c main/radio*.c main/settings_nvs.c \
-    main/identity.c main/history.c main/chat.c main/nodes.c main/contacts.c \
-    main/channels.c
+    components/mc_proto/meshcore/ components/mc_proto/region_limits.c \
+    components/mc_radio/radio*.c \
+    components/mc_domain/settings_nvs.c components/mc_domain/identity.c \
+    components/mc_domain/history.c components/mc_domain/chat.c \
+    components/mc_domain/nodes.c components/mc_domain/contacts.c \
+    components/mc_domain/channels.c
 
 if [ "$fail" -eq 0 ]; then
     echo "arch-rules: OK (no forbidden includes)"
