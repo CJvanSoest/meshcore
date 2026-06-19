@@ -17,19 +17,14 @@ idf_component_register(
 		"render_home.c"
 		"render_about.c"
 		"render_map.c"
-		"map.c"
-		"gps_task.c"
 		"emoji.c"
-		"companion_transport.c"
-		"ble_companion.c"
-		"wifi_keepalive.c"
-		"http_server.c"
 	PRIV_REQUIRES
 		mc_common
 		mc_proto
 		mc_io
 		mc_domain
 		mc_radio
+		mc_net
 		vendor
 		esp_lcd
 		esp_app_format
