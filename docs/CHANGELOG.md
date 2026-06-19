@@ -21,6 +21,13 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+### Changed
+- **The screensaver also blanks the keyboard backlight**, and now wakes on any
+  key instead of only F3. A key press while blanked restores the screen and
+  keyboard backlight and is itself ignored (it triggers no function); the RGB
+  notification LED keeps blinking throughout, so in-pocket alerts still show.
+  (issue #7)
+
 ### Fixed
 - **DM and ACK decrypt under a 1-byte sender-hash collision.** A TXT_MSG
   carries only a 1-byte sender hash; receive resolved it to the first
