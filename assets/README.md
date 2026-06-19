@@ -19,7 +19,7 @@ follows launcher convention.
 
 ## Install flow that uses the icon
 
-`badgelink appfs upload` (our `upload.sh`) uses only the AppFS metadata (slug,
+`badgelink appfs upload` (our `scripts/upload.sh`) uses only the AppFS metadata (slug,
 title, version, size) — the launcher falls back to `ICON_APP` for those apps.
 
 For the custom icon to show on the launcher tile:

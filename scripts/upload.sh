@@ -3,7 +3,7 @@
 #
 # Set BADGELINK_DIR to your local badgelink/tools path before running:
 #   export BADGELINK_DIR=/path/to/badgelink/tools
-#   ./upload.sh
+#   ./scripts/upload.sh
 
 set -e
 
@@ -14,7 +14,7 @@ BIN="build/tanmatsu/application.bin"
 
 if [ -z "$BADGELINK_DIR" ]; then
     echo "Error: BADGELINK_DIR is not set."
-    echo "Usage: BADGELINK_DIR=/path/to/badgelink/tools ./upload.sh"
+    echo "Usage: BADGELINK_DIR=/path/to/badgelink/tools ./scripts/upload.sh"
     exit 1
 fi
 
