@@ -7,7 +7,7 @@ view, and boot lands on a tile-grid home screen instead of Settings.
 
 ## Layout constants
 
-Defined in `main/render.h`:
+Defined in `components/mc_ui/render.h`:
 
 | Constant | Value | Purpose |
 |---|---|---|
@@ -282,6 +282,6 @@ top of the chat input.
 
 The MVP set is 8 codepoints in U+1F60x (`grin`, `smile`, `wink`, `blush`,
 `cool`, `tongue`, `cry`, `angry`). Bitmaps are 32×32 ARGB embedded as
-const arrays in `main/emoji_bitmaps.c` (CC-BY 4.0 Twemoji). The chat
+const arrays in `components/vendor/emoji_bitmaps.c` (CC-BY 4.0 Twemoji). The chat
 input bar renders through `emoji_draw_text` so staged emoji are visible
 inline before Enter sends the message.

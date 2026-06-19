@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 //
-// Host-side test for the MeshCore packet codec in main/meshcore/packet.c.
+// Host-side test for the MeshCore packet codec in components/mc_proto/meshcore/packet.c.
 //
 // This is the wire boundary that has cost the most real-user pain in this
 // project (see docs/ARCHITECTURE.md "Wire-boundary discipline"). The test links
@@ -12,7 +12,7 @@
 // makes CI red before it reaches a node on the air.
 //
 // Build (see tests/Makefile):
-//     gcc -I../main test_meshcore_packet.c ../main/meshcore/packet.c -o test_meshcore_packet
+//     gcc -I../components/mc_proto test_meshcore_packet.c ../components/mc_proto/meshcore/packet.c -o test_meshcore_packet
 //
 // Exit 0 on pass, 1 on any mismatch.
 

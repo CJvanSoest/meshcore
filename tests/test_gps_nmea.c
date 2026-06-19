@@ -3,12 +3,12 @@
 //
 // Host-side test for the NMEA-0183 parser shared between firmware and tests.
 //
-// Links against main/gps_parser.c -- the SAME translation unit that ships in
+// Links against components/mc_proto/gps_parser.c -- the SAME translation unit that ships in
 // the device firmware. Catches parser regressions before merge so a broken
 // sentence handler can never reach the release pipeline.
 //
 // Build (see tests/Makefile):
-//     gcc -I../main test_gps_nmea.c ../main/gps_parser.c -o test_gps_nmea
+//     gcc test_gps_nmea.c ../components/mc_proto/gps_parser.c -o test_gps_nmea
 //
 // Exit 0 on pass, 1 on any vector mismatch.
 

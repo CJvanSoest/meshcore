@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 //
-// Host-side test for the regulatory limits table in main/region_limits.c.
+// Host-side test for the regulatory limits table in components/mc_proto/region_limits.c.
 //
 // Links against the SAME translation unit the firmware ships. A wrong
 // sub-band boundary, a flipped power unit, or a miscomputed duty-cycle budget
@@ -10,7 +10,7 @@
 // radio config, so it should make CI red before it can merge.
 //
 // Build (see tests/Makefile):
-//     gcc -I../main test_region_limits.c ../main/region_limits.c -o test_region_limits
+//     gcc test_region_limits.c ../components/mc_proto/region_limits.c -o test_region_limits
 //
 // Exit 0 on pass, 1 on any mismatch.
 

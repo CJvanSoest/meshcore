@@ -3,13 +3,13 @@
 //
 // Host-side RFC 8032 self-test for our Ed25519 implementation.
 //
-// Links against main/ed25519_mpi.c -- the SAME translation unit that ships in
+// Links against components/vendor/ed25519_mpi.c -- the SAME translation unit that ships in
 // the device firmware. Catches crypto regressions before merge so a broken
 // build can never reach the release pipeline. Runs under Gitea Actions
 // host-tests job; mirrors the device-side gate in identity_init().
 //
 // Build (see tests/Makefile):
-//     gcc -I../main test_ed25519.c ../main/ed25519_mpi.c -lmbedcrypto -o test_ed25519
+//     gcc test_ed25519.c ../components/vendor/ed25519_mpi.c -lmbedcrypto -o test_ed25519
 //
 // Exit 0 on pass, 1 on any RFC 8032 vector mismatch.
 

@@ -62,7 +62,7 @@ of the stack: it draws domain state and radio status, and pulls in `pax-gfx`.
 
 ### `main` — app entry (L5)
 Just `main.c`: `app_main()`, the boot sequence, and the event loop. Nothing else
-belongs in `main/` (enforced by `tests/check-structure.sh`).
+belongs in `main/` (enforced by `tests/lint/check-structure.sh`).
 
 ## RX flow (a packet arrives)
 

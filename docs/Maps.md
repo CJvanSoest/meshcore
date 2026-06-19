@@ -11,7 +11,7 @@ Open it from the home tile-grid (Map). Navigate with the D-pad / encoder.
 |---|---|
 | Tile source | Pre-rendered 256×256 PNGs on `/sd/maps/<profile>/tiles/<z>/<x>/<y>.png` |
 | Projection | Web Mercator (the standard slippy-map TMS scheme) |
-| Zoom range | 6 → 14 (configurable via `MAP_ZOOM_MIN` / `MAP_ZOOM_MAX` in `main/map.h`) |
+| Zoom range | 6 → 14 (configurable via `MAP_ZOOM_MIN` / `MAP_ZOOM_MAX` in `components/mc_net/map.h`) |
 | Tile cache | LRU, 36 slots in PSRAM (≈ 4.5 MB at 128 KB / RGB565 tile) |
 | Tile loader | Background FreeRTOS task, 128-slot xQueue, render task never touches SD |
 | Profile slots | Ripple / Carto / Cycle / Topo — independent directory per style |
@@ -51,7 +51,7 @@ The ground resolution depends on latitude; the numbers below are for ~52°N
 
 The Tanmatsu's `MAP_ZOOM_MAX` is currently capped at 14. Bumping it to 16
 needs (a) tiles rendered at those zooms on the SD, and (b) a one-line
-change to `main/map.h`. The cache size is independent of max zoom; 36
+change to `components/mc_net/map.h`. The cache size is independent of max zoom; 36
 slots is plenty for a 5 × 5 visible window + ring + history.
 
 ## SD card layout

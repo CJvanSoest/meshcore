@@ -60,7 +60,7 @@ To capture a fix:
 - **Drivers other than PA1010D**: the NMEA parser is talker-agnostic
   (`$GP/$GL/$GN/$BD/$GA`-prefixed `RMC`/`GGA`/`GSV`), so most MTK / Quectel
   modules at I²C address 0x10 work as-is. u-blox modules use address 0x42
-  (DDC mode) — change `GPS_I2C_ADDR` in `main/gps.c` if you swap chips. u-blox
+  (DDC mode) — change `GPS_I2C_ADDR` in `components/mc_io/gps.c` if you swap chips. u-blox
   modules in UBX-binary mode aren't supported; switch them to NMEA via
   UBX-CFG-PRT first.
 

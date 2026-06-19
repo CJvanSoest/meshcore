@@ -1,7 +1,7 @@
 # Settings / NVS
 
 All persistent state lives in NVS under namespaces declared in
-`main/settings_nvs.h` and `main/identity.h` (the `system` namespace is
+`components/mc_domain/settings_nvs.h` and `components/mc_domain/identity.h` (the `system` namespace is
 shared with the launcher for `owner_name`).
 
 ## Persistent keys
@@ -143,7 +143,7 @@ When a custom combination is active the Settings row shows `(custom)`.
 
 ## Regulatory compliance
 
-`main/region_limits.{h,c}` carries a per-country table of the licence-exempt
+`components/mc_proto/region_limits.{h,c}` carries a per-country table of the licence-exempt
 ISM-band rules. Picking a **Country** in the Settings tab drives three things:
 off-band / over-power warnings, the antenna-gain → ERP/EIRP calculation, and a
 hard duty-cycle budget enforced in `radio.c`.

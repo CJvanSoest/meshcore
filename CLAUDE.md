@@ -30,7 +30,7 @@ esp32-p4-function-ev-board).
   module map and FreeRTOS task list are in [docs/Overview.md](docs/Overview.md).
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — **the authoritative discipline doc**:
   the six layers (L0 foundation … L5 app entry), the forbidden-include rules
-  (grep-checkable, also enforced by `tests/check-arch-rules.sh`), and the
+  (grep-checkable, also enforced by `tests/lint/check-arch-rules.sh`), and the
   wire-boundary rules. Read it before moving code between files.
 - `tests/` — host-side gcc tests linked against the shipping `.c` files.
 - `docs/` — long-form docs (protocol, UI, NVS, GPS, sounds, SD layout, C6 radio).
