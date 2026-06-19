@@ -9,6 +9,32 @@ badge** (ESP32-P4 app processor, ESP32-C6 radio co-processor, SX1262). Single
 ESP-IDF v5.5.1 image. One process; concurrency is a handful of FreeRTOS tasks
 plus the `app_main` event loop. C11.
 
+## Start here
+
+Before changing code, read the contributor handbook in [`.claude/`](.claude/).
+It is the same model as the docs, written as working rules for an AI pair
+programmer or any contributor:
+
+- [`.claude/Guidelines.md`](.claude/Guidelines.md) — the index: mental model,
+  where code goes, hard rules, the green gate.
+- [`.claude/Components.md`](.claude/Components.md) — per-component map +
+  dependency graph + constants.
+- [`.claude/Data-Flows.md`](.claude/Data-Flows.md) — cold start, RX / TX /
+  advert / DM / channel flows with real function names.
+- [`.claude/Crypto.md`](.claude/Crypto.md) — signing, channel, DM, region scope,
+  the ed25519 split, the gates. Read before touching crypto.
+- [`.claude/Testing.md`](.claude/Testing.md) — host harness, what each gate
+  proves, golden vectors, adding a test.
+- [`.claude/Build-And-CI.md`](.claude/Build-And-CI.md) — build + the two
+  divergent CI workflows.
+- [`.claude/Workflow.md`](.claude/Workflow.md) — first read to green commit.
+- [`.claude/Pitfalls.md`](.claude/Pitfalls.md) — traps that already cost time
+  or shipped broken behaviour. Read before trusting a tool or assumption.
+
+The design rationale and the "how to program here" model are in
+[docs/Blueprint.md](docs/Blueprint.md); the enforceable rules in
+[docs/Architecture.md](docs/Architecture.md).
+
 ## Build, flash, test
 
 ```sh

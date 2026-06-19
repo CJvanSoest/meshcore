@@ -34,7 +34,10 @@ For end-user setup see the [README](../README.md).
 
 ## Pages
 
-- **[Architecture](Overview.md)** — modules and how they interact
+- **[Blueprint](Blueprint.md)** — design rationale and how to program in this project (read first)
+- **[Architecture (rules)](Architecture.md)** — the enforced layers, forbidden includes, wire-boundary discipline
+- **[Module overview](Overview.md)** — modules and how they interact
+- **[Components](Components.md)** — the component map, dependency graph, constants
 - **[MeshCore protocol](MeshCore-Protocol.md)** — packet types, encryption, ADVERT/DM/Channel/PATH formats
 - **[UI / UX](UI-UX.md)** — tabs, input modes, QR overlay, edit-mode state machine, Settings section headings & hints
 - **[Settings / NVS](Settings-NVS.md)** — every persistent key, default, range, and the regulatory/country compliance tables

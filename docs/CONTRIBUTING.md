@@ -4,6 +4,11 @@ Thanks for helping out with MeshCore for Tanmatsu. This is a community build,
 not the official MeshCore app; bug reports and feature ideas go to
 [the issue tracker](https://github.com/CJvanSoest/meshcore/issues).
 
+Before your first change, read [Blueprint.md](Blueprint.md) (the design
+rationale and how to program here) and [Architecture.md](Architecture.md) (the
+enforced rules). If you work with Claude or another AI pair programmer, the same
+model is written as a handbook in [`.claude/`](../.claude/Guidelines.md).
+
 ## Build and test
 
 ```sh
@@ -22,9 +27,11 @@ live in `sdkconfigs/`.
 1. **`cd tests && make test` is green.** Host tests link against the shipping
    translation units, so a crypto, parser, regulatory or packet-codec
    regression fails here.
-2. **`tests/lint/check-arch-rules.sh` and `tests/lint/check-structure.sh` are green.**
-   They enforce the include-direction and file-placement rules from
-   [Architecture.md](Architecture.md) (CI runs them too).
+2. **`tests/lint/check-arch-rules.sh`, `tests/lint/check-structure.sh` and
+   `tests/lint/check-test-wiring.sh` are green.** They enforce the
+   include-direction and file-placement rules from
+   [Architecture.md](Architecture.md), and that every `tests/test_*.c` is wired
+   into the Makefile (CI runs them too).
 3. **`tests/lint/check-cppcheck.sh` is green.** Static analysis over first-party code
    (warning/performance/portability). Needs `cppcheck`; CI runs it too.
 4. **`make build DEVICE=tanmatsu` is green.**

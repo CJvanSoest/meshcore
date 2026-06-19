@@ -1,8 +1,10 @@
 # Architecture (rules)
 
-One-page discipline doc. For descriptive module overview, FreeRTOS tasks,
-cold-start sequence, render split — see
-[`Overview.md`](Overview.md).
+One-page discipline doc: the enforceable rules. For the design rationale and the
+"how to program in this project" model, see [`Blueprint.md`](Blueprint.md). For
+the descriptive module overview, FreeRTOS tasks, cold-start sequence and render
+split, see [`Overview.md`](Overview.md). AI contributors: the same model as a
+working handbook lives in [`.claude/`](../.claude/Guidelines.md).
 
 ## Layers
 

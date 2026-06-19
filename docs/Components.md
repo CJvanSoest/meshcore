@@ -3,7 +3,8 @@
 First-party code is split into `mc_*` ESP-IDF components under `components/`.
 The build's `REQUIRES` graph enforces the layer direction, so a backward include
 fails to compile rather than just breaking a convention. For the rules see
-[`../Architecture.md`](Architecture.md); this page is the descriptive tour.
+[`Architecture.md`](Architecture.md), for the design rationale and how to program
+here see [`Blueprint.md`](Blueprint.md); this page is the descriptive tour.
 
 ## The components
 

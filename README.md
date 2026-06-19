@@ -257,11 +257,41 @@ firmware flashing are documented in
 
 ---
 
+## Contributing
+
+The codebase is split into ESP-IDF **components** under `components/` with a
+one-way dependency graph that the compiler enforces; `main/` is just `main.c`.
+Pure protocol and crypto logic is host-tested off-device, and the radio is a
+domain-free transport. Before changing code, read:
+
+- **[docs/Blueprint.md](docs/Blueprint.md)** — the design rationale and the
+  "how to program in this project" model.
+- **[docs/Architecture.md](docs/Architecture.md)** — the enforceable rules (the
+  layers, the forbidden includes, the wire-boundary discipline).
+- **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)** — the contributor checklist.
+- **[`.claude/`](.claude/)** — the same model as a working handbook for AI
+  pair programmers (start at `.claude/Guidelines.md`).
+
+Every change must pass the green gate before it lands:
+
+```sh
+cd tests && make test                  # host unit + integration + crypto vectors
+tests/lint/check-arch-rules.sh         # include-direction discipline
+tests/lint/check-structure.sh          # file placement
+tests/lint/check-test-wiring.sh        # every test is wired into the Makefile
+tests/lint/check-cppcheck.sh           # static analysis
+make build DEVICE=tanmatsu             # the firmware actually builds
+```
+
+---
+
 ## Documentation
 
 | Page | About |
 |---|---|
-| [Architecture](docs/Overview.md) | The `mc_*` components under `components/` and how they interact |
+| [Blueprint](docs/Blueprint.md) | Design rationale + how to program in this project |
+| [Architecture (rules)](docs/Architecture.md) | The enforced layers, forbidden includes, wire-boundary discipline |
+| [Module overview](docs/Overview.md) | The `mc_*` components under `components/` and how they interact |
 | [MeshCore protocol](docs/MeshCore-Protocol.md) | Packet types, ADVERT/DM/Channel/PATH, encryption, ACK |
 | [UI / UX](docs/UI-UX.md) | Tabs, key bindings, edit-mode state machine, QR overlay |
 | [Settings / NVS](docs/Settings-NVS.md) | Persistent keys, defaults, ranges, presets |
