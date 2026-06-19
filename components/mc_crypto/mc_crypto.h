@@ -55,3 +55,11 @@ bool mc_crypto_dm_decrypt(const uint8_t *payload, uint8_t payload_len,
                           const uint8_t sender_pub[MESHCORE_PUB_KEY_SIZE],
                           const uint8_t *my_prv, uint8_t *out_plaintext,
                           int *out_text_len, uint8_t out_good_secret[32]);
+
+// Region-scope transport code = HMAC-SHA256(SHA256("#"||region)[0:16],
+// type || payload)[0:2], with 0x0000/0xFFFF remapped to 0x0001/0xFFFE. The
+// '#' prefix is prepended if absent (upstream RegionMap convention); pass the
+// raw region name either way. Used to tag ROUTE_TYPE_TRANSPORT_FLOOD packets
+// so scope-aware relays route them.
+uint16_t mc_crypto_region_transport_code(const char *region_name, uint8_t type,
+                                         const uint8_t *payload, uint16_t payload_len);

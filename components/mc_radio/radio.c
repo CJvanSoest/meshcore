@@ -5,15 +5,12 @@
 #include "radio.h"
 
 #include <string.h>
-#include <time.h>
 
 #include "freertos/task.h"
 
 #include "esp_log.h"
-#include "mbedtls/aes.h"
-#include "mbedtls/md.h"
-#include "mbedtls/sha256.h"
 
+#include "mc_crypto.h"
 #include "meshcore/packet.h"
 
 #include "region_limits.h"
@@ -32,43 +29,9 @@ static const char *TAG = "radio";
 // (examples/companion_radio) sendFloodScoped path.
 static void apply_region_scope(meshcore_message_t *msg) {
     if (!region_scope[0]) return;  // no scope: stay on plain FLOOD
-
-    // Upstream MeshCore RegionMap::getTransportKeysFor prepends '#' to the
-    // region name before SHA256-deriving the transport key. Match that or our
-    // HMAC code differs from what scope-aware relays compute and they drop us.
-    char scope_name[35];
-    if (region_scope[0] == '#') {
-        snprintf(scope_name, sizeof(scope_name), "%s", region_scope);
-    } else {
-        snprintf(scope_name, sizeof(scope_name), "#%s", region_scope);
-    }
-
-    uint8_t region_key[16];
-    {
-        uint8_t digest[32];
-        mbedtls_sha256((const uint8_t *)scope_name, strlen(scope_name), digest, 0);
-        memcpy(region_key, digest, sizeof(region_key));
-    }
-
-    uint8_t type_byte = (uint8_t)msg->type;
-    uint8_t mac[32];
-    {
-        mbedtls_md_context_t md;
-        mbedtls_md_init(&md);
-        mbedtls_md_setup(&md, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
-        mbedtls_md_hmac_starts(&md, region_key, sizeof(region_key));
-        mbedtls_md_hmac_update(&md, &type_byte, 1);
-        mbedtls_md_hmac_update(&md, msg->payload, msg->payload_length);
-        mbedtls_md_hmac_finish(&md, mac);
-        mbedtls_md_free(&md);
-    }
-    uint16_t code;
-    memcpy(&code, mac, 2);
-    if (code == 0x0000)      code = 0x0001;
-    else if (code == 0xFFFF) code = 0xFFFE;
-
-    msg->route             = MESHCORE_ROUTE_TYPE_TRANSPORT_FLOOD;
-    msg->transport_codes[0] = code;
+    msg->route              = MESHCORE_ROUTE_TYPE_TRANSPORT_FLOOD;
+    msg->transport_codes[0] = mc_crypto_region_transport_code(
+        region_scope, (uint8_t)msg->type, msg->payload, msg->payload_length);
     msg->transport_codes[1] = 0;  // home region — upstream REVISIT, leave zero
 }
 

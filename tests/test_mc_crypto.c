@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "mbedtls/md.h"
 #include "mbedtls/sha256.h"
 
 #include "mc_crypto.h"
@@ -113,11 +114,49 @@ static void test_ack_crc(void) {
     CHECK(memcmp(crc, crc2, 4) != 0, "ack crc is bound to the pubkey");
 }
 
+// Independent recomputation of the region transport code per the documented
+// spec: HMAC-SHA256(SHA256("#"||region)[0:16], type || payload)[0:2] with the
+// reserved-sentinel remap.
+static uint16_t spec_region_code(const char *name, uint8_t type,
+                                 const uint8_t *payload, uint16_t len) {
+    char scope[35];
+    if (name[0] == '#') snprintf(scope, sizeof scope, "%s", name);
+    else                snprintf(scope, sizeof scope, "#%s", name);
+    uint8_t digest[32], key[16];
+    mbedtls_sha256((const uint8_t *)scope, strlen(scope), digest, 0);
+    memcpy(key, digest, 16);
+    uint8_t buf[256];
+    buf[0] = type;
+    memcpy(buf + 1, payload, len);
+    uint8_t mac[32];
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, 16, buf, len + 1, mac);
+    uint16_t code;
+    memcpy(&code, mac, 2);
+    if (code == 0x0000)      code = 0x0001;
+    else if (code == 0xFFFF) code = 0xFFFE;
+    return code;
+}
+
+static void test_region_code(void) {
+    uint8_t payload[20];
+    for (int i = 0; i < 20; i++) payload[i] = (uint8_t)(i * 3 + 1);
+    uint8_t type = 0x02;
+
+    uint16_t got = mc_crypto_region_transport_code("EU", type, payload, sizeof payload);
+    CHECK(got == spec_region_code("EU", type, payload, sizeof payload),
+          "region transport code matches the documented spec");
+    // "EU" and "#EU" must key the same code -- the historical interop bug.
+    CHECK(got == mc_crypto_region_transport_code("#EU", type, payload, sizeof payload),
+          "region code is '#'-prefix invariant");
+    CHECK(got != 0x0000 && got != 0xFFFF, "region code avoids the reserved sentinels");
+}
+
 int main(void) {
     test_grp_roundtrip();
     test_grp_wrong_key();
     test_grp_tampered();
     test_ack_crc();
+    test_region_code();
     if (failures) {
         printf("%d check(s) failed\n", failures);
         return 1;

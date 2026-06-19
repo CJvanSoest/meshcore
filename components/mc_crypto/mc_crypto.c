@@ -4,6 +4,7 @@
 
 #include "mc_crypto.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "mbedtls/aes.h"
@@ -70,4 +71,39 @@ void mc_crypto_ack_crc(const uint8_t head5[5], const char *text, size_t text_len
     mbedtls_sha256_finish(&sha_ctx, sha_out);
     mbedtls_sha256_free(&sha_ctx);
     memcpy(out_crc, sha_out, 4);
+}
+
+uint16_t mc_crypto_region_transport_code(const char *region_name, uint8_t type,
+                                         const uint8_t *payload, uint16_t payload_len) {
+    // Upstream MeshCore RegionMap::getTransportKeysFor prepends '#' to the
+    // region name before SHA256-deriving the transport key. Match that exactly
+    // or scope-aware relays compute a different code and drop us.
+    char scope_name[35];
+    if (region_name[0] == '#') snprintf(scope_name, sizeof(scope_name), "%s", region_name);
+    else                       snprintf(scope_name, sizeof(scope_name), "#%s", region_name);
+
+    uint8_t region_key[16];
+    {
+        uint8_t digest[32];
+        mbedtls_sha256((const uint8_t *)scope_name, strlen(scope_name), digest, 0);
+        memcpy(region_key, digest, sizeof(region_key));
+    }
+
+    uint8_t mac[32];
+    {
+        mbedtls_md_context_t md;
+        mbedtls_md_init(&md);
+        mbedtls_md_setup(&md, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
+        mbedtls_md_hmac_starts(&md, region_key, sizeof(region_key));
+        mbedtls_md_hmac_update(&md, &type, 1);
+        mbedtls_md_hmac_update(&md, payload, payload_len);
+        mbedtls_md_hmac_finish(&md, mac);
+        mbedtls_md_free(&md);
+    }
+
+    uint16_t code;
+    memcpy(&code, mac, 2);
+    if (code == 0x0000)      code = 0x0001;  // 0 / 0xFFFF are reserved sentinels
+    else if (code == 0xFFFF) code = 0xFFFE;
+    return code;
 }
