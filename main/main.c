@@ -153,11 +153,12 @@ int  settings_category_active    = 0;
 static bool     display_blanked = false;
 static uint32_t last_input_ms   = 0;    // updated on any input event
 
-// Drop display backlight to 0. Keyboard backlight + RGB LED stay live so
-// in-pocket notifications keep working.
+// Drop display + keyboard backlight to 0. The RGB notification LED stays live
+// so in-pocket DM and channel alerts still show (issue #7).
 static void enter_display_blank(void) {
     if (display_blanked) return;
     bsp_display_set_backlight_brightness(0);
+    bsp_input_set_backlight_brightness(0);
     display_blanked = true;
 }
 
@@ -485,9 +486,21 @@ void app_main(void) {
             continue;
         }
 
-        // While blanked, swallow keyboard/nav input so the badge is silent
-        // in-pocket. Only F3 (handled above) can wake it.
-        if (display_blanked) continue;
+        // While blanked, the first key press wakes the screen + keyboard
+        // backlight and is itself ignored (no function is triggered). Wake on a
+        // press edge so the release of the waking key is a no-op too. F3 is
+        // handled above. The RGB LED kept blinking the whole time.
+        if (display_blanked) {
+            bool press = (event.type == INPUT_EVENT_TYPE_KEYBOARD) ||
+                         (event.type == INPUT_EVENT_TYPE_NAVIGATION &&
+                          event.args_navigation.state);
+            if (press) {
+                exit_display_blank();
+                last_input_ms = now_ms;  // re-arm idle timer on wake
+                render();                // immediate redraw on wake
+            }
+            continue;  // swallow the waking key, never act on it
+        }
 
         // Any real input resets the idle timer.
         last_input_ms = now_ms;
