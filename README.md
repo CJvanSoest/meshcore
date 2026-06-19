@@ -3,24 +3,12 @@
 [![CI](https://github.com/CJvanSoest/meshcore/actions/workflows/ci.yml/badge.svg)](https://github.com/CJvanSoest/meshcore/actions/workflows/ci.yml)
 
 A [MeshCore](https://meshcore.co.uk) LoRa mesh communication app for the
-**[Tanmatsu](https://tanmatsu.cloud) badge**.
+**[Tanmatsu](https://tanmatsu.cloud) badge** (rev 5+): ESP32-P4 app processor,
+ESP32-C6 + SX1262 LoRa radio, ESP-IDF v5.5.1.
 
 > **Compatible with the MeshCore iOS/Android app** — send and receive encrypted
 > direct messages and public channel chat over LoRa, fully interoperable with
 > other MeshCore nodes.
-
----
-
-## Device
-
-| | |
-|---|---|
-| **Hardware** | Tanmatsu badge (rev 5+) |
-| **Application processor** | ESP32-P4 |
-| **Radio co-processor** | ESP32-C6 |
-| **Radio chip** | SX1262 (LoRa, 868 MHz EU band) |
-| **Display** | 4" MIPI DSI ST7701, native 480×800 — rendered as **800×480 landscape** (rotation 270°) |
-| **Framework** | ESP-IDF v5.5.1 |
 
 ---
 

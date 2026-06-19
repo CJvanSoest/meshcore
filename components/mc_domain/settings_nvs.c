@@ -10,7 +10,6 @@
 #include "config_types.h"  // gps_/map_ profile enums + globals + labels
 #include "esp_log.h"
 #include "nvs.h"
-#include "nvs_flash.h"
 #include "nvs_helpers.h"
 
 #include "bsp/display.h"

@@ -21,7 +21,6 @@
 #include "contacts.h"
 #include "emoji.h"
 #include "nodes.h"
-#include "radio.h"
 
 #define MSG_MAX_LINES 8
 
@@ -121,7 +120,7 @@ void render_msg_list(int w, int list_y0, int list_h, chat_msg_t *msgs,
             int o = 0;
             if (tbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s", tbuf);
             if (hbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", hbuf);
-            if (ack)     o += snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", ack);
+            if (ack)     snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", ack);
         }
 
         // Each bubble: pad_y top + nl text lines + meta + pad_y bottom.

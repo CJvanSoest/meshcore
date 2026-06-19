@@ -7,7 +7,6 @@
 
 #include "esp_log.h"
 #include "nvs.h"
-#include "nvs_flash.h"
 
 #define NVS_CONTACTS_BLOB "mc.contacts"
 

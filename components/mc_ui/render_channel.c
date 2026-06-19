@@ -16,9 +16,9 @@
 
 #include "app_config.h"
 #include "channels.h"
+#include "settings_nvs.h"
 #include "chat.h"
 #include "emoji.h"
-#include "settings_nvs.h"
 #include "ui_state.h"
 
 static void render_channel_list(int w, int h) {

@@ -69,7 +69,6 @@ static void radio_system_protocol_transaction_receive(uint32_t msg_id, const uin
         ESP_LOGW(TAG, "Received radio system message but size incorrect");
         return;
     }
-    radio_system_protocol_header_t* header = (radio_system_protocol_header_t*)packet;
     memcpy(radio_system_protocol_packet_buffer, packet, length);
     radio_system_protocol_packet_size = length;
     xSemaphoreGive(radio_system_protocol_transaction_semaphore);

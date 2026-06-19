@@ -12,7 +12,6 @@
 #include "esp_log.h"
 #include "esp_random.h"
 #include "nvs.h"
-#include "nvs_flash.h"
 
 #include "ed25519.h"
 
