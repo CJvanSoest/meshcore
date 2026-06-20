@@ -58,7 +58,7 @@ static const settings_category_t s_categories[] = {
     { FIELD_DISPLAY_BL,        "Brightness",        "Display, keyboard, RGB LED, auto-blank",       false },
     { FIELD_SOUND_VOLUME,      "Sounds",            "Volume + per-event toggles + previews",        false },
     // External tile: opens the Toolbox launcher rather than a field drilldown.
-    { FIELD_COUNT,             "Toolbox",           "Live packet log",                              false },
+    { FIELD_COUNT,             "Toolbox",           "Packet log + coverage test",                   false },
 };
 #define S_CATEGORY_COUNT ((int)(sizeof(s_categories) / sizeof(s_categories[0])))
 
