@@ -23,6 +23,12 @@ jobs:
       - name: Check test wiring
         run: tests/lint/check-test-wiring.sh
 
+      - name: Check formatting (clang-format 18.1.8)
+        run: |
+          python3 -m venv /tmp/cf
+          /tmp/cf/bin/pip install --quiet clang-format==18.1.8
+          CLANG_FORMAT=/tmp/cf/bin/clang-format tests/lint/check-format.sh
+
       - name: Install build + analysis tooling
         run: |
           sudo apt-get update

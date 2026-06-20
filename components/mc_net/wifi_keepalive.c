@@ -2,26 +2,26 @@
 // SPDX-License-Identifier: MIT
 
 #include "wifi_keepalive.h"
-
 #include <string.h>
-
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "ping/ping_sock.h"
 #include "wifi_connection.h"
 
-static const char *TAG = "wifi-ka";
+static const char* TAG = "wifi-ka";
 
 static esp_ping_handle_t s_ping_handle = NULL;
 
-static void on_ping_success(esp_ping_handle_t hdl, void *args) {
-    (void)hdl; (void)args;
+static void on_ping_success(esp_ping_handle_t hdl, void* args) {
+    (void)hdl;
+    (void)args;
     // Don't log every success -- 0.2 Hz traffic would spam the console.
 }
 
-static void on_ping_timeout(esp_ping_handle_t hdl, void *args) {
-    (void)hdl; (void)args;
+static void on_ping_timeout(esp_ping_handle_t hdl, void* args) {
+    (void)hdl;
+    (void)args;
     // iPhone hotspot occasionally drops a packet; only matters if we go
     // many in a row. ping_sock handles continuous retries already.
     ESP_LOGD(TAG, "ping timeout");
@@ -30,21 +30,21 @@ static void on_ping_timeout(esp_ping_handle_t hdl, void *args) {
 bool wifi_keepalive_start(uint32_t interval_ms) {
     wifi_keepalive_stop();
 
-    esp_netif_ip_info_t *ip = wifi_get_ip_info();
+    esp_netif_ip_info_t* ip = wifi_get_ip_info();
     if (!ip || !ip->gw.addr) {
         ESP_LOGW(TAG, "no gateway IP yet -- can't start keepalive");
         return false;
     }
 
-    esp_ping_config_t cfg = ESP_PING_DEFAULT_CONFIG();
-    cfg.count       = 0;            // 0 = run forever (until session deleted)
-    cfg.interval_ms = interval_ms;
-    cfg.timeout_ms  = 2000;
-    cfg.data_size   = 16;           // tiny payload, just enough to be a real packet
-    cfg.target_addr.type = IPADDR_TYPE_V4;
+    esp_ping_config_t cfg           = ESP_PING_DEFAULT_CONFIG();
+    cfg.count                       = 0;  // 0 = run forever (until session deleted)
+    cfg.interval_ms                 = interval_ms;
+    cfg.timeout_ms                  = 2000;
+    cfg.data_size                   = 16;  // tiny payload, just enough to be a real packet
+    cfg.target_addr.type            = IPADDR_TYPE_V4;
     cfg.target_addr.u_addr.ip4.addr = ip->gw.addr;
-    cfg.task_stack_size = 2048;
-    cfg.task_prio       = 3;
+    cfg.task_stack_size             = 2048;
+    cfg.task_prio                   = 3;
 
     esp_ping_callbacks_t cbs = {
         .on_ping_success = on_ping_success,
@@ -62,8 +62,7 @@ bool wifi_keepalive_start(uint32_t interval_ms) {
         s_ping_handle = NULL;
         return false;
     }
-    ESP_LOGI(TAG, "keepalive started: gw=" IPSTR " interval=%u ms",
-             IP2STR(&ip->gw), (unsigned)interval_ms);
+    ESP_LOGI(TAG, "keepalive started: gw=" IPSTR " interval=%u ms", IP2STR(&ip->gw), (unsigned)interval_ms);
     return true;
 }
 
@@ -79,7 +78,7 @@ void wifi_keepalive_stop(void) {
 // gateway IP is known, stop it when the link drops. Polls every 2 s --
 // cheap, and avoids missing transitions that hooking on the WiFi-event
 // system would require routing through wifi-manager.
-static void supervisor_task(void *arg) {
+static void supervisor_task(void* arg) {
     (void)arg;
     bool last_up = false;
     while (1) {

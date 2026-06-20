@@ -42,7 +42,7 @@ typedef struct {
 
 // Snapshot discovered repeaters (role == REPEATER) into out[]; returns count.
 // Briefly holds node_mutex. Safe to call from the UI task.
-int coverage_collect_repeaters(coverage_repeater_t *out, int max);
+int coverage_collect_repeaters(coverage_repeater_t* out, int max);
 
 // Create the mutex. Idempotent; call once at boot.
 void coverage_init(void);
@@ -53,7 +53,7 @@ void coverage_session_reset(void);
 // ── Result model (keyed by full pubkey; a 6-byte prefix is stored) ───────────
 void coverage_set_testing(const uint8_t pub[32]);
 void coverage_record(const uint8_t pub[32], bool ack);  // bump + recompute status
-bool coverage_lookup(const uint8_t pub[32], coverage_result_t *out);
+bool coverage_lookup(const uint8_t pub[32], coverage_result_t* out);
 
 // Controller-busy flag (a ping run is active). UI reads it to block re-entry.
 void coverage_set_busy(bool busy);
@@ -65,6 +65,5 @@ bool coverage_note_ack(const uint8_t crc[4]);  // RX path: report a seen ACK CRC
 bool coverage_take_ack(void);                  // ping task: poll + clear the hit
 
 // Append one CSV row to the session log (no-op if SD is unavailable).
-void coverage_log(const uint8_t pub[32], const char *name,
-                  int32_t lat_e6, int32_t lon_e6, bool gps_valid,
-                  int attempt, bool ack, uint32_t rtt_ms);
+void coverage_log(const uint8_t pub[32], const char* name, int32_t lat_e6, int32_t lon_e6, bool gps_valid, int attempt,
+                  bool ack, uint32_t rtt_ms);

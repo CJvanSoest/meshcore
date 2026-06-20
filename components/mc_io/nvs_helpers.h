@@ -16,10 +16,10 @@
 // NVS itself isn't openable, *out stays at whatever the caller set
 // (typically the default value). Returns true if a value was actually
 // read so callers can distinguish "first boot" from "explicitly set".
-bool nvs_load_u8 (const char *ns, const char *key, uint8_t  *out);
-bool nvs_load_i8 (const char *ns, const char *key, int8_t   *out);
+bool nvs_load_u8(const char* ns, const char* key, uint8_t* out);
+bool nvs_load_i8(const char* ns, const char* key, int8_t* out);
 
 // Open RW, set+commit, close. Returns true if the write reached NVS.
 // Errors are logged at WARN level so the caller doesn't need to.
-bool nvs_save_u8 (const char *ns, const char *key, uint8_t  val);
-bool nvs_save_i8 (const char *ns, const char *key, int8_t   val);
+bool nvs_save_u8(const char* ns, const char* key, uint8_t val);
+bool nvs_save_i8(const char* ns, const char* key, int8_t val);

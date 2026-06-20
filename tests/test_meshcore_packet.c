@@ -12,25 +12,25 @@
 // makes CI red before it reaches a node on the air.
 //
 // Build (see tests/Makefile):
-//     gcc -I../components/mc_proto test_meshcore_packet.c ../components/mc_proto/meshcore/packet.c -o test_meshcore_packet
+//     gcc -I../components/mc_proto test_meshcore_packet.c ../components/mc_proto/meshcore/packet.c -o
+//     test_meshcore_packet
 //
 // Exit 0 on pass, 1 on any mismatch.
 
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-
 #include "meshcore/packet.h"
 
 static int failures = 0;
 
-#define EXPECT(cond, fmt, ...) do {                                            \
-    if (!(cond)) {                                                             \
-        fprintf(stderr, "FAIL %s:%d: " fmt "\n", __FILE__, __LINE__,           \
-                ##__VA_ARGS__);                                                \
-        failures++;                                                            \
-    }                                                                          \
-} while (0)
+#define EXPECT(cond, fmt, ...)                                                           \
+    do {                                                                                 \
+        if (!(cond)) {                                                                   \
+            fprintf(stderr, "FAIL %s:%d: " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
+            failures++;                                                                  \
+        }                                                                                \
+    } while (0)
 
 int main(void) {
     uint8_t buf[MESHCORE_MAX_TRANS_UNIT];
@@ -41,10 +41,10 @@ int main(void) {
     {
         meshcore_message_t m;
         memset(&m, 0, sizeof(m));
-        m.type    = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
-        m.route   = MESHCORE_ROUTE_TYPE_FLOOD;
-        m.version = 1;
-        const char *pl = "hello mesh";
+        m.type           = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
+        m.route          = MESHCORE_ROUTE_TYPE_FLOOD;
+        m.version        = 1;
+        const char* pl   = "hello mesh";
         m.payload_length = (uint8_t)strlen(pl);
         memcpy(m.payload, pl, m.payload_length);
 
@@ -77,25 +77,22 @@ int main(void) {
         m.path_length        = 4;  // 2 hops * 2 bytes
         uint8_t path[4]      = {0xAA, 0xBB, 0xCC, 0xDD};
         memcpy(m.path, path, 4);
-        uint8_t pay[3]       = {0x01, 0x02, 0x03};
-        m.payload_length     = 3;
+        uint8_t pay[3]   = {0x01, 0x02, 0x03};
+        m.payload_length = 3;
         memcpy(m.payload, pay, 3);
 
         EXPECT(meshcore_serialize(&m, buf, &size) == 0, "TV2 serialize ok");
-        EXPECT(size == 1 + 4 + 1 + 4 + 3,
-               "TV2 size = header+codes+plb+path+payload, got %u", size);
+        EXPECT(size == 1 + 4 + 1 + 4 + 3, "TV2 size = header+codes+plb+path+payload, got %u", size);
 
         meshcore_message_t d;
         EXPECT(meshcore_deserialize(buf, size, &d) == 0, "TV2 deserialize ok");
         EXPECT(d.route == MESHCORE_ROUTE_TYPE_TRANSPORT_FLOOD, "TV2 route");
         EXPECT(d.type == MESHCORE_PAYLOAD_TYPE_ADVERT, "TV2 type");
-        EXPECT(d.transport_codes[0] == 0x1234 && d.transport_codes[1] == 0x5678,
-               "TV2 transport codes survive");
+        EXPECT(d.transport_codes[0] == 0x1234 && d.transport_codes[1] == 0x5678, "TV2 transport codes survive");
         EXPECT(d.bytes_per_hop == 2, "TV2 bytes_per_hop, got %u", d.bytes_per_hop);
         EXPECT(d.path_length == 4, "TV2 path_length, got %u", d.path_length);
         EXPECT(memcmp(d.path, path, 4) == 0, "TV2 path bytes survive");
-        EXPECT(d.payload_length == 3 && memcmp(d.payload, pay, 3) == 0,
-               "TV2 payload survives");
+        EXPECT(d.payload_length == 3 && memcmp(d.payload, pay, 3) == 0, "TV2 payload survives");
     }
 
     // ── TV3: bytes_per_hop == 0 from the caller means "use 1" on the wire,
@@ -103,11 +100,11 @@ int main(void) {
     {
         meshcore_message_t m;
         memset(&m, 0, sizeof(m));
-        m.type           = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
-        m.route          = MESHCORE_ROUTE_TYPE_FLOOD;
-        m.bytes_per_hop  = 0;   // caller leaves it unset
-        m.path_length    = 3;
-        uint8_t path[3]  = {0x10, 0x20, 0x30};
+        m.type          = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
+        m.route         = MESHCORE_ROUTE_TYPE_FLOOD;
+        m.bytes_per_hop = 0;  // caller leaves it unset
+        m.path_length   = 3;
+        uint8_t path[3] = {0x10, 0x20, 0x30};
         memcpy(m.path, path, 3);
 
         EXPECT(meshcore_serialize(&m, buf, &size) == 0, "TV3 serialize ok");
@@ -124,18 +121,16 @@ int main(void) {
         EXPECT(meshcore_deserialize(NULL, 8, &d) == -1, "NULL data rejected");
 
         // Header claims TRANSPORT_FLOOD but the buffer carries no transport codes.
-        uint8_t trunc = (uint8_t)((MESHCORE_ROUTE_TYPE_TRANSPORT_FLOOD & 0x03) |
-                                  ((MESHCORE_PAYLOAD_TYPE_ADVERT & 0x0F) << 2));
-        EXPECT(meshcore_deserialize(&trunc, 1, &d) == -1,
-               "truncated transport header rejected");
+        uint8_t trunc =
+            (uint8_t)((MESHCORE_ROUTE_TYPE_TRANSPORT_FLOOD & 0x03) | ((MESHCORE_PAYLOAD_TYPE_ADVERT & 0x0F) << 2));
+        EXPECT(meshcore_deserialize(&trunc, 1, &d) == -1, "truncated transport header rejected");
 
         meshcore_message_t m;
         memset(&m, 0, sizeof(m));
         m.route         = MESHCORE_ROUTE_TYPE_FLOOD;
         m.bytes_per_hop = 2;
         m.path_length   = 5;  // not a multiple of 2
-        EXPECT(meshcore_serialize(&m, buf, &size) == -1,
-               "path_length not divisible by bytes_per_hop rejected");
+        EXPECT(meshcore_serialize(&m, buf, &size) == -1, "path_length not divisible by bytes_per_hop rejected");
 
         memset(&m, 0, sizeof(m));
         m.payload_length = MESHCORE_MAX_PAYLOAD_SIZE + 1;
@@ -166,27 +161,26 @@ int main(void) {
 
         // serialize: bytes_per_hop above the 2-bit field.
         memset(&m, 0, sizeof(m));
-        m.route = MESHCORE_ROUTE_TYPE_FLOOD;
+        m.route         = MESHCORE_ROUTE_TYPE_FLOOD;
         m.bytes_per_hop = 4;
         EXPECT(meshcore_serialize(&m, buf, &size) == -1, "bph > 3 rejected");
 
         // serialize: hop_count above the 6-bit field (64 hops of 1 byte).
         memset(&m, 0, sizeof(m));
-        m.route = MESHCORE_ROUTE_TYPE_FLOOD;
+        m.route         = MESHCORE_ROUTE_TYPE_FLOOD;
         m.bytes_per_hop = 1;
         m.path_length   = 64;
         EXPECT(meshcore_serialize(&m, buf, &size) == -1, "hop_count > 0x3F rejected");
 
         // serialize: path_length beyond the max.
         memset(&m, 0, sizeof(m));
-        m.route = MESHCORE_ROUTE_TYPE_FLOOD;
+        m.route         = MESHCORE_ROUTE_TYPE_FLOOD;
         m.bytes_per_hop = 1;
         m.path_length   = MESHCORE_MAX_PATH_SIZE + 1;
         EXPECT(meshcore_serialize(&m, buf, &size) == -1, "path_length > max rejected");
 
         // deserialize: header byte = FLOOD route + TXT_MSG type.
-        uint8_t hdr = (uint8_t)((MESHCORE_ROUTE_TYPE_FLOOD & 0x03) |
-                                ((MESHCORE_PAYLOAD_TYPE_TXT_MSG & 0x0F) << 2));
+        uint8_t hdr = (uint8_t)((MESHCORE_ROUTE_TYPE_FLOOD & 0x03) | ((MESHCORE_PAYLOAD_TYPE_TXT_MSG & 0x0F) << 2));
 
         // path-length byte claims a 10-byte path the buffer does not contain.
         uint8_t over[3] = {hdr, 10 /* bph 1, hop 10 */, 0x00};

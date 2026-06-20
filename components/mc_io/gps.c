@@ -2,21 +2,19 @@
 // SPDX-License-Identifier: MIT
 
 #include "gps.h"
-#include "gps_parser.h"
-
 #include <stdio.h>
 #include <string.h>
-
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "gps_parser.h"
 
-static const char *TAG = "gps";
+static const char* TAG = "gps";
 
 // QWIIC bus pinout for Tanmatsu — see [[tanmatsu-i2c-buses]] memory.
-#define GPS_QWIIC_SDA   33
-#define GPS_QWIIC_SCL   32
-#define GPS_QWIIC_PORT  1
+#define GPS_QWIIC_SDA  33
+#define GPS_QWIIC_SCL  32
+#define GPS_QWIIC_PORT 1
 
 // Swapping to a different GPS module? The parser in gps_parser.c is generic
 // NMEA-0183 (RMC/GGA/GSV, talker-agnostic), so for most modules the only
@@ -27,14 +25,14 @@ static const char *TAG = "gps";
 // The blind-read loop further down assumes the module streams NMEA by default
 // on power-up. u-blox modules in UBX-binary mode are NOT supported -- set
 // them to NMEA via UBX-CFG-PRT first, or send a one-shot config here.
-#define GPS_I2C_ADDR    0x10
+#define GPS_I2C_ADDR 0x10
 
 // Last status from gps_read_status(), exposed via gps_last_status() so the
 // Settings UI can keep showing sats / HDOP after the search toast fades.
 static gps_status_t s_last;
 static bool         s_last_valid = false;
 
-bool gps_read_status(int timeout_ms, gps_status_t *out) {
+bool gps_read_status(int timeout_ms, gps_status_t* out) {
     if (!out) return false;
     memset(out, 0, sizeof(*out));
 
@@ -99,12 +97,11 @@ bool gps_read_status(int timeout_ms, gps_status_t *out) {
     i2c_master_bus_rm_device(dev);
     i2c_del_master_bus(bus);
 
-    ESP_LOGI(TAG, "result: bus_ok=%d sentences=%d gps_sats=%d glo_sats=%d "
-                  "fix_used=%d quality=%d hdop=%.2f valid=%d lat=%ld lon=%ld",
-             out->bus_ok, out->sentences_seen,
-             out->gps_sats_view, out->glo_sats_view,
-             out->fix_used_sats, out->fix_quality, (double)out->hdop, out->fix_valid,
-             (long)out->lat_e6, (long)out->lon_e6);
+    ESP_LOGI(TAG,
+             "result: bus_ok=%d sentences=%d gps_sats=%d glo_sats=%d "
+             "fix_used=%d quality=%d hdop=%.2f valid=%d lat=%ld lon=%ld",
+             out->bus_ok, out->sentences_seen, out->gps_sats_view, out->glo_sats_view, out->fix_used_sats,
+             out->fix_quality, (double)out->hdop, out->fix_valid, (long)out->lat_e6, (long)out->lon_e6);
 
     if (out->sentences_seen > 0) {
         s_last       = *out;
@@ -113,7 +110,7 @@ bool gps_read_status(int timeout_ms, gps_status_t *out) {
     return out->sentences_seen > 0;
 }
 
-bool gps_last_status(gps_status_t *out) {
+bool gps_last_status(gps_status_t* out) {
     if (!out || !s_last_valid) return false;
     *out = s_last;
     return true;
