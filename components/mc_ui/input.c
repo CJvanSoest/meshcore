@@ -978,10 +978,11 @@ void handle_nav(uint32_t key) {
             current_view                = VIEW_SETTINGS;
             settings_category_list_mode = true;
         } else if (current_view != VIEW_HOME) {
-            // ESC from any non-modal view returns to the home tile-grid before
-            // bouncing back to the launcher (so home becomes the safe "back").
+            // From any non-modal view both keys return to the home tile-grid.
             current_view = VIEW_HOME;
-        } else {
+        } else if (key == BSP_INPUT_NAVIGATION_KEY_ESC) {
+            // Only ESC leaves the app, and only from home. The red X (F1) stops
+            // at home so mashing back can never exit by accident.
             bsp_led_set_mode(true);
             bsp_device_restart_to_launcher();
         }
@@ -1600,6 +1601,8 @@ void handle_key(char c) {
     }
 
     if (c == 27) {
+        // Keyboard ESC. The physical red X (F1) only fires a nav-event, so its
+        // "stop at home" variant lives in handle_nav; here ESC is the exit key.
         if (edit_mode) {
             edit_mode          = false;
             field_editing_text = false;
