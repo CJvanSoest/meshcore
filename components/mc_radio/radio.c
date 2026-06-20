@@ -286,7 +286,11 @@ static void lora_rx_task(void* arg) {
 
         meshcore_message_t mc_msg;
         if (meshcore_deserialize(pkt.data, pkt.length, &mc_msg) < 0) continue;
-        if (rx_is_duplicate(mc_msg.payload, mc_msg.payload_length)) {
+        // TRACE is exempt from dedup: its payload (tag + hop hashes) is constant
+        // as it travels while only the per-hop SNR path field changes, so the
+        // payload-fingerprint dedup would drop the returning probe. Upstream
+        // folds path_len into the packet hash for the same reason.
+        if (mc_msg.type != MESHCORE_PAYLOAD_TYPE_TRACE && rx_is_duplicate(mc_msg.payload, mc_msg.payload_length)) {
             ESP_LOGI(TAG, "Dedup: drop flood retransmit (type=%d)", mc_msg.type);
             continue;
         }

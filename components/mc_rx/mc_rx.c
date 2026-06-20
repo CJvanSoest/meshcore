@@ -21,6 +21,7 @@
 #include "coverage.h"
 #include "ed25519.h"
 #include "esp_log.h"
+#include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -36,6 +37,7 @@
 #include "radio.h"
 #include "settings_nvs.h"
 #include "sounds.h"
+#include "trace.h"
 #include "ui_state.h"
 
 static const char* TAG = "mc_rx";
@@ -395,11 +397,20 @@ static void rx_handle_path(const meshcore_message_t* msg) {
             ESP_LOGI(TAG, "ACK matched: %02X%02X%02X%02X from %02X", ack_crc[0], ack_crc[1], ack_crc[2], ack_crc[3],
                      src_hash);
         }
-        // Also offer the ACK to the coverage-test ping controller, which tracks
-        // its pings outside the chat ring.
-        coverage_note_ack(ack_crc);
         return;  // this candidate produced a valid ACK block; done
     }
+}
+
+// Incoming TRACE. As the originator of a coverage ping we recognise our trace by
+// its tag: a TRACE carrying our armed tag means it traversed the repeater and
+// came back. The first path byte is the SNR the repeater measured receiving from
+// us (uplink); meta->snr_db_x4 is our SNR of the returning frame (downlink).
+static void rx_handle_trace(const meshcore_message_t* msg, const radio_rx_meta_t* meta) {
+    uint32_t tag = 0;
+    if (!meshcore_trace_parse(msg->payload, msg->payload_length, &tag, NULL, NULL, NULL, NULL)) return;
+    int8_t uplink   = (msg->path_length >= 1) ? (int8_t)msg->path[0] : COVERAGE_SNR_NONE;
+    int8_t downlink = meta->snr_db_x4;
+    coverage_note_tag(tag, uplink, downlink);
 }
 
 static void mc_rx_dispatch(const meshcore_message_t* msg, const radio_rx_meta_t* meta) {
@@ -415,6 +426,9 @@ static void mc_rx_dispatch(const meshcore_message_t* msg, const radio_rx_meta_t*
             break;
         case MESHCORE_PAYLOAD_TYPE_PATH:
             rx_handle_path(msg);
+            break;
+        case MESHCORE_PAYLOAD_TYPE_TRACE:
+            rx_handle_trace(msg, meta);
             break;
         default:
             break;
@@ -628,10 +642,38 @@ bool send_dm_message(const char* text, const uint8_t* target_pub, uint8_t ack_cr
 }
 
 // ── Coverage test: ping a repeater N times and record reachability ───────────
-// A "ping" is just a DM to the repeater's pubkey; the matching PATH_RETURN ACK
-// is detected via the coverage matcher (coverage_note_ack in rx_handle_path),
-// not the chat ring, so DM history stays clean. Runs on its own task so the UI
-// never blocks across the 3x10 s schedule.
+// The "ping" is an upstream MeshCore TRACE (PAYLOAD_TYPE_TRACE) sent DIRECT with
+// the repeater hash as its one-hop path. The repeater stamps its RX SNR and
+// rebroadcasts; the returning frame carries our random tag, so we recognise it
+// in rx_handle_trace and record reachability + per-direction SNR — all without
+// an admin login, which a plain DM would need (see issue #25). Runs on its own
+// task so the UI never blocks across the 3x10 s schedule.
+
+// Send a TRACE to target_pub's hash with the given tag. DIRECT-routed, path
+// empty on the wire (the hop hash rides inside the payload, per the upstream
+// TRACE layout); the per-hop SNR path accumulates as it travels.
+bool send_trace(const uint8_t* target_pub, uint32_t tag) {
+    if (!c6_available || target_pub == NULL) return false;
+
+    uint8_t hs      = path_hash_size ? path_hash_size : 1;
+    uint8_t path_sz = meshcore_trace_path_sz(hs);
+    uint8_t hb      = (uint8_t)(1 << path_sz);  // hop-hash bytes (1/2/4)
+
+    uint8_t payload[MESHCORE_TRACE_HDR_LEN + 4];
+    uint8_t plen = meshcore_trace_build_payload(tag, 0, path_sz, target_pub, hb, payload);
+    if (plen == 0) return false;
+
+    meshcore_message_t msg = {0};
+    msg.type               = MESHCORE_PAYLOAD_TYPE_TRACE;
+    msg.route              = MESHCORE_ROUTE_TYPE_DIRECT;
+    msg.version            = 0;
+    msg.bytes_per_hop      = hs;
+    msg.path_length        = 0;
+    memcpy(msg.payload, payload, plen);
+    msg.payload_length = plen;
+    return radio_tx_message(&msg);
+}
+
 typedef struct {
     uint8_t pub[32];
     char    name[MESHCORE_MAX_NAME_SIZE + 1];
@@ -645,17 +687,18 @@ static void coverage_ping_task(void* arg) {
     coverage_set_testing(a->pub);
 
     for (int i = 0; i < COVERAGE_PINGS; i++) {
-        uint8_t    crc[4] = {0};
+        uint32_t   tag    = esp_random();
         TickType_t t0     = xTaskGetTickCount();
-        bool       ack    = false;
+        bool       reach  = false;
         uint32_t   rtt_ms = 0;
+        int8_t     up = COVERAGE_SNR_NONE, down = COVERAGE_SNR_NONE;
 
-        if (send_dm_message("ping", a->pub, crc)) {
-            coverage_arm_ack(crc);
-            // Poll for the PATH_RETURN ACK up to ~8 s.
+        if (send_trace(a->pub, tag)) {
+            coverage_arm_tag(tag);
+            // Poll for the returning TRACE up to ~8 s.
             for (int waited = 0; waited < 8000; waited += 100) {
-                if (coverage_take_ack()) {
-                    ack    = true;
+                if (coverage_take_tag(&up, &down)) {
+                    reach  = true;
                     rtt_ms = (uint32_t)((xTaskGetTickCount() - t0) * portTICK_PERIOD_MS);
                     break;
                 }
@@ -663,8 +706,8 @@ static void coverage_ping_task(void* arg) {
             }
         }
 
-        coverage_record(a->pub, ack);
-        coverage_log(a->pub, a->name, a->lat_e6, a->lon_e6, a->gps_valid, i, ack, rtt_ms);
+        coverage_record(a->pub, reach, down);
+        coverage_log(a->pub, a->name, a->lat_e6, a->lon_e6, a->gps_valid, i, reach, rtt_ms, up, down);
 
         if (i < COVERAGE_PINGS - 1) vTaskDelay(pdMS_TO_TICKS(10000));
     }

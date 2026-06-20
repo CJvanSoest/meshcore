@@ -16,11 +16,14 @@ static coverage_result_t s_results[COVERAGE_MAX_RESULTS];
 static int               s_result_count = 0;
 static volatile bool     s_busy         = false;
 
-// Armed-ACK matcher: a single outstanding ping CRC at a time (pings are
-// sequential), set by the ping task and resolved by the RX path.
-static bool    s_ack_armed = false;
-static bool    s_ack_got   = false;
-static uint8_t s_ack_crc[4];
+// Armed TRACE-tag matcher: a single outstanding ping at a time (pings are
+// sequential), set by the ping task and resolved by the RX path. On a hit we
+// also stash the uplink SNR the trace returned and our downlink SNR.
+static bool     s_tag_armed        = false;
+static bool     s_tag_got          = false;
+static uint32_t s_tag              = 0;
+static int8_t   s_got_uplink_snr   = COVERAGE_SNR_NONE;
+static int8_t   s_got_downlink_snr = COVERAGE_SNR_NONE;
 
 static char s_session_path[80];  // empty = no open session / no SD
 
@@ -44,7 +47,8 @@ static coverage_result_t* find_or_add_locked(const uint8_t pub[32]) {
     r = &s_results[s_result_count++];
     memset(r, 0, sizeof(*r));
     memcpy(r->pub_prefix, pub, 6);
-    r->status = COVERAGE_NONE;
+    r->status      = COVERAGE_NONE;
+    r->best_snr_x4 = COVERAGE_SNR_NONE;
     return r;
 }
 
@@ -65,7 +69,7 @@ void coverage_session_reset(void) {
     snprintf(s_session_path, sizeof(s_session_path), "%s/cov_%lu.csv", COVERAGE_DIR, (unsigned long)time(NULL));
     FILE* f = fopen(s_session_path, "w");
     if (f) {
-        fputs("ts_unix,repeater,pubkey,lat_e6,lon_e6,attempt,ack,rtt_ms\n", f);
+        fputs("ts_unix,repeater,pubkey,lat_e6,lon_e6,attempt,reachable,rtt_ms,uplink_snr_db,downlink_snr_db\n", f);
         fclose(f);
     } else {
         s_session_path[0] = '\0';  // no SD: keep in-RAM results only
@@ -77,19 +81,24 @@ void coverage_set_testing(const uint8_t pub[32]) {
     if (s_mutex == NULL || xSemaphoreTake(s_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     coverage_result_t* r = find_or_add_locked(pub);
     if (r) {
-        r->attempts = 0;
-        r->acks     = 0;
-        r->status   = COVERAGE_TESTING;
+        r->attempts    = 0;
+        r->acks        = 0;
+        r->status      = COVERAGE_TESTING;
+        r->best_snr_x4 = COVERAGE_SNR_NONE;
     }
     xSemaphoreGive(s_mutex);
 }
 
-void coverage_record(const uint8_t pub[32], bool ack) {
+void coverage_record(const uint8_t pub[32], bool reachable, int8_t snr_x4) {
     if (s_mutex == NULL || xSemaphoreTake(s_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     coverage_result_t* r = find_or_add_locked(pub);
     if (r) {
         if (r->attempts < 255) r->attempts++;
-        if (ack && r->acks < 255) r->acks++;
+        if (reachable && r->acks < 255) r->acks++;
+        if (reachable && snr_x4 != COVERAGE_SNR_NONE &&
+            (r->best_snr_x4 == COVERAGE_SNR_NONE || snr_x4 > r->best_snr_x4)) {
+            r->best_snr_x4 = snr_x4;
+        }
         r->status = classify(r->attempts, r->acks);
     }
     xSemaphoreGive(s_mutex);
@@ -114,32 +123,38 @@ bool coverage_busy(void) {
     return s_busy;
 }
 
-void coverage_arm_ack(const uint8_t crc[4]) {
+void coverage_arm_tag(uint32_t tag) {
     if (s_mutex == NULL || xSemaphoreTake(s_mutex, pdMS_TO_TICKS(20)) != pdTRUE) return;
-    memcpy(s_ack_crc, crc, 4);
-    s_ack_armed = true;
-    s_ack_got   = false;
+    s_tag              = tag;
+    s_tag_armed        = true;
+    s_tag_got          = false;
+    s_got_uplink_snr   = COVERAGE_SNR_NONE;
+    s_got_downlink_snr = COVERAGE_SNR_NONE;
     xSemaphoreGive(s_mutex);
 }
 
-bool coverage_note_ack(const uint8_t crc[4]) {
+bool coverage_note_tag(uint32_t tag, int8_t uplink_snr_x4, int8_t downlink_snr_x4) {
     bool matched = false;
     if (s_mutex == NULL || xSemaphoreTake(s_mutex, pdMS_TO_TICKS(10)) != pdTRUE) return false;
-    if (s_ack_armed && memcmp(s_ack_crc, crc, 4) == 0) {
-        s_ack_got = true;
-        matched   = true;
+    if (s_tag_armed && tag == s_tag) {
+        s_tag_got          = true;
+        s_got_uplink_snr   = uplink_snr_x4;
+        s_got_downlink_snr = downlink_snr_x4;
+        matched            = true;
     }
     xSemaphoreGive(s_mutex);
     return matched;
 }
 
-bool coverage_take_ack(void) {
+bool coverage_take_tag(int8_t* uplink_snr_x4, int8_t* downlink_snr_x4) {
     bool got = false;
     if (s_mutex == NULL || xSemaphoreTake(s_mutex, pdMS_TO_TICKS(20)) != pdTRUE) return false;
-    if (s_ack_got) {
+    if (s_tag_got) {
         got         = true;
-        s_ack_got   = false;
-        s_ack_armed = false;
+        s_tag_got   = false;
+        s_tag_armed = false;
+        if (uplink_snr_x4) *uplink_snr_x4 = s_got_uplink_snr;
+        if (downlink_snr_x4) *downlink_snr_x4 = s_got_downlink_snr;
     }
     xSemaphoreGive(s_mutex);
     return got;
@@ -164,8 +179,20 @@ int coverage_collect_repeaters(coverage_repeater_t* out, int max) {
     return n;
 }
 
+// Format an SNR (quarter-dB) into buf, or empty when it is the absent sentinel.
+static void fmt_snr(char* buf, size_t cap, int8_t snr_x4) {
+    if (snr_x4 == COVERAGE_SNR_NONE) {
+        buf[0] = '\0';
+    } else {
+        // One decimal: snr_x4 is in quarter-dB, so value = snr_x4 / 4.
+        int whole = snr_x4 / 4;
+        int frac  = (snr_x4 < 0 ? -snr_x4 : snr_x4) % 4 * 25;  // .00/.25/.50/.75 -> 0/25/50/75
+        snprintf(buf, cap, "%d.%02d", whole, frac);
+    }
+}
+
 void coverage_log(const uint8_t pub[32], const char* name, int32_t lat_e6, int32_t lon_e6, bool gps_valid, int attempt,
-                  bool ack, uint32_t rtt_ms) {
+                  bool reachable, uint32_t rtt_ms, int8_t uplink_snr_x4, int8_t downlink_snr_x4) {
     if (s_mutex == NULL || xSemaphoreTake(s_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     if (s_session_path[0]) {
         FILE* f = fopen(s_session_path, "a");
@@ -175,8 +202,12 @@ void coverage_log(const uint8_t pub[32], const char* name, int32_t lat_e6, int32
                 snprintf(lat, sizeof(lat), "%ld", (long)lat_e6);
                 snprintf(lon, sizeof(lon), "%ld", (long)lon_e6);
             }
-            fprintf(f, "%lu,%s,%02X%02X%02X%02X,%s,%s,%d,%d,%lu\n", (unsigned long)time(NULL), name ? name : "", pub[0],
-                    pub[1], pub[2], pub[3], lat, lon, attempt, ack ? 1 : 0, (unsigned long)rtt_ms);
+            char up[12], down[12];
+            fmt_snr(up, sizeof(up), uplink_snr_x4);
+            fmt_snr(down, sizeof(down), downlink_snr_x4);
+            fprintf(f, "%lu,%s,%02X%02X%02X%02X,%s,%s,%d,%d,%lu,%s,%s\n", (unsigned long)time(NULL), name ? name : "",
+                    pub[0], pub[1], pub[2], pub[3], lat, lon, attempt, reachable ? 1 : 0, (unsigned long)rtt_ms, up,
+                    down);
             fclose(f);
         }
     }

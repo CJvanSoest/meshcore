@@ -30,6 +30,11 @@ bool send_dm_message(const char* text, const uint8_t* target_pub, uint8_t ack_cr
 // Send an encrypted public-channel message (GRP_TXT, FLOOD).
 bool send_chat_message(const char* text);
 
+// Send a MeshCore TRACE (reachability probe) to target_pub's hash with the given
+// 32-bit tag, DIRECT-routed with the repeater as its one-hop path. The returning
+// frame is matched by tag in rx_handle_trace. Used by the coverage test.
+bool send_trace(const uint8_t* target_pub, uint32_t tag);
+
 // Coverage test: ping `pub` COVERAGE_PINGS times (10 s apart) on a background
 // task, recording reachability + a GPS-stamped CSV row per attempt. No-op if a
 // run is already in progress (coverage_busy()). `name`/GPS are used only for

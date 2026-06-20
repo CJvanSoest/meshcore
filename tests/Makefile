@@ -44,10 +44,11 @@ SRC_ADVERT_SIGN = ../components/mc_proto/advert_sign.c \
 SRC_DIAG_DECODE = ../components/mc_proto/diag_decode.c \
                   ../components/mc_proto/meshcore/packet.c \
                   ../components/mc_proto/meshcore/payload/advert.c
+SRC_TRACE       = ../components/mc_proto/trace.c
 
 .PHONY: all test clean
 
-all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode
+all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace
 
 test_ed25519: test_ed25519.c $(SRC_ED25519)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
@@ -131,7 +132,11 @@ test_advert_sign: test_advert_sign.c $(SRC_ADVERT_SIGN)
 test_diag_decode: test_diag_decode.c $(SRC_DIAG_DECODE)
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -I../components/mc_proto -Wno-type-limits -Wno-sign-compare -o $@ $^
 
-test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode
+# TRACE payload layout (coverage-test reachability probe). Pure-C, no libs.
+test_trace: test_trace.c $(SRC_TRACE)
+	$(CC) $(CFLAGS) -I../components/mc_proto -o $@ $^
+
+test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace
 	./test_ed25519
 	./test_gps_nmea
 	./test_companion_protocol
@@ -145,6 +150,7 @@ test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test
 	./test_mc_crypto_dm
 	./test_advert_sign
 	./test_diag_decode
+	./test_trace
 
 clean:
-	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace
