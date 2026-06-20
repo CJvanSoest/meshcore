@@ -18,13 +18,13 @@
 
 #define DIAG_DIR_RX   0
 #define DIAG_DIR_TX   1
-#define DIAG_RSSI_NONE 127  // sentinel: no RSSI/SNR (TX rows)
+#define DIAG_RSSI_NONE 127  // sentinel: signal metric absent (both fields on TX rows)
 
 typedef struct {
     uint32_t now_ms;             // capture time (ms since boot)
     uint8_t  dir;                // DIAG_DIR_RX / DIAG_DIR_TX
-    int8_t   rssi_dbm;           // RX only; DIAG_RSSI_NONE on TX
-    int8_t   snr_db_x4;          // RX only (raw SNR, quarter-dB)
+    int8_t   rssi_dbm;           // RX measurement; DIAG_RSSI_NONE on TX
+    int8_t   snr_db_x4;          // RX measurement (raw SNR, quarter-dB); DIAG_RSSI_NONE on TX
     uint8_t  full_len;           // true on-air length (may exceed raw_len)
     uint8_t  raw_len;            // bytes actually stored in raw[]
     uint8_t  raw[DIAG_RAW_MAX];  // leading on-air bytes (header + payload)

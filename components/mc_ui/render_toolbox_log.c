@@ -34,19 +34,26 @@
 #define COL_RSSI  166
 #define COL_DETAIL 210
 
-// One PSRAM-resident snapshot of the ring, refreshed each live frame. Frozen
-// (not refreshed) while paused so the user can read + scroll a stable window.
-// s_snap holds the ring in raw order; s_snap_head locates the write head so the
-// render walks it newest-first.
-static diag_entry_t *s_snap       = NULL;
-static int           s_snap_count = 0;
-static int           s_snap_head  = 0;
+// PSRAM-resident snapshot of the ring, refreshed each live frame and frozen
+// while paused so the user can read + scroll a stable window. s_snap holds the
+// ring in raw order (the hex view needs the bytes); s_decoded holds each entry
+// dissected once at refresh time so the render loop never re-decodes a row it
+// already drew. s_snap_head locates the write head so both are walked
+// newest-first. This is a second ~12 KB ring on top of diag.c's, plus the
+// decoded cache, so the tool holds ~30 KB of PSRAM while open — fine on PSRAM.
+static diag_entry_t   *s_snap       = NULL;
+static diag_decoded_t *s_decoded    = NULL;
+static int             s_snap_count = 0;
+static int             s_snap_head  = 0;
 
 static void ensure_snap(void) {
     if (s_snap != NULL) return;
     size_t bytes = sizeof(diag_entry_t) * DIAG_LOG_SIZE;
     s_snap = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
     if (s_snap == NULL) s_snap = malloc(bytes);
+    size_t dbytes = sizeof(diag_decoded_t) * DIAG_LOG_SIZE;
+    s_decoded = heap_caps_malloc(dbytes, MALLOC_CAP_SPIRAM);
+    if (s_decoded == NULL) s_decoded = malloc(dbytes);
 }
 
 static void log_header(int w) {
@@ -82,7 +89,7 @@ static void format_detail(const diag_entry_t *e, const diag_decoded_t *d, char *
         if (d->has_pubkey) {
             p += snprintf(out + p, cap - p, "key:%02X%02X%02X %s",
                           d->pubkey[0], d->pubkey[1], d->pubkey[2], diag_role_name(d->role));
-            if (d->has_name && p > 0 && (size_t)p < cap) {
+            if (d->has_name && (size_t)p < cap) {
                 snprintf(out + p, cap - p, " \"%s\"", d->name);
             }
         } else if (d->has_hash) {
@@ -108,9 +115,9 @@ void render_toolbox_log(void) {
     pax_background(&fb, COL_BLACK);
     ensure_snap();
 
-    // Refresh the live window unless frozen. s_snap may be NULL if PSRAM alloc
-    // failed; bail to a message rather than dereferencing it.
-    if (s_snap == NULL) {
+    // Refresh the live window unless frozen. The buffers may be NULL if a PSRAM
+    // alloc failed; bail to a message rather than dereferencing them.
+    if (s_snap == NULL || s_decoded == NULL) {
         log_header(w);
         pax_draw_text(&fb, COL_RED, FONT, TXT_SMALL, 12, LOG_HEADER_H + 12,
                       "packet log unavailable (no memory)");
@@ -118,6 +125,15 @@ void render_toolbox_log(void) {
     }
     if (!toolbox_log_paused) {
         s_snap_count = diag_snapshot(s_snap, &s_snap_head);
+        // Dissect each captured entry once, here, so the render loop reads a
+        // cached result instead of re-decoding every visible row each frame.
+        // Decode runs on the raw_len-capped prefix (DIAG_RAW_MAX = 176B): a
+        // longer frame dissects a display-only truncation; header fields stay
+        // complete.
+        for (int i = 0; i < s_snap_count; i++) {
+            int ri = (s_snap_head - 1 - i + 2 * DIAG_LOG_SIZE) % DIAG_LOG_SIZE;
+            diag_decode(s_snap[ri].raw, s_snap[ri].raw_len, &s_decoded[ri]);
+        }
     }
 
     int rows_y0  = LOG_HEADER_H + 4;
@@ -140,18 +156,14 @@ void render_toolbox_log(void) {
     for (int i = 0; i < rows_vis; i++) {
         int si = toolbox_log_scroll + i;
         if (si >= s_snap_count) break;
-        // Newest-first walk over the raw-order snapshot via the captured head.
+        // Newest-first walk over the raw-order snapshot via the captured head;
+        // the matching dissection was cached at refresh time.
         int ri = (s_snap_head - 1 - si + 2 * DIAG_LOG_SIZE) % DIAG_LOG_SIZE;
-        const diag_entry_t *e = &s_snap[ri];
+        const diag_entry_t   *e = &s_snap[ri];
+        const diag_decoded_t *d = &s_decoded[ri];
         int ry = rows_y0 + i * LOG_ROW_H;
 
         if (i & 1) pax_simple_rect(&fb, COL_HEADER, 0, ry, w, LOG_ROW_H);
-
-        diag_decoded_t d;
-        // Decodes the captured prefix (raw_len, capped at DIAG_RAW_MAX = 176B):
-        // a frame longer than that dissects a display-only truncation, not the
-        // full on-air payload. Header fields are always complete.
-        diag_decode(e->raw, e->raw_len, &d);
 
         int ty = ry + (LOG_ROW_H - TXT_TINY) / 2;
 
@@ -164,7 +176,7 @@ void render_toolbox_log(void) {
                       rx ? "RX" : "TX");
 
         pax_draw_text(&fb, COL_WHITE, FONT, TXT_TINY, COL_TYPE, ty,
-                      d.valid ? diag_type_name(d.ptype) : "?");
+                      d->valid ? diag_type_name(d->ptype) : "?");
 
         char rssi[8];
         if (rx && e->rssi_dbm != DIAG_RSSI_NONE) {
@@ -175,7 +187,7 @@ void render_toolbox_log(void) {
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_RSSI, ty, rssi);
 
         char detail[160];
-        format_detail(e, &d, detail, sizeof(detail));
+        format_detail(e, d, detail, sizeof(detail));
         pax_draw_text(&fb, COL_PAGER_TEXT, FONT, TXT_TINY, COL_DETAIL, ty, detail);
     }
 

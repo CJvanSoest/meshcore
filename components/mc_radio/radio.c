@@ -244,8 +244,9 @@ bool radio_tx_message(meshcore_message_t *msg) {
     bool ok = (lora_send_packet(&lora_handle, &pkt) == ESP_OK);
     if (ok) {
         dc_record_tx(airtime_ms);
-        // Toolbox packet log: record the frame we actually put on air.
-        diag_capture(DIAG_DIR_TX, pkt_data, pkt_len, DIAG_RSSI_NONE, 0);
+        // Toolbox packet log: record the frame we actually put on air. RSSI/SNR
+        // are receiver-side measurements, so both are the "absent" sentinel here.
+        diag_capture(DIAG_DIR_TX, pkt_data, pkt_len, DIAG_RSSI_NONE, DIAG_RSSI_NONE);
     }
     return ok;
 }

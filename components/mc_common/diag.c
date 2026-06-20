@@ -15,7 +15,7 @@
 static diag_entry_t     *s_ring  = NULL;
 static int               s_head  = 0;  // next write slot
 static int               s_count = 0;  // valid entries (<= DIAG_LOG_SIZE)
-static volatile uint32_t s_total = 0;  // lifetime captures (benign unlocked read)
+static uint32_t s_total = 0;  // lifetime captures; written under s_mutex, read is a benign race
 static SemaphoreHandle_t s_mutex = NULL;
 
 void diag_init(void) {

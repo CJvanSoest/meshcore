@@ -23,13 +23,13 @@
 typedef struct {
     const char *label;
     const char *desc;
-    bool        enabled;
-    app_view_t  target;
+    bool        enabled;  // false renders a dimmed "soon" placeholder
+    app_view_t  target;   // inert when enabled == false
 } toolbox_tile_t;
 
 static const toolbox_tile_t toolbox_tiles[] = {
-    { "Packet Log",    "Live RX/TX frames - hex dump + dissector", true,  VIEW_TOOLBOX_LOG },
-    { "Coverage Test", "Ping repeaters, log reachability to SD",   false, VIEW_TOOLBOX },
+    { "Packet Log",    "Live RX/TX frames, hex dump + dissector", true,  VIEW_TOOLBOX_LOG },
+    { "Coverage Test", "Ping repeaters, log reachability to SD",  false, VIEW_TOOLBOX },
 };
 #define TOOLBOX_TILE_COUNT ((int)(sizeof(toolbox_tiles) / sizeof(toolbox_tiles[0])))
 
