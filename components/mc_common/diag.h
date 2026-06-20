@@ -38,8 +38,12 @@ void diag_init(void);
 void diag_capture(uint8_t dir, const uint8_t *frame, uint8_t len,
                   int8_t rssi_dbm, int8_t snr_db_x4);
 
-// Copy up to `max` entries newest-first into out[]; returns the count copied.
-int diag_snapshot(diag_entry_t *out, int max);
+// Bulk-copy the whole ring into out (must hold DIAG_LOG_SIZE entries) under a
+// brief lock — one memcpy, not a per-entry loop, so a colliding capture is not
+// starved. Returns the valid-entry count and writes the ring write-head to
+// *out_head; the caller walks newest-first as
+//   out[(*out_head - 1 - i + 2 * DIAG_LOG_SIZE) % DIAG_LOG_SIZE], i = 0..count-1.
+int diag_snapshot(diag_entry_t out[DIAG_LOG_SIZE], int *out_head);
 
 // Total frames captured since boot (header counter; read without locking).
 uint32_t diag_total(void);

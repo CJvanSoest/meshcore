@@ -8,7 +8,6 @@ idf_component_register(
         "channels.c"
         "chat.c"
         "nodes.c"
-        "diag.c"
         "history.c"
         "settings_nvs.c"
         "sounds.c"

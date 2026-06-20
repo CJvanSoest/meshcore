@@ -36,8 +36,11 @@
 
 // One PSRAM-resident snapshot of the ring, refreshed each live frame. Frozen
 // (not refreshed) while paused so the user can read + scroll a stable window.
+// s_snap holds the ring in raw order; s_snap_head locates the write head so the
+// render walks it newest-first.
 static diag_entry_t *s_snap       = NULL;
 static int           s_snap_count = 0;
+static int           s_snap_head  = 0;
 
 static void ensure_snap(void) {
     if (s_snap != NULL) return;
@@ -114,7 +117,7 @@ void render_toolbox_log(void) {
         return;
     }
     if (!toolbox_log_paused) {
-        s_snap_count = diag_snapshot(s_snap, DIAG_LOG_SIZE);
+        s_snap_count = diag_snapshot(s_snap, &s_snap_head);
     }
 
     int rows_y0  = LOG_HEADER_H + 4;
@@ -137,12 +140,17 @@ void render_toolbox_log(void) {
     for (int i = 0; i < rows_vis; i++) {
         int si = toolbox_log_scroll + i;
         if (si >= s_snap_count) break;
-        const diag_entry_t *e = &s_snap[si];
+        // Newest-first walk over the raw-order snapshot via the captured head.
+        int ri = (s_snap_head - 1 - si + 2 * DIAG_LOG_SIZE) % DIAG_LOG_SIZE;
+        const diag_entry_t *e = &s_snap[ri];
         int ry = rows_y0 + i * LOG_ROW_H;
 
         if (i & 1) pax_simple_rect(&fb, COL_HEADER, 0, ry, w, LOG_ROW_H);
 
         diag_decoded_t d;
+        // Decodes the captured prefix (raw_len, capped at DIAG_RAW_MAX = 176B):
+        // a frame longer than that dissects a display-only truncation, not the
+        // full on-air payload. Header fields are always complete.
         diag_decode(e->raw, e->raw_len, &d);
 
         int ty = ry + (LOG_ROW_H - TXT_TINY) / 2;

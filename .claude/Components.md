@@ -29,7 +29,7 @@ pure parts, which is what keeps them host-testable.
 
 | Component | REQUIRES (public) | PRIV_REQUIRES (private) |
 |---|---|---|
-| `mc_common` | (none) | (none) |
+| `mc_common` | (none) | freertos, esp_hw_support |
 | `mc_proto` | (none) | (none) |
 | `vendor` | (none) | mbedtls, esp_hw_support |
 | `mc_io` | (none) | mc_proto, nvs_flash, esp_driver_i2c, esp_timer, esp_hw_support, mbedtls |
@@ -66,7 +66,11 @@ region scope and config persistence, but it never builds a MeshCore payload.
 ### `mc_common` (L0)
 Foundation defs shared everywhere: `app_config.h` (version labels, board
 config), colour palette, small shared types. No logic worth a bug. If you add a
-constant used by two or more layers, it may belong here.
+constant used by two or more layers, it may belong here. Also holds `diag.c`,
+the diagnostics capture ring (Toolbox packet log): pure transport-log storage
+with its own mutex, kept at L0 so the radio tap (`mc_radio`) and the UI both
+reach it downward instead of through `mc_domain`. Its display decoder is the
+pure `mc_proto/diag_decode`.
 
 ### `mc_proto` (L2, pure)
 Two parts in one component:

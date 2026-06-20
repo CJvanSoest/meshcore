@@ -35,7 +35,7 @@ static void test_advert_frame(void) {
     for (int i = 0; i < MESHCORE_SIGNATURE_SIZE; i++) adv.signature[i] = (uint8_t)(i);
     adv.role           = MESHCORE_DEVICE_ROLE_REPEATER;
     adv.name_valid     = true;
-    strcpy(adv.name, "repeater-zuid");
+    strcpy(adv.name, "repeater-south");
     adv.position_valid = true;
     adv.position_lat   = 52123456;
     adv.position_lon   = 4567890;
@@ -60,7 +60,7 @@ static void test_advert_frame(void) {
     CHECK(d.has_pubkey, "advert exposes pubkey");
     CHECK(memcmp(d.pubkey, adv.pub_key, MESHCORE_PUB_KEY_SIZE) == 0, "advert pubkey matches");
     CHECK(d.role == MESHCORE_DEVICE_ROLE_REPEATER, "advert role = repeater");
-    CHECK(d.has_name && strcmp(d.name, "repeater-zuid") == 0, "advert name matches");
+    CHECK(d.has_name && strcmp(d.name, "repeater-south") == 0, "advert name matches");
     CHECK(d.has_pos && d.lat_e6 == 52123456 && d.lon_e6 == 4567890, "advert position matches");
 }
 
@@ -83,6 +83,49 @@ static void test_dm_frame(void) {
     CHECK(!d.has_pubkey, "dm has no advert pubkey");
 }
 
+static void test_truncated_dm(void) {
+    // A TXT_MSG whose payload is too short to hold both 1-byte hashes must not
+    // report dest/src — exercises the payload_length >= 2 guard.
+    meshcore_message_t msg = {0};
+    msg.type           = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
+    msg.route          = MESHCORE_ROUTE_TYPE_DIRECT;
+    msg.bytes_per_hop  = 1;
+    msg.payload[0]     = 0x42;
+    msg.payload_length = 1;
+
+    diag_decoded_t d = {0};
+    CHECK(decode_message(&msg, &d), "truncated dm frame decodes");
+    CHECK(d.valid, "truncated dm header parses");
+    CHECK(d.ptype == MESHCORE_PAYLOAD_TYPE_TXT_MSG, "truncated dm ptype");
+    CHECK(!d.has_hash, "truncated dm exposes no hashes (payload_length < 2)");
+}
+
+static void test_overlong_advert_name(void) {
+    // Hand-build an ADVERT payload whose name exceeds MESHCORE_MAX_NAME_SIZE so
+    // meshcore_advert_deserialize takes its reject path (advert.c name_len > 32).
+    // diag_decode must keep the parsed header but lift no pubkey/name.
+    uint8_t payload[160] = {0};
+    int     p            = 0;
+    for (int i = 0; i < MESHCORE_PUB_KEY_SIZE; i++) payload[p++] = (uint8_t)i;
+    for (int i = 0; i < 4; i++) payload[p++] = 0;                  // timestamp
+    for (int i = 0; i < MESHCORE_SIGNATURE_SIZE; i++) payload[p++] = 0;
+    payload[p++] = 0x80;                                           // flags: name present
+    for (int i = 0; i < 40; i++) payload[p++] = 'A';              // 40-char name (> 32)
+
+    meshcore_message_t msg = {0};
+    msg.type          = MESHCORE_PAYLOAD_TYPE_ADVERT;
+    msg.route         = MESHCORE_ROUTE_TYPE_FLOOD;
+    msg.bytes_per_hop = 1;
+    memcpy(msg.payload, payload, p);
+    msg.payload_length = (uint8_t)p;
+
+    diag_decoded_t d = {0};
+    CHECK(decode_message(&msg, &d), "overlong-name advert frame decodes");
+    CHECK(d.valid, "overlong-name advert header still parses");
+    CHECK(!d.has_pubkey, "overlong advert name rejected (no pubkey lifted)");
+    CHECK(!d.has_name, "overlong advert name rejected (no name lifted)");
+}
+
 static void test_names_and_guards(void) {
     CHECK(strcmp(diag_type_name(MESHCORE_PAYLOAD_TYPE_ADVERT), "ADVERT") == 0, "type name ADVERT");
     CHECK(strcmp(diag_type_name(MESHCORE_PAYLOAD_TYPE_GRP_TXT), "CHAN") == 0, "type name CHAN");
@@ -97,6 +140,8 @@ static void test_names_and_guards(void) {
 int main(void) {
     test_advert_frame();
     test_dm_frame();
+    test_truncated_dm();
+    test_overlong_advert_name();
     test_names_and_guards();
     if (failures == 0) {
         printf("test_diag_decode: OK\n");

@@ -49,19 +49,21 @@ void diag_capture(uint8_t dir, const uint8_t *frame, uint8_t len,
     xSemaphoreGive(s_mutex);
 }
 
-int diag_snapshot(diag_entry_t *out, int max) {
-    if (s_ring == NULL || s_mutex == NULL || out == NULL || max <= 0) return 0;
+int diag_snapshot(diag_entry_t out[DIAG_LOG_SIZE], int *out_head) {
+    if (s_ring == NULL || s_mutex == NULL || out == NULL) return 0;
     if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(20)) != pdTRUE) return 0;
 
-    int n = s_count < max ? s_count : max;
-    for (int i = 0; i < n; i++) {
-        // Newest first: most recent entry sits just behind the write head.
-        int idx = (s_head - 1 - i + 2 * DIAG_LOG_SIZE) % DIAG_LOG_SIZE;
-        out[i]  = s_ring[idx];
-    }
+    // Hold the lock only for one bulk copy + head/count read, so a concurrent
+    // capture waits microseconds rather than the length of a per-entry loop and
+    // does not get starved into dropping under burst RX. The caller derives the
+    // newest-first order from the write head, lock-free.
+    memcpy(out, s_ring, sizeof(diag_entry_t) * DIAG_LOG_SIZE);
+    int head  = s_head;
+    int count = s_count;
 
     xSemaphoreGive(s_mutex);
-    return n;
+    if (out_head) *out_head = head;
+    return count;
 }
 
 uint32_t diag_total(void) { return s_total; }
