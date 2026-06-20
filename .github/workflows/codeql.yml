@@ -26,6 +26,7 @@ jobs:
         with:
           languages: c-cpp
           build-mode: none
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Analyze
         uses: github/codeql-action/analyze@v3
