@@ -1,6 +1,6 @@
 # MeshCore for Tanmatsu
 
-[![CI](https://github.com/CJvanSoest/meshcore/actions/workflows/ci.yml/badge.svg)](https://github.com/CJvanSoest/meshcore/actions/workflows/ci.yml)
+[![Build and test](https://github.com/CJvanSoest/meshcore/actions/workflows/ci.yml/badge.svg)](https://github.com/CJvanSoest/meshcore/actions/workflows/ci.yml)
 
 A [MeshCore](https://meshcore.co.uk) LoRa mesh chat app for the
 **[Tanmatsu](https://tanmatsu.cloud) badge**, fully interoperable with the

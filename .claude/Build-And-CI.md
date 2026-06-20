@@ -1,7 +1,6 @@
 # Build and CI
 
-How the firmware builds, the board targets, and the two CI workflows (which
-differ on purpose). The everyday change loop is in [Workflow.md](Workflow.md).
+How the firmware builds, the board targets and CI. The everyday change loop is in [Workflow.md](Workflow.md).
 
 ## Local build
 

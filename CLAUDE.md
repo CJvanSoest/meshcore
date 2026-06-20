@@ -25,8 +25,7 @@ programmer or any contributor:
   the ed25519 split, the gates. Read before touching crypto.
 - [`.claude/Testing.md`](.claude/Testing.md) — host harness, what each gate
   proves, golden vectors, adding a test.
-- [`.claude/Build-And-CI.md`](.claude/Build-And-CI.md) — build + the two
-  divergent CI workflows.
+- [`.claude/Build-And-CI.md`](.claude/Build-And-CI.md) — build + CI.
 - [`.claude/Workflow.md`](.claude/Workflow.md) — first read to green commit.
 - [`.claude/Pitfalls.md`](.claude/Pitfalls.md) — traps that already cost time
   or shipped broken behaviour. Read before trusting a tool or assumption.

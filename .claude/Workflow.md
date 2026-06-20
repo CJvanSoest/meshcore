@@ -88,8 +88,6 @@ symbol does. When in doubt, build.
 
 - After pushing, confirm the run is green before calling the work done. The
   firmware build job is the ground truth for compile and link.
-- The two CI workflows run on different runners and differ by one line on
-  purpose. See [Pitfalls.md](Pitfalls.md). Do not unify them.
 - Report outcomes honestly. If a result was verified on hardware by someone else,
   say so rather than implying you ran it. If a step was skipped, say it.
 
