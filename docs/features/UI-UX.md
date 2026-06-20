@@ -57,18 +57,21 @@ status strip is rendered in Pager colours and overlays every view.
 | View | Enum | Entry behaviour |
 |---|---|---|
 | Home | `VIEW_HOME` | 4×2 tile-grid (Nodes / DM / Channel / Map / Advert / Settings / About / QR); WSAD or D-pad to focus, Enter opens |
-| Settings | `VIEW_SETTINGS` | Tile-grid of 7 categories (+ a hidden Advert category) → Enter drills in to that category's field list |
+| Settings | `VIEW_SETTINGS` | Tile-grid of 7 drilldown categories + 1 external Toolbox tile (+ a hidden Advert category) → Enter drills in to a category's field list, or opens the Toolbox launcher |
 | Nodes | `VIEW_NODES` | Live heard-node list with column header (Role / Name / RSSI / SNR / #Pkt / Dist / Seen) |
 | DM | `VIEW_CHAT` | If no target: inbox view (saved contacts + active DM target). If target set: per-peer conversation |
 | Channel | `VIEW_CHANNEL` | Public channel chat |
 | About | `VIEW_ABOUT` | Version + build date + author + upstream credits + license + source URL |
+| Toolbox | `VIEW_TOOLBOX` | Launcher for LoRa diagnostic tools, reached from the Settings Toolbox tile (see the Toolbox section) |
 
-`Tab` rotates through the four classic views (`VIEW_TAB_COUNT=4`) — home
-and About sit outside the tab carousel. `current_view` is `app_view_t`
-defined in `app_config.h`; boot default is `VIEW_HOME`.
+`Tab` rotates through the four classic views (`VIEW_TAB_COUNT=4`) — home,
+About and the Toolbox views sit outside the tab carousel. `current_view` is
+`app_view_t` defined in `app_config.h`; boot default is `VIEW_HOME`.
 
 ESC falls through a back-stack: drilldown → category list → home →
-launcher. This makes home the safe "I am here" anchor across the app.
+launcher. This makes home the safe "I am here" anchor across the app. The
+Toolbox views add their own leg: packet-log / coverage → Toolbox launcher →
+Settings.
 
 ## Home tile grid (`render_home.c`)
 
@@ -105,9 +108,11 @@ name on the left instead of a view name; same right-side stats.
 Two levels:
 
 1. **Category list** (`settings_category_list_mode == true`) — 4-column
-   Pager tile grid, seven tiles: Identity / Regulatory / Radio / Network /
-   Region & Location / Brightness / Sounds. (An eighth category, Advert, is
-   hidden from this grid and reached via the Home -> Advert tile.) Each tile has
+   Pager tile grid, seven drilldown tiles: Identity / Regulatory / Radio /
+   Network / Region & Location / Brightness / Sounds, plus an external
+   **Toolbox** tile (marked by `first == FIELD_COUNT`) that opens the Toolbox
+   launcher instead of a field list. (A further category, Advert, is hidden
+   from this grid and reached via the Home -> Advert tile.) Each tile has
    its own PAX-drawn category icon. Multi-line labels via embedded `\n` so the
    wider "Region & Location" wraps onto two lines. The per-category field lists
    live in `s_categories[]` (`render_settings.c`): Identity = owner/advert name
@@ -173,6 +178,30 @@ license, source URL, issue tracker. Footer: `ESC: home`.
 When more items get added (commit hash, region preset, map license credits
 once maps land) prefer inline `Label: value` per line over the current
 label-stacked-above-value layout, per CJ's feedback on the v2.2.0 design.
+
+## Toolbox (#3)
+
+A diagnostics launcher reached from the Settings **Toolbox** tile (an external
+category, so it switches to `VIEW_TOOLBOX` instead of drilling into a field
+list). The launcher lists sub-tools; `WS` / D-pad move the cursor, Enter opens,
+ESC returns to Settings. A not-yet-built tool renders dimmed with a "soon" tag.
+
+### Packet Log (`VIEW_TOOLBOX_LOG`)
+
+A live, terminal-style log of every radio frame in both directions, fed by a
+capture ring (`mc_common/diag`) tapped in `mc_radio` (the RX task and
+`radio_tx_message`). Two modes toggle with `H`:
+
+- **Hex** — the leading on-air bytes as a hex dump.
+- **Dissector** — per-payload fields decoded by the pure `mc_proto/diag_decode`
+  (type, route, hops, RSSI/SNR, ADVERT pubkey/role/name, DM dst/src hash).
+  Public channel (GRP_TXT) senders are anonymous by protocol design.
+
+`P` pauses (freezes the displayed window while capture keeps running), `WS` /
+D-pad scroll, `C` clears, ESC returns to the launcher. Each captured frame is
+dissected once at snapshot time, so the render loop never re-decodes a visible
+row. The dissect runs on the captured prefix (`DIAG_RAW_MAX` = 176 B), so a
+longer frame shows a display-only truncation; header fields stay complete.
 
 ## Edit-mode state machine (Settings drilldown)
 

@@ -79,8 +79,9 @@ Two parts in one component:
   free of ESP-IDF / pax / BSP / L1 headers.
 - Root holds **first-party pure helpers**: `region_limits.c` (regulatory
   sub-bands, ERP/EIRP power, duty-cycle budget), `gps_parser.c` (NMEA),
-  `advert_sign.c` (the signable-byte range), `companion-radio-protocol/` (the
-  P4<->C6 command parser).
+  `advert_sign.c` (the signable-byte range), `diag_decode.c` (the Toolbox
+  packet-log frame dissector, kept here so the UI never includes `meshcore/`),
+  `companion-radio-protocol/` (the P4<->C6 command parser).
 All of it is host-tested. Do not pull a platform header in here.
 
 ### `vendor` (leaf)
@@ -125,7 +126,9 @@ prone parts.
 the `save_*` handlers into a field-dispatch table by address (this is why
 cppcheck thinks they are unused, see [Pitfalls.md](Pitfalls.md)). Selection
 cursors versus shrinking lists are the classic bug here. Must not include
-`meshcore/`.
+`meshcore/` — the Toolbox views (`render_toolbox.c` launcher,
+`render_toolbox_log.c` packet log) read the `mc_common/diag` ring and the pure
+`mc_proto/diag_decode` for display rather than speaking the wire protocol.
 
 ### `mc_rx` (L5)
 The MeshCore application brain. RX handlers (`rx_handle_advert/grp_txt/dm/path`)
