@@ -12,7 +12,6 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-
 #include "pax_gfx.h"
 
 // map_profile_t + the map_profile / map_lock_on globals and the
@@ -26,8 +25,8 @@
 //   OSM-Bright → /sd/maps/carto/tiles/{z}/{x}/{y}.png  (NAS-rendered)
 //   CyclOSM    → /sd/maps/cycle/tiles/{z}/{x}/{y}.png
 //   OpenTopo   → /sd/maps/topo/tiles/{z}/{x}/{y}.png
-#define MAP_TILE_ROOT   "/sd/maps"
-#define MAP_TILE_PX     256
+#define MAP_TILE_ROOT "/sd/maps"
+#define MAP_TILE_PX   256
 
 // Switch the active profile. Clears the tile cache so old-style PNGs don't
 // linger across the change, marks state dirty so the debounced NVS save
@@ -39,15 +38,14 @@ void map_profile_set(map_profile_t p);
 // of NL z=11-17 drops in without firmware changes. Tiles missing in the
 // current SD content render as a grey rect with a corner grid line, so
 // over-zooming is harmless until the deeper tiles are present.
-#define MAP_ZOOM_MIN    6
-#define MAP_ZOOM_MAX    17
+#define MAP_ZOOM_MIN 6
+#define MAP_ZOOM_MAX 17
 
 // Slippy-map: (lat°, lon°, zoom) → tile (x, y) + pixel offset inside the
 // tile. py_in_tile uses the standard Web-Mercator Y so 0 = north edge.
 // lat is clamped to ±85.0511° (the Mercator pole limit) before mapping.
-void map_latlon_to_tile(double lat_deg, double lon_deg, int zoom,
-                        int *tile_x, int *tile_y,
-                        int *px_in_tile, int *py_in_tile);
+void map_latlon_to_tile(double lat_deg, double lon_deg, int zoom, int* tile_x, int* tile_y, int* px_in_tile,
+                        int* py_in_tile);
 
 // Wraps `tile_x` modulo 2^zoom so panning across the antimeridian works.
 int map_wrap_tile_x(int tile_x, int zoom);
@@ -57,7 +55,7 @@ int map_wrap_tile_x(int tile_x, int zoom);
 // on success, NULL if the tile is missing, malformed, or out of bounds.
 // The pointer is owned by the cache and must NOT be freed by the caller;
 // it stays valid until the cache evicts that slot.
-pax_buf_t *map_tile_get(int zoom, int tile_x, int tile_y);
+pax_buf_t* map_tile_get(int zoom, int tile_x, int tile_y);
 
 // Drop every cached tile (e.g. on view exit or low-memory pressure).
 void map_cache_clear(void);
@@ -78,7 +76,7 @@ void map_cache_unlock(void);
 // loaded from NVS (or sensible defaults) on boot via map_state_init().
 extern int32_t map_center_lat_e6;  // 1e-6 degrees
 extern int32_t map_center_lon_e6;
-extern uint8_t map_zoom;            // clamped to [MAP_ZOOM_MIN, MAP_ZOOM_MAX]
+extern uint8_t map_zoom;  // clamped to [MAP_ZOOM_MIN, MAP_ZOOM_MAX]
 
 // Initialise centre + zoom from NVS, falling back to Den Haag at zoom 8 if
 // the keys are missing. Idempotent; call once at boot before rendering.

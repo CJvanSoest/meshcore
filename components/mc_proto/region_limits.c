@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "region_limits.h"
-
 #include <ctype.h>
 #include <string.h>
 
@@ -10,17 +9,14 @@
 // Applies to all EU/EEA countries on the harmonised 863-870 SRD allocation.
 // Power is ERP (dipole reference). Permille: 1=0.1%, 10=1%, 100=10%.
 static const regulatory_subband_t EU868_SUBBANDS[] = {
-    {863.000f, 865.000f, 14,    1, false,   0, "g"},
-    {865.000f, 868.000f, 14,   10, false,   0, "g1"},
-    {868.000f, 868.600f, 14,   10, false,   0, "g1'"},
-    {868.700f, 869.200f, 14,    1, false,   0, "g2"},
-    {869.400f, 869.650f, 27,  100, false,   0, "g3"},
-    {869.700f, 870.000f, 14,   10, false,   0, "g4"},
+    {863.000f, 865.000f, 14, 1, false, 0, "g"},    {865.000f, 868.000f, 14, 10, false, 0, "g1"},
+    {868.000f, 868.600f, 14, 10, false, 0, "g1'"}, {868.700f, 869.200f, 14, 1, false, 0, "g2"},
+    {869.400f, 869.650f, 27, 100, false, 0, "g3"}, {869.700f, 870.000f, 14, 10, false, 0, "g4"},
 };
 
 // ── EU 433 (harmonised SRD) ──────────────────────────────────────────────────
 static const regulatory_subband_t EU433_SUBBANDS[] = {
-    {433.050f, 434.790f, 10,  100, false, 0, "433"},
+    {433.050f, 434.790f, 10, 100, false, 0, "433"},
 };
 
 // ── US/CA/MX 902-928 (FCC Part 15.247) ───────────────────────────────────────
@@ -41,12 +37,12 @@ static const regulatory_subband_t ANZ915_SUBBANDS[] = {
 // ── JP 920-923 (ARIB STD-T108) ───────────────────────────────────────────────
 // Strict: 13-16 dBm EIRP + LBT required (no DC-only operation).
 static const regulatory_subband_t JP920_SUBBANDS[] = {
-    {920.500f, 923.500f, 13,   100, true, 0, "JP920"},
+    {920.500f, 923.500f, 13, 100, true, 0, "JP920"},
 };
 
 // ── KR 920-923 (KCC) ─────────────────────────────────────────────────────────
 static const regulatory_subband_t KR920_SUBBANDS[] = {
-    {920.000f, 923.000f, 14,  100, true, 0, "KR920"},
+    {920.000f, 923.000f, 14, 100, true, 0, "KR920"},
 };
 
 // ── IN 865-867 (WPC) ─────────────────────────────────────────────────────────
@@ -57,8 +53,8 @@ static const regulatory_subband_t IN865_SUBBANDS[] = {
 // ── RU 864-870 (multiple sub-bands; Roskomnadzor) ────────────────────────────
 // Two non-overlapping windows commonly used for unlicensed LoRa.
 static const regulatory_subband_t RU864_SUBBANDS[] = {
-    {864.000f, 865.000f, 14,   1, false, 0, "RU864"},
-    {868.700f, 869.200f, 14,   1, false, 0, "RU869"},
+    {864.000f, 865.000f, 14, 1, false, 0, "RU864"},
+    {868.700f, 869.200f, 14, 1, false, 0, "RU869"},
 };
 
 // ── Country table ────────────────────────────────────────────────────────────
@@ -71,56 +67,57 @@ const regulatory_country_t REGION_COUNTRIES[] = {
     {"--", "(Choose region)", POWER_UNIT_ERP, NULL, 0},
 
     // EU 863-870 countries (harmonised — all use same sub-band table)
-    {"NL", "Netherlands",     POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"BE", "Belgium",         POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"DE", "Germany",         POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"AT", "Austria",         POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"FR", "France",          POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"CH", "Switzerland",     POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"UK", "United Kingdom",  POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"IT", "Italy",           POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"ES", "Spain",           POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"PT", "Portugal",        POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"SE", "Sweden",          POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"NO", "Norway",          POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"DK", "Denmark",         POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"FI", "Finland",         POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"PL", "Poland",          POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"CZ", "Czechia",         POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"IE", "Ireland",         POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"UA", "Ukraine",         POWER_UNIT_ERP, EU868_SUBBANDS, 6},
-    {"ZA", "South Africa",    POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"NL", "Netherlands", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"BE", "Belgium", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"DE", "Germany", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"AT", "Austria", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"FR", "France", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"CH", "Switzerland", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"UK", "United Kingdom", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"IT", "Italy", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"ES", "Spain", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"PT", "Portugal", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"SE", "Sweden", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"NO", "Norway", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"DK", "Denmark", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"FI", "Finland", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"PL", "Poland", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"CZ", "Czechia", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"IE", "Ireland", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"UA", "Ukraine", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
+    {"ZA", "South Africa", POWER_UNIT_ERP, EU868_SUBBANDS, 6},
 
     // EU 433
-    {"EU-433", "EU 433 MHz",  POWER_UNIT_ERP, EU433_SUBBANDS, 1},
+    {"EU-433", "EU 433 MHz", POWER_UNIT_ERP, EU433_SUBBANDS, 1},
 
     // Americas (FCC 902-928)
-    {"US", "United States",   POWER_UNIT_EIRP, US915_SUBBANDS, 1},
-    {"CA", "Canada",          POWER_UNIT_EIRP, US915_SUBBANDS, 1},
-    {"MX", "Mexico",          POWER_UNIT_EIRP, US915_SUBBANDS, 1},
+    {"US", "United States", POWER_UNIT_EIRP, US915_SUBBANDS, 1},
+    {"CA", "Canada", POWER_UNIT_EIRP, US915_SUBBANDS, 1},
+    {"MX", "Mexico", POWER_UNIT_EIRP, US915_SUBBANDS, 1},
 
     // APAC
-    {"AU", "Australia",       POWER_UNIT_EIRP, ANZ915_SUBBANDS, 1},
-    {"NZ", "New Zealand",     POWER_UNIT_EIRP, ANZ915_SUBBANDS, 1},
-    {"JP", "Japan",           POWER_UNIT_EIRP, JP920_SUBBANDS,  1},
-    {"KR", "South Korea",     POWER_UNIT_EIRP, KR920_SUBBANDS,  1},
-    {"IN", "India",           POWER_UNIT_EIRP, IN865_SUBBANDS,  1},
+    {"AU", "Australia", POWER_UNIT_EIRP, ANZ915_SUBBANDS, 1},
+    {"NZ", "New Zealand", POWER_UNIT_EIRP, ANZ915_SUBBANDS, 1},
+    {"JP", "Japan", POWER_UNIT_EIRP, JP920_SUBBANDS, 1},
+    {"KR", "South Korea", POWER_UNIT_EIRP, KR920_SUBBANDS, 1},
+    {"IN", "India", POWER_UNIT_EIRP, IN865_SUBBANDS, 1},
 
-    {"RU", "Russia",          POWER_UNIT_ERP,  RU864_SUBBANDS,  2},
+    {"RU", "Russia", POWER_UNIT_ERP, RU864_SUBBANDS, 2},
 };
 const int REGION_COUNTRY_COUNT = sizeof(REGION_COUNTRIES) / sizeof(REGION_COUNTRIES[0]);
 
-static int strcasecmp_safe(const char *a, const char *b) {
+static int strcasecmp_safe(const char* a, const char* b) {
     while (*a && *b) {
         int da = tolower((unsigned char)*a);
         int db = tolower((unsigned char)*b);
         if (da != db) return da - db;
-        a++; b++;
+        a++;
+        b++;
     }
     return tolower((unsigned char)*a) - tolower((unsigned char)*b);
 }
 
-const regulatory_country_t *region_get_country(const char *iso_code) {
+const regulatory_country_t* region_get_country(const char* iso_code) {
     if (!iso_code || !iso_code[0]) return NULL;
     for (int i = 0; i < REGION_COUNTRY_COUNT; i++) {
         if (strcasecmp_safe(REGION_COUNTRIES[i].country_code, iso_code) == 0) {
@@ -130,16 +127,15 @@ const regulatory_country_t *region_get_country(const char *iso_code) {
     return NULL;
 }
 
-const regulatory_country_t *region_get_country_by_index(int idx) {
+const regulatory_country_t* region_get_country_by_index(int idx) {
     if (idx < 0 || idx >= REGION_COUNTRY_COUNT) return NULL;
     return &REGION_COUNTRIES[idx];
 }
 
-const regulatory_subband_t *region_match_subband(
-    const regulatory_country_t *country, float freq_mhz) {
+const regulatory_subband_t* region_match_subband(const regulatory_country_t* country, float freq_mhz) {
     if (!country || !country->subbands) return NULL;
     for (uint8_t i = 0; i < country->n_subbands; i++) {
-        const regulatory_subband_t *sb = &country->subbands[i];
+        const regulatory_subband_t* sb = &country->subbands[i];
         if (freq_mhz >= sb->freq_min_mhz && freq_mhz <= sb->freq_max_mhz) {
             return sb;
         }
@@ -147,9 +143,7 @@ const regulatory_subband_t *region_match_subband(
     return NULL;
 }
 
-int8_t region_effective_power_dbm(
-    const regulatory_country_t *country,
-    int8_t conducted_dbm, int8_t antenna_gain_dbi) {
+int8_t region_effective_power_dbm(const regulatory_country_t* country, int8_t conducted_dbm, int8_t antenna_gain_dbi) {
     if (!country) return conducted_dbm;
     int eff = conducted_dbm + antenna_gain_dbi;
     // ERP is referenced to a half-wave dipole (2.15 dBi gain over isotropic).
@@ -159,11 +153,11 @@ int8_t region_effective_power_dbm(
         eff -= 2;  // round 2.15 down — conservative for the user
     }
     if (eff < -128) eff = -128;
-    if (eff > 127)  eff = 127;
+    if (eff > 127) eff = 127;
     return (int8_t)eff;
 }
 
-uint32_t region_dc_budget_ms_per_hour(const regulatory_subband_t *sb) {
+uint32_t region_dc_budget_ms_per_hour(const regulatory_subband_t* sb) {
     if (!sb) return 0;
     // permille: 1000 = 100% = 3600000 ms / hour
     return ((uint32_t)sb->duty_cycle_permille) * 3600u;

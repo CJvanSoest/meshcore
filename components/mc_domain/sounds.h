@@ -55,4 +55,4 @@ int sounds_count(void);
 
 // Filename basename (no path, no .wav) for slot 1..count(). Returns "" for
 // slot 0 (Off) or out of range. Pointer is valid until the next refresh.
-const char *sounds_slot_name(uint8_t slot);
+const char* sounds_slot_name(uint8_t slot);

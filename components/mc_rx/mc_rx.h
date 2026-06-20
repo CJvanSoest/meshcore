@@ -25,7 +25,7 @@ void send_advert_direct(void);
 // Send an encrypted DM (TXT_MSG) to a node by pub_key. If ack_crc_out != NULL,
 // returns the 4-byte CRC the receiver echoes back in its PATH_RETURN so the
 // caller can track the ACK.
-bool send_dm_message(const char *text, const uint8_t *target_pub, uint8_t ack_crc_out[4]);
+bool send_dm_message(const char* text, const uint8_t* target_pub, uint8_t ack_crc_out[4]);
 
 // Send an encrypted public-channel message (GRP_TXT, FLOOD).
-bool send_chat_message(const char *text);
+bool send_chat_message(const char* text);

@@ -5,9 +5,8 @@
 #pragma once
 
 #include <stdbool.h>
-#include <stdint.h>
 #include <stddef.h>
-
+#include <stdint.h>
 #include "pax_gfx.h"
 #include "pax_text.h"
 
@@ -31,14 +30,13 @@ void emoji_init(void);
 
 // Draw a single emoji (by index into EMOJI_SET) centered at (cx, cy) with the
 // given radius. Caller is responsible for clipping/positioning.
-void emoji_draw(int idx, int cx, int cy, int radius, pax_buf_t *fb);
+void emoji_draw(int idx, int cx, int cy, int radius, pax_buf_t* fb);
 
 // Walk `text` and draw it at (x, baseline_y) using `font`/`size`/`col` for plain
 // runs and `emoji_draw` for recognized codepoints. Returns total advance in px.
 // Emoji are drawn inline with diameter ≈ size * 1.1 (matches the visual weight
 // of the surrounding glyphs).
-int emoji_draw_text(pax_buf_t *fb, pax_col_t col, const pax_font_t *font,
-                    float size, int x, int y, const char *text);
+int emoji_draw_text(pax_buf_t* fb, pax_col_t col, const pax_font_t* font, float size, int x, int y, const char* text);
 
 // Measure the would-be advance width of `text` with the same rules as above.
-int emoji_measure_text(const pax_font_t *font, float size, const char *text);
+int emoji_measure_text(const pax_font_t* font, float size, const char* text);

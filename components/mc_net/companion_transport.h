@@ -18,7 +18,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-
 #include "settings_nvs.h"  // for gps_source_t
 
 // Start the FreeRTOS reader task. Safe to call once at boot, after
@@ -29,7 +28,7 @@ bool companion_transport_init(void);
 // a reply back to the host. BLE's hook notifies on the TX characteristic;
 // USB-CDC passes NULL because mixing structured replies into the ESP_LOG
 // stream would be unparseable on the host side.
-typedef void (*companion_response_sender_t)(const uint8_t *frame, size_t len);
+typedef void (*companion_response_sender_t)(const uint8_t* frame, size_t len);
 
 // Feed *framed* bytes into the protocol parser. Used by the USB-CDC reader
 // task on the serial stream where there are no inherent message boundaries,
@@ -37,19 +36,17 @@ typedef void (*companion_response_sender_t)(const uint8_t *frame, size_t len);
 //
 // Single global parser + sender state means concurrent feeds from multiple
 // transports would interleave; the implementation serialises with a mutex.
-void companion_dispatch_frame(const uint8_t *buf, size_t len, gps_source_t src,
-                              companion_response_sender_t sender);
+void companion_dispatch_frame(const uint8_t* buf, size_t len, gps_source_t src, companion_response_sender_t sender);
 
 // Feed *one already-unframed command* (opcode byte + args) straight into
 // the dispatcher. Used by BLE where each ATT write boundary IS the message
 // boundary -- upstream MeshCore peers (iPhone app, T-Beam companion) send
 // the raw command, not the serial-line wrapped form.
-void companion_dispatch_raw(const uint8_t *cmd, size_t len, gps_source_t src,
-                            companion_response_sender_t sender);
+void companion_dispatch_raw(const uint8_t* cmd, size_t len, gps_source_t src, companion_response_sender_t sender);
 
 // Called from inside opcode handlers to push a reply. Builds [response_code |
 // args] (no '<' / '>' framing) and routes it through the sender registered
 // for the current dispatch. Sender is responsible for any transport-level
 // framing (BLE notify needs none -- one notify = one packet). No-op when
 // sender is NULL. args may be NULL when args_len == 0.
-void companion_send_response(uint8_t response_code, const void *args, size_t args_len);
+void companion_send_response(uint8_t response_code, const void* args, size_t args_len);

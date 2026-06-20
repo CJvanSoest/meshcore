@@ -43,7 +43,7 @@ the tanmatsu target in the `espressif/idf:v5.5.1` image and uploads
 
 ## The lint gate
 
-Four scripts under `tests/lint/`, run in CI before the build and easy to run
+Five scripts under `tests/lint/`, run in CI before the build and easy to run
 locally:
 
 - `check-arch-rules.sh` enforces the include-direction discipline (grep-based,
@@ -54,6 +54,11 @@ locally:
   Makefile.
 - `check-cppcheck.sh` runs cppcheck over the first-party components. Treat its
   `unusedFunction` output as advisory, see [Pitfalls.md](Pitfalls.md).
+- `check-format.sh` runs `clang-format --dry-run --Werror` over the first-party
+  C (vendored code and the `meshcore/` mirror excluded). The canonical version
+  is **clang-format 18.1.8**; output is not stable across major versions, so CI
+  pins it and the script warns if a different version is on PATH. Override with
+  `CLANG_FORMAT=/path/to/clang-format`.
 
 ## Artifacts and partitions
 

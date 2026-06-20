@@ -11,24 +11,25 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-
 #include "mbedtls/md.h"
 #include "mbedtls/sha256.h"
-
 #include "mc_crypto.h"
 
 static int failures = 0;
-#define CHECK(cond, msg)                                                        \
-    do {                                                                        \
-        if (!(cond)) { printf("FAIL: %s\n", (msg)); failures++; }               \
+#define CHECK(cond, msg)                 \
+    do {                                 \
+        if (!(cond)) {                   \
+            printf("FAIL: %s\n", (msg)); \
+            failures++;                  \
+        }                                \
     } while (0)
 
 // Frame a GRP_TXT plaintext: timestamp(4) | text_type(1) | text, zero-padded to
 // a 16-byte multiple. Returns the padded length.
-static size_t frame_plain(uint8_t *plain, const char *text) {
+static size_t frame_plain(uint8_t* plain, const char* text) {
     uint32_t ts = 0x11223344u;
     memcpy(plain, &ts, 4);
-    plain[4] = 0;
+    plain[4]    = 0;
     size_t tlen = strlen(text);
     memcpy(&plain[5], text, tlen);
     size_t plen   = 5 + tlen;
@@ -37,13 +38,13 @@ static size_t frame_plain(uint8_t *plain, const char *text) {
     return padded;
 }
 
-static void fill_key(uint8_t *key, size_t n, uint8_t base) {
+static void fill_key(uint8_t* key, size_t n, uint8_t base) {
     for (size_t i = 0; i < n; i++) key[i] = (uint8_t)(base + i);
 }
 
-static void make_grp(meshcore_grp_txt_t *grp, const uint8_t *key, const char *text) {
-    uint8_t plain[256] = {0};
-    size_t  padded     = frame_plain(plain, text);
+static void make_grp(meshcore_grp_txt_t* grp, const uint8_t* key, const char* text) {
+    uint8_t plain[256]  = {0};
+    size_t  padded      = frame_plain(plain, text);
     uint8_t cipher[256] = {0}, mac[32];
     mc_crypto_grp_encrypt(key, plain, padded, cipher, mac);
     memset(grp, 0, sizeof(*grp));
@@ -55,7 +56,7 @@ static void make_grp(meshcore_grp_txt_t *grp, const uint8_t *key, const char *te
 static void test_grp_roundtrip(void) {
     uint8_t key[MESHCORE_CIPHER_KEY_SIZE];
     fill_key(key, sizeof key, 0xA0);
-    const char *text = "hello channel";
+    const char* text = "hello channel";
 
     meshcore_grp_txt_t grp;
     make_grp(&grp, key, text);
@@ -86,7 +87,7 @@ static void test_grp_tampered(void) {
 
 static void test_ack_crc(void) {
     uint8_t     head5[5] = {0x44, 0x33, 0x22, 0x11, 0x00};
-    const char *text     = "ack me";
+    const char* text     = "ack me";
     uint8_t     pub[MESHCORE_PUB_KEY_SIZE];
     fill_key(pub, sizeof pub, 0x00);
 
@@ -99,7 +100,7 @@ static void test_ack_crc(void) {
     mbedtls_sha256_init(&c);
     mbedtls_sha256_starts(&c, 0);
     mbedtls_sha256_update(&c, head5, 5);
-    mbedtls_sha256_update(&c, (const uint8_t *)text, strlen(text));
+    mbedtls_sha256_update(&c, (const uint8_t*)text, strlen(text));
     mbedtls_sha256_update(&c, pub, MESHCORE_PUB_KEY_SIZE);
     mbedtls_sha256_finish(&c, sha);
     mbedtls_sha256_free(&c);
@@ -117,13 +118,14 @@ static void test_ack_crc(void) {
 // Independent recomputation of the region transport code per the documented
 // spec: HMAC-SHA256(SHA256("#"||region)[0:16], type || payload)[0:2] with the
 // reserved-sentinel remap.
-static uint16_t spec_region_code(const char *name, uint8_t type,
-                                 const uint8_t *payload, uint16_t len) {
+static uint16_t spec_region_code(const char* name, uint8_t type, const uint8_t* payload, uint16_t len) {
     char scope[35];
-    if (name[0] == '#') snprintf(scope, sizeof scope, "%s", name);
-    else                snprintf(scope, sizeof scope, "#%s", name);
+    if (name[0] == '#')
+        snprintf(scope, sizeof scope, "%s", name);
+    else
+        snprintf(scope, sizeof scope, "#%s", name);
     uint8_t digest[32], key[16];
-    mbedtls_sha256((const uint8_t *)scope, strlen(scope), digest, 0);
+    mbedtls_sha256((const uint8_t*)scope, strlen(scope), digest, 0);
     memcpy(key, digest, 16);
     uint8_t buf[256];
     buf[0] = type;
@@ -132,8 +134,10 @@ static uint16_t spec_region_code(const char *name, uint8_t type,
     mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, 16, buf, len + 1, mac);
     uint16_t code;
     memcpy(&code, mac, 2);
-    if (code == 0x0000)      code = 0x0001;
-    else if (code == 0xFFFF) code = 0xFFFE;
+    if (code == 0x0000)
+        code = 0x0001;
+    else if (code == 0xFFFF)
+        code = 0xFFFE;
     return code;
 }
 
