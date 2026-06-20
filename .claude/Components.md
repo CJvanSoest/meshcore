@@ -81,7 +81,8 @@ Two parts in one component:
   sub-bands, ERP/EIRP power, duty-cycle budget), `gps_parser.c` (NMEA),
   `advert_sign.c` (the signable-byte range), `diag_decode.c` (the Toolbox
   packet-log frame dissector, kept here so the UI never includes `meshcore/`),
-  `companion-radio-protocol/` (the P4<->C6 command parser).
+  `trace.c` (the TRACE reachability-probe payload layout used by the coverage
+  test), `companion-radio-protocol/` (the P4<->C6 command parser).
 All of it is host-tested. Do not pull a platform header in here.
 
 ### `vendor` (leaf)

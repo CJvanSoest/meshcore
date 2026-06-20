@@ -208,14 +208,16 @@ longer frame shows a display-only truncation; header fields stay complete.
 A repeater reachability tester. The view lists discovered repeaters
 (`role == REPEATER`) with an `x/3` counter and a green/orange/red status. Enter
 pings the selected repeater 3x at a 10 s interval — a background task in `mc_rx`
-sends a DM and matches the PATH_RETURN ACK outside the chat ring, so DM history
-stays clean — classifies the result (3/3 green, 1-2 orange, 0 red), and appends
-every GPS-stamped attempt to one CSV per session on SD (`/sd/meshcore/coverage/`,
-see [SD-Card-Layout.md](../reference/SD-Card-Layout.md)). `WS` / D-pad move the
+sends an upstream MeshCore **TRACE** (the only reachability probe a repeater
+answers without an admin login) and matches the returning frame by tag in
+`rx_handle_trace`, recording reachability plus uplink/downlink SNR — classifies
+the result (3/3 green, 1-2 orange, 0 red), and appends every GPS-stamped attempt
+to one CSV per session on SD (`/sd/meshcore/coverage/`, see
+[SD-Card-Layout.md](../reference/SD-Card-Layout.md)). `WS` / D-pad move the
 cursor, Enter pings, `R` starts a new session, ESC returns to the launcher.
-Results and the SD log live in `mc_domain/coverage`. The coverage map
-(z15/16 markers + PNG export) is a later sub-phase; see
-[Toolbox-Coverage-Test.md](Toolbox-Coverage-Test.md).
+Results and the SD log live in `mc_domain/coverage`; the TRACE payload layout is
+the pure `mc_proto/trace`. The coverage map (z15/16 markers + PNG export) is a
+later sub-phase; see [Toolbox-Coverage-Test.md](Toolbox-Coverage-Test.md).
 
 ## Edit-mode state machine (Settings drilldown)
 

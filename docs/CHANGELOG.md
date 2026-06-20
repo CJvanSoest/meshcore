@@ -26,9 +26,10 @@ of merged PR titles since the previous tag.
   diagnostic tools. First tool: **Packet Log**, a live hex-dump / dissector
   view of received and transmitted radio frames, with pause, scroll and clear
   (#3).
-- **Toolbox → Coverage Test** — ping discovered repeaters 3x and colour-code
-  reachability (green/orange/red), logging every GPS-stamped attempt to one
-  CSV per session on the SD card (#3).
+- **Toolbox → Coverage Test** — probe discovered repeaters 3x with an upstream
+  MeshCore TRACE and colour-code reachability (green/orange/red), logging every
+  GPS-stamped attempt plus uplink/downlink SNR to one CSV per session on the SD
+  card (#3).
 
 ## [2.6.0] - 2026-06-19
 

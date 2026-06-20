@@ -110,14 +110,15 @@ RTC). Starting a new session (the `R` key, or re-entering the tool) opens a new
 file with a header row; every ping attempt appends one row:
 
 ```
-ts_unix,repeater,pubkey,lat_e6,lon_e6,attempt,ack,rtt_ms
+ts_unix,repeater,pubkey,lat_e6,lon_e6,attempt,reachable,rtt_ms,uplink_snr_db,downlink_snr_db
 ```
 
 Unlike chat history these rows are **not encrypted**: they carry no message
 content, only reachability telemetry (repeater name, 4-byte pubkey prefix, GPS
-position when the fix is valid, attempt index, ack 0/1, round-trip ms). Owned by
-`mc_domain/coverage.c`, which `mkdir`s the directory and appends with the same
-`fopen("ab")` pattern; writing is a no-op when no card is mounted.
+position when the fix is valid, attempt index, reachable 0/1, round-trip ms, and
+the uplink/downlink SNR the TRACE returned). Owned by `mc_domain/coverage.c`,
+which `mkdir`s the directory and appends with the same `fopen("ab")` pattern;
+writing is a no-op when no card is mounted.
 
 ## Locking
 
