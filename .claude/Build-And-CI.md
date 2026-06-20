@@ -1,7 +1,6 @@
 # Build and CI
 
-How the firmware builds, the board targets, and the two CI workflows (which
-differ on purpose). The everyday change loop is in [Workflow.md](Workflow.md).
+How the firmware builds, the board targets and CI. The everyday change loop is in [Workflow.md](Workflow.md).
 
 ## Local build
 
@@ -34,23 +33,13 @@ A comment-only or whitespace-only change to a `.c` file cannot break the build.
 Anything that adds, moves, or removes a symbol must be built before you trust
 it.
 
-## CI: two workflows, divergent by design
+## CI
 
-Both run the same pipeline: a host-tests job (the four lint scripts + `make
-test`, needing only `build-essential libmbedtls-dev cppcheck`) and a firmware
-build job. They are NOT identical, and must stay divergent on one line.
-
-- `.github/workflows/ci.yml` runs on GitHub-hosted runners, where the job is
-  not in a container, so `$PWD` is a real host path and
-  `docker run -v "$PWD":/project` works.
-- `.gitea/workflows/build.yml` runs on a self-hosted `act_runner` with
-  `bind_workdir: false`, so the job workspace is a Docker volume. A host-path
-  bind mount there resolves to an empty directory on the outer daemon and the
-  nested build sees no files. That workflow uses
-  `--volumes-from "$(hostname)"` at `$GITHUB_WORKSPACE` instead.
-
-Do not "sync" the two files. If you change the build step, edit the right file
-only. This is also in [Pitfalls.md](Pitfalls.md).
+`.github/workflows/ci.yml` runs on every pull request to `main` and on `main`
+itself: a host tests job (the four lint scripts + `make test`, needing only
+`build-essential libmbedtls-dev cppcheck`) and a firmware build job that builds
+the tanmatsu target in the `espressif/idf:v5.5.1` image and uploads
+`application.bin`.
 
 ## The lint gate
 

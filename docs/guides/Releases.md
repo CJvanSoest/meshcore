@@ -79,7 +79,7 @@ belongs in `docs/`, and the bullet links to it.
 2. Make sure the green gate passes on the release commit (host tests, the four
    lints, and `make build DEVICE=tanmatsu`). A release is never cut from red.
 3. Tag the commit `vX.Y.Z`.
-4. The GitHub or Gitea release uses the version as the title and the CHANGELOG
+4. The GitHub release uses the version as the title and the CHANGELOG
    section body verbatim as the notes. The release notes are exactly the
    CHANGELOG entry, never a separately worded summary, so the two never drift.
 

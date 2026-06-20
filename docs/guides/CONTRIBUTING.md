@@ -71,7 +71,7 @@ in [Architecture.md](../architecture/Architecture.md) and [CLAUDE.md](../../CLAU
 
 - Commit messages and all repository text are in English.
 - One logical change per commit; explain the why, not just the what.
-- PRs target `main`. CI must be green. See the PR template under `.gitea/`.
+- PRs target `main`. CI must be green. See the PR template under `.github/`.
 
 ## License
 

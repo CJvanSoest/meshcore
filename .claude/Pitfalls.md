@@ -87,22 +87,6 @@ hold short: TX happens outside the lock.
 separate. Bump both together on a C6 reflash, or the version check disagrees
 with itself.
 
-## The two CI workflows must stay divergent on one line
-
-`.github/workflows/ci.yml` and `.gitea/workflows/build.yml` are deliberately not
-identical. The firmware build step differs:
-
-- GitHub-hosted runners do not run the job in a container, so `$PWD` is a real
-  host path and `docker run -v "$PWD":/project` works.
-- The self-hosted Gitea `act_runner` runs the job inside a container with
-  `bind_workdir: false`, so the workspace is a Docker volume. A host-path bind
-  mount resolves to an empty directory on the outer daemon and the build sees no
-  files. That workflow uses `--volumes-from "$(hostname)"` at `$GITHUB_WORKSPACE`
-  instead.
-
-Do not "sync" the two workflows to match. If you change the build step, change
-it in the right file only and keep the other one as it is.
-
 ## Committed test binaries break CI
 
 `tests/Makefile` builds binaries named `test_*` next to the `test_*.c` sources.

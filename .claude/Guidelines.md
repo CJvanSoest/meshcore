@@ -16,8 +16,7 @@ guidance set. Read the one that matches what you are about to do:
   signs, encrypts, or derives a key.
 - **[Testing.md](Testing.md)**: the host test harness, what each gate proves,
   golden vectors, and how to add a test.
-- **[Build-And-CI.md](Build-And-CI.md)**: build invocation, board targets, and
-  the two deliberately-divergent CI workflows.
+- **[Build-And-CI.md](Build-And-CI.md)**: build invocation, board targets and CI.
 - **[Workflow.md](Workflow.md)**: how to carry a change from first read to a
   green commit, including how to verify the firmware build when you lack the
   IDF toolchain.

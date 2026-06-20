@@ -117,7 +117,7 @@ works for you" until they're verified.
      iPhone Camera app at it — iOS surfaces the URL as a tappable
      banner; long-press "Copy" to grab the full string for OwnTracks'
      "Identification → URL" field. ESC / X / Enter closes the overlay.
-     **This row only exists on the dev / main branch** (GitHub + Gitea
+     **This row only exists on the dev / main branch** (GitHub
      tips); the appstore-bundled v2.4.0 still requires the serial route
      below. Lands in the v2.5.0 store update later this week.
    - **Serial terminal.** Plug the badge's top USB-C into your Mac and

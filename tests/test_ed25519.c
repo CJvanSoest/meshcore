@@ -9,7 +9,7 @@
 // to exactly this code. (ed25519.c is a separate TU that ships too but provides
 // only X25519 ECDH, exercised by test_mc_crypto_dm.) Catches signer regressions
 // before merge so a broken build can never reach the release pipeline. Runs
-// under Gitea Actions host-tests job; mirrors the device-side gate in
+// under the GitHub Actions host-tests job; mirrors the device-side gate in
 // identity_init().
 //
 // Build (see tests/Makefile):
