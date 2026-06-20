@@ -192,16 +192,16 @@ of merged PR titles since the previous tag.
   dance so the WiFi PHY stays in `esp_wifi_stop()` for the whole
   MeshCore session. Visibly faster boot; WiFi reconnects automatically
   when the user returns to the launcher.
-- Gitea Actions CI workflow (`.gitea/workflows/build.yml`) — builds the
+- CI workflow (`.github/workflows/ci.yml`) — builds the
   tanmatsu target on every push and PR, uploads `application.bin` as
   artifact (PR #1).
-- PR template (`.gitea/PULL_REQUEST_TEMPLATE.md`) — five sections:
+- PR template (`.github/PULL_REQUEST_TEMPLATE.md`) — five sections:
   What / Why / Test plan / Breaking changes / Screenshots (PR #2).
 - `Architecture.md` — six-layer model, three forbidden-include
   rules, wire-boundary discipline for upstream-compat (PR #3).
 - Upstream-tracking comment on `radio_system_protocol_client.h` —
   demonstrates the per-file boundary-tracking pattern.
-- `scripts/release.sh` — single command for cutting a release on Gitea
+- `scripts/release.sh` — single command for cutting a release
   + GitHub with changelog + binary attached.
 
 ### Fixed
@@ -211,7 +211,7 @@ of merged PR titles since the previous tag.
   bumped to 8 to match the MeshCore protocol standard.
 
 ### Changed
-- Branch protection rule on Gitea `main`: direct push disabled, CI
+- Branch protection rule on `main`: direct push disabled, CI
   status check required, block-on-outdated enabled. Devlog files
   exempted via `unprotected_file_patterns`.
 
@@ -239,7 +239,7 @@ of merged PR titles since the previous tag.
 - `render.c` split per view: `render_settings.c`, `render_nodes.c`,
   `render_chat.c`, `render_channel.c`, `render_home.c`, `render_about.c`.
   Cross-file declarations in `render_internal.h`.
-- `tanmatsu-lora` dependency switched from CJ Gitea fork to upstream
+- `tanmatsu-lora` dependency switched from the CJ fork to upstream
   `nicolaielectronics/tanmatsu-lora ^0.3.0` (rx_boost landed upstream).
 - Radio FW label bumped to `v3.2.0` (upstream `tanmatsu-radio`).
 

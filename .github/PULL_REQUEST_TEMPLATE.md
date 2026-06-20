@@ -9,7 +9,6 @@
 - [ ] Lints green (`tests/lint/check-arch-rules.sh`, `check-structure.sh`, `check-test-wiring.sh`, `check-cppcheck.sh`)
 - [ ] Built locally (`make build DEVICE=tanmatsu`)
 - [ ] Tested on device — flow:
-- [ ] Privacy: no LAN IPs / Infisical secret names / personal paths in files that reach the GitHub mirror (see `.github/workflows/privacy.yml`)
 
 ## Breaking changes
 <!-- None, or: describe what breaks and what a user must do

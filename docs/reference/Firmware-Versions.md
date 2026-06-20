@@ -4,7 +4,7 @@ The MeshCore app runs on top of three pieces of Nicolai-Electronics
 firmware. As of v2.2.0 (2026-06-04) **every radio/lora delta is upstream**:
 both rx_boost and `low_data_rate_optimization` shipped in
 `tanmatsu-lora` v0.3.0, picked up by `tanmatsu-radio` v3.2.0, and the
-MeshCore app now pins upstream registry versions instead of the CJ Gitea
+MeshCore app now pins upstream registry versions instead of the CJ
 forks. The launcher fork still carries three small UX patches.
 
 The on-device **Settings → Identity** category shows the live radio
@@ -18,7 +18,7 @@ introduced in `tanmatsu-radio` v3.1.1.
 | Nicolai (upstream) | **v3.2.0** | `d83ad84` |
 | `ota.tanmatsu.cloud` (Launcher Tools) | v3.2.0 | `d83ad84` |
 | `recovery.tanmatsu.cloud` | `ESP-HOSTED 2.1.0` (pre-v3.0.0 rename) | — |
-| CJ Gitea fork (retired) | v3.1.1 **+1** | `f919f91` |
+| CJ fork (retired) | v3.1.1 **+1** | `f919f91` |
 
 **Standard install:** stock upstream **v3.2.0**, as shipped by the
 Launcher's Tools → Firmware update path. No fork required.
@@ -26,8 +26,8 @@ Launcher's Tools → Firmware update path. No fork required.
 **v3.2.0** (released 2026-06-04) is a one-line dependency bump that
 pulls in `tanmatsu-lora` v0.3.0 — see § 2 for what that brings.
 
-**CJ Gitea fork status:** retired. The `f919f91` commit only redirected
-`idf_component.yml` to a Gitea-hosted `tanmatsu-lora` fork while
+**CJ fork status:** retired. The `f919f91` commit only redirected
+`idf_component.yml` to a privately hosted `tanmatsu-lora` fork while
 rx_boost was out-of-tree; with rx_boost upstream in lora v0.3.0 the
 redirect is moot and the CJ/tanmatsu-radio fork has zero delta vs.
 upstream main.
@@ -38,7 +38,7 @@ upstream main.
 |---|---|---|
 | Nicolai (upstream) | **v0.3.0** | `bdda8be` |
 | Previous upstream (used by radio v3.1.1) | v0.2.1 | `b9e87c5` |
-| CJ Gitea fork (retired) | v0.2.1 + rx_boost | `db18049` |
+| CJ fork (retired) | v0.2.1 + rx_boost | `db18049` |
 
 **v0.3.0** (released 2026-06-03) contains:
 - `rx_boost` config flag + RxGain register write (CJ's PR #5, merged
@@ -47,7 +47,7 @@ upstream main.
 
 **App now pins upstream.** `main/idf_component.yml` references
 `nicolaielectronics/tanmatsu-lora ^0.3.0` from the IDF component
-registry — no more `git:` redirect to a private Gitea fork. The 17-byte
+registry — no more `git:` redirect to a private fork. The 17-byte
 config struct is identical on both sides.
 
 **Legacy fallback still present.** The app's `lora_get_config` client
@@ -131,7 +131,7 @@ on the next boot.
 - **`tanmatsu-radio` v3.2.0** picks up lora v0.3.0 → the meshcore app's
   `idf_component.yml` switched back to upstream
   `nicolaielectronics/tanmatsu-lora ^0.3.0` on 2026-06-04, retiring the
-  CJ Gitea forks.
+  CJ forks.
 - **BSP 0.9.9 display types** (launcher) → fixed upstream in `7c86493`,
   so the earlier type-mismatch patch was dropped.
 

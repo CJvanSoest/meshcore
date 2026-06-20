@@ -11,14 +11,14 @@
 # for mbedtls_mpi_mod_mpi / mbedtls_mpi_write_binary_le, both used here).
 #
 # Verified on Ubuntu 22.04 (mbedtls 2.28) and 24.04 (mbedtls 3.6) -- which is
-# what Gitea Actions uses. macOS Homebrew currently ships mbedtls 4.x where
+# what CI uses. macOS Homebrew currently ships mbedtls 4.x where
 # these MPI helpers were dropped from the public API, so local Mac testing is
 # best-effort -- CI is the source of truth.
 
 CC        ?= gcc
 CFLAGS    += -std=c11 -Wall -Wextra -Werror -Wno-deprecated-declarations -O1 -I../components/mc_proto -I../components/vendor
 LDLIBS    += -lmbedcrypto
-# -Wno-deprecated-declarations: mbedtls 2.28 (Ubuntu 22.04 / Gitea runner)
+# -Wno-deprecated-declarations: mbedtls 2.28 (Ubuntu 22.04 / CI runner)
 # marks mbedtls_sha512_{starts,update,finish} as deprecated in favour of the
 # _ret variants. mbedtls 3.x renamed back to the unsuffixed names and IDF
 # v5.5.1 uses 3.6 where these are the primary names. Keep the unsuffixed

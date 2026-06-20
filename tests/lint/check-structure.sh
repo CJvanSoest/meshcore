@@ -46,7 +46,7 @@ done < <(git ls-files '*.c' '*.h')
 # 4. The repository root stays on a known allowlist — keep new clutter out of the
 #    top level. Docs go in docs/, scripts in scripts/, source in components/.
 allow='AUTHORS|CLAUDE.md|CMakeLists.txt|LICENSE|Makefile|README.md|esp_idf_project_configuration.json|.clang-format|.clangd|.gitignore|.ci-build.sh'
-allow_dir='assets|components|docs|main|partition_tables|scripts|sdkconfigs|tests|.claude|.git|.gitea|.github|.vscode.template'
+allow_dir='assets|components|docs|main|partition_tables|scripts|sdkconfigs|tests|.claude|.git|.github|.vscode.template'
 while IFS= read -r top; do
     echo "$top" | grep -qxE "$allow|$allow_dir" || violation "unexpected root entry: $top (put it under docs/, scripts/, or a component)"
 done < <(git ls-files | sed 's#/.*##' | sort -u)
