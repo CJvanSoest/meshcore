@@ -26,6 +26,8 @@ void render_channel(void);
 void render_home(void);
 void render_about(void);
 void render_map(void);
+void render_toolbox(void);      // Toolbox launcher (sub-tool menu)
+void render_toolbox_log(void);  // live packet log (hex / dissector)
 
 // VIEW_HOME tile-grid API used by input.c to translate tile-Enter into a
 // view switch + optional side-effect. home_tile_target() returns VIEW_HOME
@@ -39,6 +41,12 @@ typedef enum {
 int           home_tile_count(void);
 app_view_t    home_tile_target(int idx);
 home_action_t home_tile_action(int idx);
+
+// VIEW_TOOLBOX launcher: list of diagnostic sub-tools. Disabled tiles ("soon")
+// report enabled=false so input no-ops on them.
+int        toolbox_tile_count(void);
+bool       toolbox_tile_enabled(int idx);
+app_view_t toolbox_tile_target(int idx);
 
 // Settings drilldown: the Settings view is a two-level menu — a list of
 // category cards, then a drilled-in view that only shows the fields belonging
@@ -54,6 +62,9 @@ int         settings_visible_category_real_idx(int slot);
 void        settings_category_bounds(int cat, int *first_field, int *last_field);
 const char *settings_category_title(int cat);
 int         settings_category_for_field(int f);
+// External (non-drilldown) categories switch straight to a top-level view.
+// Returns true and fills *out_view when category `cat` is external.
+bool        settings_category_is_external(int cat, app_view_t *out_view);
 
 // Persist field `f` to NVS using the registry-defined save_*() (defined in
 // render_settings.c's s_fields[]). Fields without a dedicated save_*()

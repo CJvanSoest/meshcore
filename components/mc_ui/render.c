@@ -176,9 +176,11 @@ void render(void) {
     // exactly once at the end so the user never sees the base layer briefly
     // through an overlay swap (the old double-blit caused QR/emoji flicker).
     switch (current_view) {
-        case VIEW_HOME:    render_home();    break;
-        case VIEW_ABOUT:   render_about();   break;
-        case VIEW_MAP:     render_map();     break;
+        case VIEW_HOME:        render_home();        break;
+        case VIEW_ABOUT:       render_about();       break;
+        case VIEW_MAP:         render_map();         break;
+        case VIEW_TOOLBOX:     render_toolbox();     break;
+        case VIEW_TOOLBOX_LOG: render_toolbox_log(); break;
         case VIEW_NODES:
             render_nodes();
             if (qr_overlay_active) render_qr_overlay();

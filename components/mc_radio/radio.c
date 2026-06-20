@@ -10,6 +10,7 @@
 
 #include "esp_log.h"
 
+#include "diag.h"
 #include "mc_crypto.h"
 #include "meshcore/packet.h"
 
@@ -241,7 +242,11 @@ bool radio_tx_message(meshcore_message_t *msg) {
         return false;
     }
     bool ok = (lora_send_packet(&lora_handle, &pkt) == ESP_OK);
-    if (ok) dc_record_tx(airtime_ms);
+    if (ok) {
+        dc_record_tx(airtime_ms);
+        // Toolbox packet log: record the frame we actually put on air.
+        diag_capture(DIAG_DIR_TX, pkt_data, pkt_len, DIAG_RSSI_NONE, 0);
+    }
     return ok;
 }
 
@@ -281,6 +286,11 @@ static void lora_rx_task(void *arg) {
             if (rx_count < RX_BUF_SIZE) rx_count++;
             xSemaphoreGive(rx_mutex);
         }
+
+        // Toolbox packet log: capture every received frame (before dedup, so
+        // flood retransmits are still visible to the sniffer).
+        diag_capture(DIAG_DIR_RX, pkt.data, (uint8_t)pkt.length,
+                     (int8_t)rssi_dbm, pkt.stats.snr_pkt_raw);
 
         meshcore_message_t mc_msg;
         if (meshcore_deserialize(pkt.data, pkt.length, &mc_msg) < 0) continue;

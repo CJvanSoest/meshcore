@@ -17,6 +17,7 @@
 #include "app_config.h"
 #include "ble_companion.h"
 #include "chat.h"
+#include "diag.h"
 #include "wifi_connection.h"
 #include "channels.h"
 #include "contacts.h"
@@ -648,6 +649,13 @@ static void nav_settings(uint32_t key) {
             // first field of the target category.
             int real = settings_visible_category_real_idx(settings_category_cursor);
             if (real < 0) real = 0;
+            // External tiles (Toolbox) switch straight to a top-level view
+            // instead of drilling into a field list.
+            app_view_t ext_view;
+            if (settings_category_is_external(real, &ext_view)) {
+                current_view = ext_view;
+                return;
+            }
             settings_category_active    = real;
             settings_category_list_mode = false;
             int first, last;
@@ -720,6 +728,63 @@ static void nav_settings(uint32_t key) {
             edit_mode = false;
             dirty     = false;
         }
+    }
+}
+
+// ── Toolbox launcher + packet-log input ─────────────────────────────────────
+static void open_toolbox_tile(void) {
+    if (!toolbox_tile_enabled(toolbox_cursor)) return;
+    app_view_t t = toolbox_tile_target(toolbox_cursor);
+    if (t == VIEW_TOOLBOX_LOG) {
+        toolbox_log_scroll = 0;
+        toolbox_log_paused = false;
+    }
+    current_view = t;
+}
+
+static void nav_toolbox(uint32_t key) {
+    int n = toolbox_tile_count();
+    if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
+        if (toolbox_cursor > 0) toolbox_cursor--;
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
+        if (toolbox_cursor < n - 1) toolbox_cursor++;
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
+        open_toolbox_tile();
+    }
+}
+
+static void nav_toolbox_log(uint32_t key) {
+    if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
+        if (toolbox_log_scroll > 0) toolbox_log_scroll--;
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
+        toolbox_log_scroll++;  // render clamps to the available range
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
+        toolbox_log_paused = !toolbox_log_paused;
+    }
+}
+
+static void key_toolbox(char c) {
+    if (c == 'w' || c == 'W') {
+        if (toolbox_cursor > 0) toolbox_cursor--;
+    } else if (c == 's' || c == 'S') {
+        if (toolbox_cursor < toolbox_tile_count() - 1) toolbox_cursor++;
+    } else if (c == '\r' || c == '\n') {
+        open_toolbox_tile();
+    }
+}
+
+static void key_toolbox_log(char c) {
+    if (c == 'w' || c == 'W') {
+        if (toolbox_log_scroll > 0) toolbox_log_scroll--;
+    } else if (c == 's' || c == 'S') {
+        toolbox_log_scroll++;
+    } else if (c == 'h' || c == 'H') {
+        toolbox_log_dissect = !toolbox_log_dissect;
+    } else if (c == 'p' || c == 'P') {
+        toolbox_log_paused = !toolbox_log_paused;
+    } else if (c == 'c' || c == 'C') {
+        diag_clear();
+        toolbox_log_scroll = 0;
     }
 }
 
@@ -821,6 +886,12 @@ void handle_nav(uint32_t key) {
             // category list; second ESC then falls through to HOME.
             settings_category_list_mode = true;
             settings_scroll             = 0;
+        } else if (current_view == VIEW_TOOLBOX_LOG) {
+            current_view = VIEW_TOOLBOX;  // back to the launcher
+        } else if (current_view == VIEW_TOOLBOX) {
+            // Toolbox was reached from the Settings grid — return there.
+            current_view                = VIEW_SETTINGS;
+            settings_category_list_mode = true;
         } else if (current_view != VIEW_HOME) {
             // ESC from any non-modal view returns to the home tile-grid before
             // bouncing back to the launcher (so home becomes the safe "back").
@@ -845,6 +916,8 @@ void handle_nav(uint32_t key) {
                 else if (key == BSP_INPUT_NAVIGATION_KEY_LEFT)  map_state_pan(-1, 0);
                 else if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT) map_state_pan( 1, 0);
                 break;
+            case VIEW_TOOLBOX:     nav_toolbox(key);     break;
+            case VIEW_TOOLBOX_LOG: nav_toolbox_log(key); break;
             default: break;
         }
     }
@@ -980,6 +1053,12 @@ static void key_settings(char c) {
             // the wrong category for every slot at or after a hidden one.
             int real = settings_visible_category_real_idx(settings_category_cursor);
             if (real < 0) real = 0;
+            // External tiles (Toolbox) switch straight to a top-level view.
+            app_view_t ext_view;
+            if (settings_category_is_external(real, &ext_view)) {
+                current_view = ext_view;
+                return;
+            }
             settings_category_active    = real;
             settings_category_list_mode = false;
             int first, last;
@@ -1409,6 +1488,11 @@ void handle_key(char c) {
         } else if (current_view == VIEW_SETTINGS && !settings_category_list_mode) {
             settings_category_list_mode = true;
             settings_scroll             = 0;
+        } else if (current_view == VIEW_TOOLBOX_LOG) {
+            current_view = VIEW_TOOLBOX;
+        } else if (current_view == VIEW_TOOLBOX) {
+            current_view                = VIEW_SETTINGS;
+            settings_category_list_mode = true;
         } else if (current_view != VIEW_HOME) {
             current_view = VIEW_HOME;
         } else {
@@ -1420,12 +1504,14 @@ void handle_key(char c) {
 
     // All remaining keys (W/S/A/D/F/L/Q/Enter/R/`<>,.`/D) are view-specific.
     switch (current_view) {
-        case VIEW_HOME:     key_home(c);     break;
-        case VIEW_SETTINGS: key_settings(c); break;
-        case VIEW_NODES:    key_nodes(c);    break;
-        case VIEW_CHAT:     key_chat(c);     break;
-        case VIEW_CHANNEL:  key_channel(c);  break;
-        case VIEW_MAP:      key_map(c);      break;
+        case VIEW_HOME:        key_home(c);        break;
+        case VIEW_SETTINGS:    key_settings(c);    break;
+        case VIEW_NODES:       key_nodes(c);       break;
+        case VIEW_CHAT:        key_chat(c);        break;
+        case VIEW_CHANNEL:     key_channel(c);     break;
+        case VIEW_MAP:         key_map(c);         break;
+        case VIEW_TOOLBOX:     key_toolbox(c);     break;
+        case VIEW_TOOLBOX_LOG: key_toolbox_log(c); break;
         default: break;
     }
 }

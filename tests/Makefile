@@ -41,10 +41,13 @@ SRC_DM          = ../components/mc_crypto/mc_crypto_dm.c \
 SRC_ADVERT_SIGN = ../components/mc_proto/advert_sign.c \
                   ../components/mc_proto/meshcore/payload/advert.c \
                   ../components/vendor/ed25519_mpi.c
+SRC_DIAG_DECODE = ../components/mc_proto/diag_decode.c \
+                  ../components/mc_proto/meshcore/packet.c \
+                  ../components/mc_proto/meshcore/payload/advert.c
 
 .PHONY: all test clean
 
-all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign
+all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode
 
 test_ed25519: test_ed25519.c $(SRC_ED25519)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
@@ -122,7 +125,13 @@ test_mc_crypto_dm: test_mc_crypto_dm.c $(SRC_DM)
 test_advert_sign: test_advert_sign.c $(SRC_ADVERT_SIGN)
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -I../components/mc_proto -Wno-type-limits -Wno-sign-compare -o $@ $^ $(LDLIBS)
 
-test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign
+# Toolbox packet-log decoder. Builds real frames with the shipping serializers
+# and asserts diag_decode lifts header + per-type fields. -D_GNU_SOURCE for
+# advert.c's strnlen, matching the IDF build.
+test_diag_decode: test_diag_decode.c $(SRC_DIAG_DECODE)
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -I../components/mc_proto -Wno-type-limits -Wno-sign-compare -o $@ $^
+
+test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode
 	./test_ed25519
 	./test_gps_nmea
 	./test_companion_protocol
@@ -135,6 +144,7 @@ test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test
 	./test_integration_message
 	./test_mc_crypto_dm
 	./test_advert_sign
+	./test_diag_decode
 
 clean:
-	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode

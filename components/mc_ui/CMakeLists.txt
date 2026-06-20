@@ -11,6 +11,8 @@ idf_component_register(
         "render_home.c"
         "render_about.c"
         "render_map.c"
+        "render_toolbox.c"
+        "render_toolbox_log.c"
         "input.c"
         "emoji.c"
     INCLUDE_DIRS
