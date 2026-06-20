@@ -11,6 +11,7 @@
 #include "mc_rx.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -37,6 +38,7 @@
 #include "channels.h"
 #include "chat.h"
 #include "contacts.h"
+#include "coverage.h"
 #include "identity.h"
 #include "nodes.h"
 #include "settings_nvs.h"
@@ -411,6 +413,9 @@ static void rx_handle_path(const meshcore_message_t *msg) {
             ESP_LOGI(TAG, "ACK matched: %02X%02X%02X%02X from %02X",
                      ack_crc[0], ack_crc[1], ack_crc[2], ack_crc[3], src_hash);
         }
+        // Also offer the ACK to the coverage-test ping controller, which tracks
+        // its pings outside the chat ring.
+        coverage_note_ack(ack_crc);
         return;  // this candidate produced a valid ACK block; done
     }
 }
@@ -638,6 +643,71 @@ bool send_dm_message(const char *text, const uint8_t *target_pub, uint8_t ack_cr
     memcpy(&msg.payload[4], cipher, padded);
     msg.payload_length = (uint8_t)(4 + padded);
     return radio_tx_message(&msg);
+}
+
+// ── Coverage test: ping a repeater N times and record reachability ───────────
+// A "ping" is just a DM to the repeater's pubkey; the matching PATH_RETURN ACK
+// is detected via the coverage matcher (coverage_note_ack in rx_handle_path),
+// not the chat ring, so DM history stays clean. Runs on its own task so the UI
+// never blocks across the 3x10 s schedule.
+typedef struct {
+    uint8_t pub[32];
+    char    name[MESHCORE_MAX_NAME_SIZE + 1];
+    int32_t lat_e6;
+    int32_t lon_e6;
+    bool    gps_valid;
+} coverage_ping_arg_t;
+
+static void coverage_ping_task(void *arg) {
+    coverage_ping_arg_t *a = (coverage_ping_arg_t *)arg;
+    coverage_set_testing(a->pub);
+
+    for (int i = 0; i < COVERAGE_PINGS; i++) {
+        uint8_t    crc[4] = {0};
+        TickType_t t0     = xTaskGetTickCount();
+        bool       ack    = false;
+        uint32_t   rtt_ms = 0;
+
+        if (send_dm_message("ping", a->pub, crc)) {
+            coverage_arm_ack(crc);
+            // Poll for the PATH_RETURN ACK up to ~8 s.
+            for (int waited = 0; waited < 8000; waited += 100) {
+                if (coverage_take_ack()) {
+                    ack    = true;
+                    rtt_ms = (uint32_t)((xTaskGetTickCount() - t0) * portTICK_PERIOD_MS);
+                    break;
+                }
+                vTaskDelay(pdMS_TO_TICKS(100));
+            }
+        }
+
+        coverage_record(a->pub, ack);
+        coverage_log(a->pub, a->name, a->lat_e6, a->lon_e6, a->gps_valid, i, ack, rtt_ms);
+
+        if (i < COVERAGE_PINGS - 1) vTaskDelay(pdMS_TO_TICKS(10000));
+    }
+
+    coverage_set_busy(false);
+    free(a);
+    vTaskDelete(NULL);
+}
+
+void coverage_ping_start(const uint8_t *pub, const char *name,
+                         int32_t lat_e6, int32_t lon_e6, bool gps_valid) {
+    if (pub == NULL || coverage_busy()) return;
+    coverage_ping_arg_t *a = calloc(1, sizeof(*a));
+    if (a == NULL) return;
+    memcpy(a->pub, pub, 32);
+    if (name) strncpy(a->name, name, sizeof(a->name) - 1);
+    a->lat_e6    = lat_e6;
+    a->lon_e6    = lon_e6;
+    a->gps_valid = gps_valid;
+
+    coverage_set_busy(true);  // reflect immediately so the UI can't double-start
+    if (xTaskCreate(coverage_ping_task, "cov_ping", 4096, a, 3, NULL) != pdPASS) {
+        coverage_set_busy(false);
+        free(a);
+    }
 }
 
 // ── Public-channel TX (GRP_TXT) ──────────────────────────────────────────────

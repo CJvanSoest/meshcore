@@ -17,12 +17,14 @@
 #include "app_config.h"
 #include "ble_companion.h"
 #include "chat.h"
+#include "coverage.h"
 #include "diag.h"
 #include "wifi_connection.h"
 #include "channels.h"
 #include "contacts.h"
 #include "emoji.h"
 #include "gps.h"
+#include "gps_task.h"
 #include "history.h"
 #include "http_server.h"
 #include "identity.h"
@@ -738,8 +740,45 @@ static void open_toolbox_tile(void) {
     if (t == VIEW_TOOLBOX_LOG) {
         toolbox_log_scroll = 0;
         toolbox_log_paused = false;
+    } else if (t == VIEW_TOOLBOX_COVERAGE) {
+        toolbox_coverage_cursor = 0;
+        coverage_session_reset();  // fresh SD log + cleared results for this area test
     }
     current_view = t;
+}
+
+// Ping the repeater under the coverage cursor (3x, GPS-stamped). Re-collects so
+// it indexes the same list the view rendered; no-op while a run is in flight.
+static void coverage_ping_selected(void) {
+    if (coverage_busy()) return;
+    coverage_repeater_t reps[COVERAGE_MAX_RESULTS];
+    int n = coverage_collect_repeaters(reps, COVERAGE_MAX_RESULTS);
+    if (toolbox_coverage_cursor < 0 || toolbox_coverage_cursor >= n) return;
+    coverage_repeater_t *r = &reps[toolbox_coverage_cursor];
+    coverage_ping_start(r->pub, r->name, gps_live_lat_e6, gps_live_lon_e6, gps_live_valid);
+}
+
+static void nav_toolbox_coverage(uint32_t key) {
+    if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
+        if (toolbox_coverage_cursor > 0) toolbox_coverage_cursor--;
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
+        toolbox_coverage_cursor++;  // render clamps to the repeater count
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
+        coverage_ping_selected();
+    }
+}
+
+static void key_toolbox_coverage(char c) {
+    if (c == 'w' || c == 'W') {
+        if (toolbox_coverage_cursor > 0) toolbox_coverage_cursor--;
+    } else if (c == 's' || c == 'S') {
+        toolbox_coverage_cursor++;
+    } else if (c == '\r' || c == '\n') {
+        coverage_ping_selected();
+    } else if (c == 'r' || c == 'R') {
+        coverage_session_reset();
+        toolbox_coverage_cursor = 0;
+    }
 }
 
 static void nav_toolbox(uint32_t key) {
@@ -886,7 +925,8 @@ void handle_nav(uint32_t key) {
             // category list; second ESC then falls through to HOME.
             settings_category_list_mode = true;
             settings_scroll             = 0;
-        } else if (current_view == VIEW_TOOLBOX_LOG) {
+        } else if (current_view == VIEW_TOOLBOX_LOG ||
+                   current_view == VIEW_TOOLBOX_COVERAGE) {
             current_view = VIEW_TOOLBOX;  // back to the launcher
         } else if (current_view == VIEW_TOOLBOX) {
             // Toolbox was reached from the Settings grid — return there.
@@ -916,8 +956,9 @@ void handle_nav(uint32_t key) {
                 else if (key == BSP_INPUT_NAVIGATION_KEY_LEFT)  map_state_pan(-1, 0);
                 else if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT) map_state_pan( 1, 0);
                 break;
-            case VIEW_TOOLBOX:     nav_toolbox(key);     break;
-            case VIEW_TOOLBOX_LOG: nav_toolbox_log(key); break;
+            case VIEW_TOOLBOX:          nav_toolbox(key);          break;
+            case VIEW_TOOLBOX_LOG:      nav_toolbox_log(key);      break;
+            case VIEW_TOOLBOX_COVERAGE: nav_toolbox_coverage(key); break;
             default: break;
         }
     }
@@ -1488,7 +1529,8 @@ void handle_key(char c) {
         } else if (current_view == VIEW_SETTINGS && !settings_category_list_mode) {
             settings_category_list_mode = true;
             settings_scroll             = 0;
-        } else if (current_view == VIEW_TOOLBOX_LOG) {
+        } else if (current_view == VIEW_TOOLBOX_LOG ||
+                   current_view == VIEW_TOOLBOX_COVERAGE) {
             current_view = VIEW_TOOLBOX;
         } else if (current_view == VIEW_TOOLBOX) {
             current_view                = VIEW_SETTINGS;
@@ -1510,8 +1552,9 @@ void handle_key(char c) {
         case VIEW_CHAT:        key_chat(c);        break;
         case VIEW_CHANNEL:     key_channel(c);     break;
         case VIEW_MAP:         key_map(c);         break;
-        case VIEW_TOOLBOX:     key_toolbox(c);     break;
-        case VIEW_TOOLBOX_LOG: key_toolbox_log(c); break;
+        case VIEW_TOOLBOX:          key_toolbox(c);          break;
+        case VIEW_TOOLBOX_LOG:      key_toolbox_log(c);      break;
+        case VIEW_TOOLBOX_COVERAGE: key_toolbox_coverage(c); break;
         default: break;
     }
 }

@@ -179,8 +179,9 @@ void render(void) {
         case VIEW_HOME:        render_home();        break;
         case VIEW_ABOUT:       render_about();       break;
         case VIEW_MAP:         render_map();         break;
-        case VIEW_TOOLBOX:     render_toolbox();     break;
-        case VIEW_TOOLBOX_LOG: render_toolbox_log(); break;
+        case VIEW_TOOLBOX:          render_toolbox();          break;
+        case VIEW_TOOLBOX_LOG:      render_toolbox_log();      break;
+        case VIEW_TOOLBOX_COVERAGE: render_toolbox_coverage(); break;
         case VIEW_NODES:
             render_nodes();
             if (qr_overlay_active) render_qr_overlay();

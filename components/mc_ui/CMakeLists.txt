@@ -13,6 +13,7 @@ idf_component_register(
         "render_map.c"
         "render_toolbox.c"
         "render_toolbox_log.c"
+        "render_toolbox_coverage.c"
         "input.c"
         "emoji.c"
     INCLUDE_DIRS

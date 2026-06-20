@@ -26,8 +26,9 @@ void render_channel(void);
 void render_home(void);
 void render_about(void);
 void render_map(void);
-void render_toolbox(void);      // Toolbox launcher (sub-tool menu)
-void render_toolbox_log(void);  // live packet log (hex / dissector)
+void render_toolbox(void);          // Toolbox launcher (sub-tool menu)
+void render_toolbox_log(void);      // live packet log (hex / dissector)
+void render_toolbox_coverage(void); // repeater coverage test
 
 // VIEW_HOME tile-grid API used by input.c to translate tile-Enter into a
 // view switch + optional side-effect. home_tile_target() returns VIEW_HOME

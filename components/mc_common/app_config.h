@@ -23,9 +23,10 @@ typedef enum {
     VIEW_HOME     = 4,   // tile-grid landing screen (Pager-style)
     VIEW_ABOUT    = 5,   // version / authors / credits / license
     VIEW_MAP      = 6,   // OSM tile-based map + live GPS overlay
-    VIEW_TOOLBOX     = 7,  // Toolbox launcher (sub-tool menu, reached from Settings)
-    VIEW_TOOLBOX_LOG = 8,  // Live packet log (hex dump / dissector)
-    VIEW_COUNT       = 9,
+    VIEW_TOOLBOX          = 7,  // Toolbox launcher (sub-tool menu, reached from Settings)
+    VIEW_TOOLBOX_LOG      = 8,  // Live packet log (hex dump / dissector)
+    VIEW_TOOLBOX_COVERAGE = 9,  // Repeater coverage test (ping + reachability log)
+    VIEW_COUNT            = 10,
     // Number of views that appear in the legacy top tab-bar. VIEW_HOME,
     // VIEW_ABOUT, VIEW_MAP and the Toolbox views have their own headers, so the
     // tab-bar still iterates only the four classic views (0..3).

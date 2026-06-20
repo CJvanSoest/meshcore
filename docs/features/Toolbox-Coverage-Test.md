@@ -1,9 +1,17 @@
-# Toolbox: Coverage Test (design proposal)
+# Toolbox: Coverage Test (design + 2a implementation)
 
-Iteration 2 of the Geeky LoRa Toolbox (#3). **Design only — no code yet.** This
-document captures the intended approach so it can be reviewed before
-implementation. Iteration 1 (the live packet log, #3 a/b) ships on the
-`feature/toolbox-packet-log` branch.
+Iteration 2 of the Geeky LoRa Toolbox (#3). **Sub-phase 2a (list + auto-ping +
+SD log) is implemented on this branch**, stacked on Iteration 1
+(`feature/toolbox-packet-log`); sub-phase 2b (the coverage map) is still design
+only. Everything is **compile-verified, not yet hardware-tested** — in
+particular, whether repeaters reliably ACK a plain DM needs validation on the
+badge (see the open question under "Reachability primitive").
+
+Implemented in 2a: `mc_domain/coverage.{c,h}` (result model + ACK matcher +
+SD CSV + repeater collector), the ping controller `coverage_ping_start` in
+`mc_rx` with an ACK hook in `rx_handle_path`, and `VIEW_TOOLBOX_COVERAGE`
+(`render_toolbox_coverage.c` + input), reached from the now-enabled
+"Coverage Test" launcher tile.
 
 ## Goal
 

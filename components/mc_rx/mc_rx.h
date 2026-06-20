@@ -29,3 +29,10 @@ bool send_dm_message(const char *text, const uint8_t *target_pub, uint8_t ack_cr
 
 // Send an encrypted public-channel message (GRP_TXT, FLOOD).
 bool send_chat_message(const char *text);
+
+// Coverage test: ping `pub` COVERAGE_PINGS times (10 s apart) on a background
+// task, recording reachability + a GPS-stamped CSV row per attempt. No-op if a
+// run is already in progress (coverage_busy()). `name`/GPS are used only for
+// the log row. Defined in mc_rx; results live in mc_domain/coverage.
+void coverage_ping_start(const uint8_t *pub, const char *name,
+                         int32_t lat_e6, int32_t lon_e6, bool gps_valid);
