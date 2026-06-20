@@ -24,11 +24,10 @@
 // both blobs are present and fit the buffers; ESP_ERR_NVS_NOT_FOUND if
 // either is missing (caller should generate). Output strings are NUL-
 // terminated.
-esp_err_t cert_gen_nvs_load(char *cert_pem, size_t cert_cap,
-                            char *key_pem,  size_t key_cap);
+esp_err_t cert_gen_nvs_load(char* cert_pem, size_t cert_cap, char* key_pem, size_t key_cap);
 
 // Save cert+key PEM to NVS. Strings must be NUL-terminated PEM.
-esp_err_t cert_gen_nvs_save(const char *cert_pem, const char *key_pem);
+esp_err_t cert_gen_nvs_save(const char* cert_pem, const char* key_pem);
 
 // Wipe NVS cert+key. Next call to cert_gen_load_or_create will regenerate.
 esp_err_t cert_gen_nvs_clear(void);
@@ -37,16 +36,13 @@ esp_err_t cert_gen_nvs_clear(void);
 // CN=tanmatsu.local, SAN=DNS:tanmatsu.local,DNS:tanmatsu, 10-year
 // validity. Caller-allocated PEM buffers. Returns ESP_OK or an esp_err_t
 // translated from the underlying mbedTLS error.
-esp_err_t cert_gen_self_signed(char *cert_pem, size_t cert_cap,
-                               char *key_pem,  size_t key_cap);
+esp_err_t cert_gen_self_signed(char* cert_pem, size_t cert_cap, char* key_pem, size_t key_cap);
 
 // Convenience: load from NVS, or generate + save if absent. After return,
 // cert_pem + key_pem hold the live values regardless of which path ran.
-esp_err_t cert_gen_load_or_create(char *cert_pem, size_t cert_cap,
-                                  char *key_pem,  size_t key_cap);
+esp_err_t cert_gen_load_or_create(char* cert_pem, size_t cert_cap, char* key_pem, size_t key_cap);
 
 // SHA-256 fingerprint of the DER form of the cert, as a 64-char lowercase
 // hex string (NUL-terminated, so hex_cap >= 65). Used by the Settings UI
 // row so the user can pin the cert in OwnTracks / verify install on iOS.
-esp_err_t cert_gen_fingerprint_hex(const char *cert_pem,
-                                   char *hex_out, size_t hex_cap);
+esp_err_t cert_gen_fingerprint_hex(const char* cert_pem, char* hex_out, size_t hex_cap);

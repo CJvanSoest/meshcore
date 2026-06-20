@@ -3,20 +3,15 @@
 // SPDX-FileContributor: Ilias el Matani <hello@ilias.codes>
 
 #include "radio.h"
-
 #include <string.h>
-
-#include "freertos/task.h"
-
 #include "esp_log.h"
-
+#include "freertos/task.h"
 #include "mc_crypto.h"
 #include "meshcore/packet.h"
-
 #include "region_limits.h"
 #include "settings_nvs.h"
 
-static const char *TAG = "radio";
+static const char* TAG = "radio";
 
 // Upstream MeshCore region scope: when our region_scope NVS string is non-empty,
 // we send packets as ROUTE_TYPE_TRANSPORT_FLOOD with a 4-byte transport_codes
@@ -27,11 +22,11 @@ static const char *TAG = "radio";
 //
 // Reference: helpers/TransportKeyStore.cpp::calcTransportCode + MyMesh.cpp
 // (examples/companion_radio) sendFloodScoped path.
-static void apply_region_scope(meshcore_message_t *msg) {
+static void apply_region_scope(meshcore_message_t* msg) {
     if (!region_scope[0]) return;  // no scope: stay on plain FLOOD
-    msg->route              = MESHCORE_ROUTE_TYPE_TRANSPORT_FLOOD;
-    msg->transport_codes[0] = mc_crypto_region_transport_code(
-        region_scope, (uint8_t)msg->type, msg->payload, msg->payload_length);
+    msg->route = MESHCORE_ROUTE_TYPE_TRANSPORT_FLOOD;
+    msg->transport_codes[0] =
+        mc_crypto_region_transport_code(region_scope, (uint8_t)msg->type, msg->payload, msg->payload_length);
     msg->transport_codes[1] = 0;  // home region — upstream REVISIT, leave zero
 }
 
@@ -62,9 +57,9 @@ volatile int8_t   last_rx_signal_rssi_dbm = 0;
 volatile uint32_t last_rx_stats_ms        = 0;
 volatile bool     last_rx_stats_valid     = false;
 
-volatile int8_t   noise_floor_dbm       = 0;
-volatile bool     noise_floor_valid     = false;
-volatile bool     noise_floor_supported = true;
+volatile int8_t noise_floor_dbm       = 0;
+volatile bool   noise_floor_valid     = false;
+volatile bool   noise_floor_supported = true;
 
 uint32_t last_advert_ms = 0;
 
@@ -79,17 +74,17 @@ uint32_t last_advert_ms = 0;
 // `dc_record_tx(airtime_ms)`. The pre-TX check `dc_budget_available()` blocks
 // send when the configured country's sub-band budget is exhausted; the budget
 // is informational if country=="--".
-static uint32_t dc_buckets[60]      = {0};
-static uint8_t  dc_head_min         = 0;
-static uint32_t dc_total_ms         = 0;
-static uint32_t dc_last_rotate_ms   = 0;
-static SemaphoreHandle_t dc_mutex   = NULL;
-volatile uint32_t dc_used_ms        = 0;   // mirror of dc_total_ms for render
-volatile uint32_t dc_budget_ms      = 0;   // from current sub-band, 0 = unlimited
-volatile bool     dc_last_tx_blocked = false;  // sticky flag, render clears via UI
+static uint32_t          dc_buckets[60]     = {0};
+static uint8_t           dc_head_min        = 0;
+static uint32_t          dc_total_ms        = 0;
+static uint32_t          dc_last_rotate_ms  = 0;
+static SemaphoreHandle_t dc_mutex           = NULL;
+volatile uint32_t        dc_used_ms         = 0;      // mirror of dc_total_ms for render
+volatile uint32_t        dc_budget_ms       = 0;      // from current sub-band, 0 = unlimited
+volatile bool            dc_last_tx_blocked = false;  // sticky flag, render clears via UI
 
-static const regulatory_subband_t *active_subband(void) {
-    const regulatory_country_t *rc = region_get_country(country_code);
+static const regulatory_subband_t* active_subband(void) {
+    const regulatory_country_t* rc = region_get_country(country_code);
     if (!rc || rc->n_subbands == 0) return NULL;
     return region_match_subband(rc, (float)lora_cfg.frequency / 1000000.0f);
 }
@@ -98,11 +93,11 @@ static const regulatory_subband_t *active_subband(void) {
 // Returns time-on-air in milliseconds for the current lora_cfg given a payload
 // of `payload_bytes` (the full LoRa packet payload incl. header byte).
 static uint32_t compute_airtime_ms(uint16_t payload_bytes) {
-    uint8_t  sf = lora_cfg.spreading_factor;
-    uint16_t bw_khz = lora_cfg.bandwidth;  // already in kHz per settings convention
-    uint8_t  cr = lora_cfg.coding_rate;    // 5..8 → CR_value = cr-4
+    uint8_t  sf       = lora_cfg.spreading_factor;
+    uint16_t bw_khz   = lora_cfg.bandwidth;    // already in kHz per settings convention
+    uint8_t  cr       = lora_cfg.coding_rate;  // 5..8 → CR_value = cr-4
     uint16_t preamble = lora_cfg.preamble_length;
-    uint8_t  ldr = lora_cfg.low_data_rate_optimization ? 1 : 0;
+    uint8_t  ldr      = lora_cfg.low_data_rate_optimization ? 1 : 0;
     if (bw_khz == 0 || sf < 6 || sf > 12) return 0;
 
     // T_sym (µs) = (1 << SF) * 1000 / BW_kHz  (precise: 2^SF / BW)
@@ -132,18 +127,18 @@ static void dc_rotate_if_needed(uint32_t now_ms) {
     uint32_t advance = elapsed / 60000u;
     if (advance > 60u) advance = 60u;
     for (uint32_t i = 0; i < advance; i++) {
-        dc_head_min = (uint8_t)((dc_head_min + 1u) % 60u);
-        dc_total_ms -= dc_buckets[dc_head_min];
-        dc_buckets[dc_head_min] = 0;
+        dc_head_min              = (uint8_t)((dc_head_min + 1u) % 60u);
+        dc_total_ms             -= dc_buckets[dc_head_min];
+        dc_buckets[dc_head_min]  = 0;
     }
     dc_last_rotate_ms += advance * 60000u;
-    dc_used_ms = dc_total_ms;
+    dc_used_ms         = dc_total_ms;
 }
 
 static bool dc_budget_available(uint32_t need_ms) {
-    const regulatory_subband_t *sb = active_subband();
-    uint32_t budget = sb ? region_dc_budget_ms_per_hour(sb) : 0;
-    dc_budget_ms = budget;
+    const regulatory_subband_t* sb     = active_subband();
+    uint32_t                    budget = sb ? region_dc_budget_ms_per_hour(sb) : 0;
+    dc_budget_ms                       = budget;
     // budget == 0 means either no sub-band match (country unset → don't enforce
     // anything) or 100% DC (no limit). Either way, allow.
     if (budget == 0 || budget >= 3600000u) return true;
@@ -178,9 +173,9 @@ static uint8_t rx_dedup_fp[RX_DEDUP_SIZE][16];
 static int     rx_dedup_head  = 0;
 static int     rx_dedup_count = 0;
 
-static bool rx_is_duplicate(const uint8_t *payload, uint16_t payload_len) {
+static bool rx_is_duplicate(const uint8_t* payload, uint16_t payload_len) {
     uint8_t fp[16] = {0};
-    int fp_len = payload_len < 16 ? payload_len : 16;
+    int     fp_len = payload_len < 16 ? payload_len : 16;
     memcpy(fp, payload, fp_len);
     for (int i = 0; i < rx_dedup_count; i++) {
         if (memcmp(rx_dedup_fp[i], fp, 16) == 0) return true;
@@ -192,7 +187,7 @@ static bool rx_is_duplicate(const uint8_t *payload, uint16_t payload_len) {
 }
 
 // ── Noise floor poll task ────────────────────────────────────────────────────
-static void noise_floor_task(void *arg) {
+static void noise_floor_task(void* arg) {
     ESP_LOGI(TAG, "Noise floor task started");
     while (1) {
         // 60s — 5s caused RX-decode failures (see 2026-05-23 diagnosis).
@@ -221,9 +216,11 @@ static void noise_floor_task(void *arg) {
 
 static radio_rx_sink_fn s_rx_sink = NULL;
 
-void radio_set_rx_sink(radio_rx_sink_fn sink) { s_rx_sink = sink; }
+void radio_set_rx_sink(radio_rx_sink_fn sink) {
+    s_rx_sink = sink;
+}
 
-bool radio_tx_message(meshcore_message_t *msg) {
+bool radio_tx_message(meshcore_message_t* msg) {
     apply_region_scope(msg);
 
     uint8_t pkt_data[MESHCORE_MAX_TRANS_UNIT];
@@ -231,7 +228,7 @@ bool radio_tx_message(meshcore_message_t *msg) {
     if (meshcore_serialize(msg, pkt_data, &pkt_len) < 0) return false;
 
     lora_protocol_lora_packet_t pkt = {0};
-    pkt.length = pkt_len;
+    pkt.length                      = pkt_len;
     memcpy(pkt.data, pkt_data, pkt_len);
 
     uint32_t airtime_ms = compute_airtime_ms(pkt_len);
@@ -245,19 +242,19 @@ bool radio_tx_message(meshcore_message_t *msg) {
     return ok;
 }
 
-static void lora_rx_task(void *arg) {
+static void lora_rx_task(void* arg) {
     (void)arg;
     ESP_LOGI(TAG, "LoRa RX task started");
     while (1) {
         lora_protocol_lora_packet_t pkt = {0};
-        esp_err_t res = lora_receive_packet(&lora_handle, &pkt, pdMS_TO_TICKS(10000));
+        esp_err_t                   res = lora_receive_packet(&lora_handle, &pkt, pdMS_TO_TICKS(10000));
         if (res != ESP_OK || pkt.length <= 0) continue;
 
         uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
         int rssi_dbm        = -(int)pkt.stats.rssi_pkt_raw / 2;
         int signal_rssi_dbm = -(int)pkt.stats.signal_rssi_pkt_raw / 2;
-        if (rssi_dbm < -127)        rssi_dbm = -127;
+        if (rssi_dbm < -127) rssi_dbm = -127;
         if (signal_rssi_dbm < -127) signal_rssi_dbm = -127;
         last_rx_rssi_dbm        = (int8_t)rssi_dbm;
         last_rx_snr_db_x4       = pkt.stats.snr_pkt_raw;
@@ -265,19 +262,14 @@ static void lora_rx_task(void *arg) {
         last_rx_stats_ms        = now_ms;
         last_rx_stats_valid     = true;
 
-        ESP_LOGI(TAG, "RX %d bytes: %02X %02X %02X %02X (rssi=%d snr=%d/4)",
-                 pkt.length,
-                 pkt.length > 0 ? pkt.data[0] : 0,
-                 pkt.length > 1 ? pkt.data[1] : 0,
-                 pkt.length > 2 ? pkt.data[2] : 0,
-                 pkt.length > 3 ? pkt.data[3] : 0,
-                 -(int)pkt.stats.rssi_pkt_raw / 2,
-                 (int)pkt.stats.snr_pkt_raw);
+        ESP_LOGI(TAG, "RX %d bytes: %02X %02X %02X %02X (rssi=%d snr=%d/4)", pkt.length,
+                 pkt.length > 0 ? pkt.data[0] : 0, pkt.length > 1 ? pkt.data[1] : 0, pkt.length > 2 ? pkt.data[2] : 0,
+                 pkt.length > 3 ? pkt.data[3] : 0, -(int)pkt.stats.rssi_pkt_raw / 2, (int)pkt.stats.snr_pkt_raw);
 
         if (xSemaphoreTake(rx_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             rx_buf[rx_head].pkt          = pkt;
             rx_buf[rx_head].timestamp_ms = now_ms;
-            rx_head  = (rx_head + 1) % RX_BUF_SIZE;
+            rx_head                      = (rx_head + 1) % RX_BUF_SIZE;
             if (rx_count < RX_BUF_SIZE) rx_count++;
             xSemaphoreGive(rx_mutex);
         }
@@ -305,8 +297,8 @@ static void lora_rx_task(void *arg) {
 void radio_start_tasks(void) {
     if (rx_mutex == NULL) rx_mutex = xSemaphoreCreateMutex();
     if (dc_mutex == NULL) dc_mutex = xSemaphoreCreateMutex();
-    xTaskCreate(lora_rx_task,     "lora_rx",     10240, NULL, 5, NULL);
-    xTaskCreate(noise_floor_task, "noise_poll",   3072, NULL, 3, NULL);
+    xTaskCreate(lora_rx_task, "lora_rx", 10240, NULL, 5, NULL);
+    xTaskCreate(noise_floor_task, "noise_poll", 3072, NULL, 3, NULL);
 }
 
 // ── LoRa config reconcile (moved from settings_nvs.c) ────────────────────────
@@ -317,14 +309,14 @@ void load_lora_config(void) {
     c6_available = false;
 
     lora_protocol_config_params_t c6_cfg = {0};
-    esp_err_t res = lora_get_config(&lora_handle, &c6_cfg);
+    esp_err_t                     res    = lora_get_config(&lora_handle, &c6_cfg);
     if (res == ESP_OK) {
         c6_available = true;
         if (c6_cfg.frequency != 0) {
             lora_cfg = c6_cfg;
             save_lora_to_nvs();
-            ESP_LOGI(TAG, "LoRa config from C6: freq=%luHz sf=%d",
-                     (unsigned long)lora_cfg.frequency, lora_cfg.spreading_factor);
+            ESP_LOGI(TAG, "LoRa config from C6: freq=%luHz sf=%d", (unsigned long)lora_cfg.frequency,
+                     lora_cfg.spreading_factor);
         } else {
             ESP_LOGI(TAG, "C6 has empty config, pushing NVS values to C6");
             lora_set_config(&lora_handle, &lora_cfg);

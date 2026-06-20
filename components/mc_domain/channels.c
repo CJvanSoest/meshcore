@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "channels.h"
-
 #include <string.h>
-
 #include "esp_log.h"
 #include "mbedtls/sha256.h"
 #include "nvs.h"
 
-static const char *TAG = "channels";
+static const char* TAG = "channels";
 
 #define NVS_NAMESPACE "system"
 #define NVS_KEY       "mc.channels"
@@ -17,13 +15,12 @@ static const char *TAG = "channels";
 // Upstream MeshCore PUBLIC_GROUP_PSK ("izOH6cXN6mrJ5e26oRXNcg==" base64-decoded).
 // Hardcoded; same value lives in chat.c for backwards compat.
 static const uint8_t PUBLIC_GROUP_PSK[16] = {
-    0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a,
-    0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72,
+    0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a, 0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72,
 };
 
-channel_t channels[CHANNELS_MAX] = {0};
-int       channel_count          = 0;
-int       active_channel_idx     = 0;
+channel_t channels[CHANNELS_MAX]       = {0};
+int       channel_count                = 0;
+int       active_channel_idx           = 0;
 int       channel_unread[CHANNELS_MAX] = {0};
 
 int channel_unread_total(void) {
@@ -34,25 +31,25 @@ int channel_unread_total(void) {
     return sum;
 }
 
-bool channel_list_mode    = true;
-int  channel_list_cursor  = 0;
-bool channel_adding       = false;
+bool channel_list_mode   = true;
+int  channel_list_cursor = 0;
+bool channel_adding      = false;
 
-static void compute_hash(channel_t *ch) {
+static void compute_hash(channel_t* ch) {
     uint8_t digest[32];
     mbedtls_sha256(ch->secret, CHANNEL_SECRET_LEN, digest, 0);
     ch->hash = digest[0];
 }
 
-void channels_derive_secret_from_name(const char *name, uint8_t out_secret[CHANNEL_SECRET_LEN]) {
+void channels_derive_secret_from_name(const char* name, uint8_t out_secret[CHANNEL_SECRET_LEN]) {
     uint8_t digest[32];
-    mbedtls_sha256((const uint8_t *)name, strlen(name), digest, 0);
+    mbedtls_sha256((const uint8_t*)name, strlen(name), digest, 0);
     memcpy(out_secret, digest, CHANNEL_SECRET_LEN);
 }
 
 static void bootstrap_public(void) {
-    channel_t *p = &channels[0];
-    p->active = true;
+    channel_t* p = &channels[0];
+    p->active    = true;
     strcpy(p->name, "Public");
     memcpy(p->secret, PUBLIC_GROUP_PSK, CHANNEL_SECRET_LEN);
     compute_hash(p);
@@ -74,8 +71,8 @@ static void load_from_nvs(void) {
     nvs_handle_t h;
     if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return;
 
-    size_t blob_size = 0;
-    esp_err_t res = nvs_get_blob(h, NVS_KEY, NULL, &blob_size);
+    size_t    blob_size = 0;
+    esp_err_t res       = nvs_get_blob(h, NVS_KEY, NULL, &blob_size);
     if (res != ESP_OK || blob_size < 1) {
         nvs_close(h);
         return;
@@ -90,12 +87,12 @@ static void load_from_nvs(void) {
 
     uint8_t count = buf[0];
     if (count > CHANNELS_MAX - 1) count = CHANNELS_MAX - 1;
-    stored_channel_t const *src = (stored_channel_t const *)(buf + 1);
+    stored_channel_t const* src = (stored_channel_t const*)(buf + 1);
     for (uint8_t i = 0; i < count; i++) {
         if ((size_t)(1 + (i + 1) * sizeof(stored_channel_t)) > blob_size) break;
-        channel_t *dst = &channels[1 + i];
-        dst->active   = true;
-        memcpy(dst->name,   src[i].name,   sizeof(dst->name));
+        channel_t* dst = &channels[1 + i];
+        dst->active    = true;
+        memcpy(dst->name, src[i].name, sizeof(dst->name));
         dst->name[CHANNEL_NAME_MAX_LEN] = '\0';
         memcpy(dst->secret, src[i].secret, CHANNEL_SECRET_LEN);
         compute_hash(dst);
@@ -108,16 +105,16 @@ void channels_save_nvs(void) {
     nvs_handle_t h;
     if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return;
 
-    uint8_t buf[1 + (CHANNELS_MAX - 1) * sizeof(stored_channel_t)] = {0};
-    uint8_t  count = 0;
-    stored_channel_t *dst = (stored_channel_t *)(buf + 1);
+    uint8_t           buf[1 + (CHANNELS_MAX - 1) * sizeof(stored_channel_t)] = {0};
+    uint8_t           count                                                  = 0;
+    stored_channel_t* dst                                                    = (stored_channel_t*)(buf + 1);
     for (int i = 1; i < channel_count && i < CHANNELS_MAX; i++) {
         if (!channels[i].active) continue;
-        memcpy(dst[count].name,   channels[i].name,   sizeof(dst[count].name));
+        memcpy(dst[count].name, channels[i].name, sizeof(dst[count].name));
         memcpy(dst[count].secret, channels[i].secret, CHANNEL_SECRET_LEN);
         count++;
     }
-    buf[0] = count;
+    buf[0]           = count;
     size_t blob_size = 1 + count * sizeof(stored_channel_t);
     if (nvs_set_blob(h, NVS_KEY, buf, blob_size) == ESP_OK) {
         nvs_commit(h);
@@ -155,20 +152,19 @@ static int find_free_slot(void) {
 
 static int find_by_secret(uint8_t const secret[CHANNEL_SECRET_LEN]) {
     for (int i = 0; i < CHANNELS_MAX; i++) {
-        if (channels[i].active && memcmp(channels[i].secret, secret, CHANNEL_SECRET_LEN) == 0)
-            return i;
+        if (channels[i].active && memcmp(channels[i].secret, secret, CHANNEL_SECRET_LEN) == 0) return i;
     }
     return -1;
 }
 
-int channels_add_with_secret(const char *name, const uint8_t secret[CHANNEL_SECRET_LEN]) {
+int channels_add_with_secret(const char* name, const uint8_t secret[CHANNEL_SECRET_LEN]) {
     if (!name || !secret) return -1;
     int dup = find_by_secret(secret);
     if (dup >= 0) return dup;
     int slot = find_free_slot();
     if (slot < 0) return -1;
-    channel_t *ch = &channels[slot];
-    ch->active = true;
+    channel_t* ch = &channels[slot];
+    ch->active    = true;
     strncpy(ch->name, name, CHANNEL_NAME_MAX_LEN);
     ch->name[CHANNEL_NAME_MAX_LEN] = '\0';
     memcpy(ch->secret, secret, CHANNEL_SECRET_LEN);
@@ -180,7 +176,7 @@ int channels_add_with_secret(const char *name, const uint8_t secret[CHANNEL_SECR
     return slot;
 }
 
-int channels_add_by_name(const char *name) {
+int channels_add_by_name(const char* name) {
     if (!name || !name[0]) return -1;
     uint8_t secret[CHANNEL_SECRET_LEN];
     channels_derive_secret_from_name(name, secret);
@@ -193,7 +189,7 @@ bool channels_remove(int idx) {
     memset(&channels[idx], 0, sizeof(channels[idx]));
     channel_unread[idx] = 0;
     // Compact channel_count
-    int last = 0;
+    int last            = 0;
     for (int i = 0; i < CHANNELS_MAX; i++) {
         if (channels[i].active) last = i;
     }

@@ -5,11 +5,9 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-
+#include "app_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-
-#include "app_config.h"
 #include "meshcore/packet.h"
 #include "meshcore/payload/advert.h"  // MESHCORE_MAX_NAME_SIZE
 
@@ -19,11 +17,11 @@ typedef struct {
     bool     active;
     bool     is_mine;
     char     text[MAX_MSG_TEXT];
-    uint32_t timestamp_ms;     // device-tick — for relative timing, lost on reboot
-    uint32_t timestamp_unix;   // epoch seconds; 0 = unknown (history reload / no SNTP)
-    uint8_t  hops;             // 0 = own / direct; 0xFF = unknown (e.g. SD reload)
-    uint8_t  ack_state;        // 0 = N/A (theirs / channel), 1 = waiting, 2 = acked
-    uint8_t  ack_crc[4];       // for own DMs: matches incoming PATH_RETURN ACK
+    uint32_t timestamp_ms;    // device-tick — for relative timing, lost on reboot
+    uint32_t timestamp_unix;  // epoch seconds; 0 = unknown (history reload / no SNTP)
+    uint8_t  hops;            // 0 = own / direct; 0xFF = unknown (e.g. SD reload)
+    uint8_t  ack_state;       // 0 = N/A (theirs / channel), 1 = waiting, 2 = acked
+    uint8_t  ack_crc[4];      // for own DMs: matches incoming PATH_RETURN ACK
 } chat_msg_t;
 
 // ── DM ring (per-peer; cleared + reloaded by dm_select_target) ───────────────
@@ -73,11 +71,11 @@ void chat_init(void);
 
 // ── DM messages ──────────────────────────────────────────────────────────────
 // Push a system/status string into the active DM ring (RAM only, not persisted).
-void chat_add_message(const char *text, bool is_mine);
+void chat_add_message(const char* text, bool is_mine);
 
 // Persist a DM to the peer's on-disk history; if that peer is the active DM
 // target, also push it onto the visible ring.
-void chat_add_dm(const char *text, bool is_mine, const uint8_t peer_pub[32]);
+void chat_add_dm(const char* text, bool is_mine, const uint8_t peer_pub[32]);
 
 // Per-message metadata helpers (call right after add; the most-recent ring
 // entry — the one just appended — gets the fields). Safe to call from RX path.
@@ -89,16 +87,16 @@ void chat_arm_ack_dm(const uint8_t ack_crc[4]);
 bool chat_mark_ack_by_crc(const uint8_t ack_crc[4]);
 
 // Switch the active DM peer, clear the visible ring, and reload from SD.
-void dm_select_target(const uint8_t pub[32], const char *name);
+void dm_select_target(const uint8_t pub[32], const char* name);
 
 // ── Channel messages ─────────────────────────────────────────────────────────
 // Add a channel message for a specific channel index: always persists to that
 // channel's own history file; adds to the visible ring only if it's the active
 // channel. Returns true if added to the ring (RX path gates meta on this).
-bool ch_add_message_for(int ch_idx, const char *text, bool is_mine);
+bool ch_add_message_for(int ch_idx, const char* text, bool is_mine);
 
 // Convenience for own outgoing messages — targets the active channel.
-void ch_add_message(const char *text, bool is_mine);
+void ch_add_message(const char* text, bool is_mine);
 
 // Switch active channel + reload its history into the visible ring.
 void ch_select_channel(int idx);
@@ -109,5 +107,5 @@ void ch_select_channel(int idx);
 void update_notification_led(void);
 
 // Callbacks for history_load_* (declared so main can pass them as args).
-void chat_ring_add_from_disk(const char *text, bool is_mine);
-void ch_ring_add_from_disk(const char *text, bool is_mine);
+void chat_ring_add_from_disk(const char* text, bool is_mine);
+void ch_ring_add_from_disk(const char* text, bool is_mine);

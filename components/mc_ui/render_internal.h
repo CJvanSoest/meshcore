@@ -15,8 +15,7 @@ void render_tab_bar(void);
 
 // Shared chat-message ring renderer used by both DM and channel views.
 // Caller must hold the ring's mutex.
-void render_msg_list(int w, int list_y0, int list_h, chat_msg_t *msgs,
-                     int head, int count, int *scroll_p);
+void render_msg_list(int w, int list_y0, int list_h, chat_msg_t* msgs, int head, int count, int* scroll_p);
 
 // Per-view entry points dispatched by render() in render.c.
 void render_settings(void);
@@ -32,8 +31,8 @@ void render_map(void);
 // for placeholder ("soon") tiles so input can no-op on them.
 typedef enum {
     HOME_ACTION_NONE = 0,
-    HOME_ACTION_OPEN_QR,        // QR-tile: open QR overlay, stay rooted at home
-    HOME_ACTION_OPEN_ADVERT,    // Advert-tile: drill into Settings -> Advert
+    HOME_ACTION_OPEN_QR,      // QR-tile: open QR overlay, stay rooted at home
+    HOME_ACTION_OPEN_ADVERT,  // Advert-tile: drill into Settings -> Advert
 } home_action_t;
 
 int           home_tile_count(void);
@@ -51,14 +50,14 @@ int         settings_category_count(void);
 // Home -> Advert tile.
 int         settings_visible_category_count(void);
 int         settings_visible_category_real_idx(int slot);
-void        settings_category_bounds(int cat, int *first_field, int *last_field);
-const char *settings_category_title(int cat);
+void        settings_category_bounds(int cat, int* first_field, int* last_field);
+const char* settings_category_title(int cat);
 int         settings_category_for_field(int f);
 
 // Persist field `f` to NVS using the registry-defined save_*() (defined in
 // render_settings.c's s_fields[]). Fields without a dedicated save_*()
 // fall back to save_lora_config(). Replaces input.c's old persist_field_change.
-void        field_save(field_t f);
+void field_save(field_t f);
 
 // Overlays drawn on top of a base view by the dispatcher.
 void render_qr_overlay(void);

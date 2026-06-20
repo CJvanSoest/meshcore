@@ -2,20 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 #include "nodes.h"
-
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
-#include <time.h>
 #include <sys/stat.h>
-
-#include "freertos/task.h"
-#include "esp_log.h"
-
+#include <time.h>
 #include "contacts.h"
+#include "esp_log.h"
+#include "freertos/task.h"
 #include "identity.h"
 
-static const char *TAG = "nodes";
+static const char* TAG = "nodes";
 
 node_entry_t      node_list[MAX_NODES];
 int               node_count  = 0;
@@ -32,21 +29,21 @@ static volatile bool s_dirty = false;
 // SD layout. Header is fixed-size; records follow back-to-back. Version
 // bumps if the record layout changes -- load_from_sd rejects mismatched
 // versions so an upgrade doesn't try to interpret old data.
-#define NODES_FILE      "/sd/meshcore/nodes.bin"
-#define NODES_FILE_TMP  "/sd/meshcore/nodes.bin.tmp"
-#define NODES_MAGIC     "NODE"
-#define NODES_VERSION   1
+#define NODES_FILE     "/sd/meshcore/nodes.bin"
+#define NODES_FILE_TMP "/sd/meshcore/nodes.bin.tmp"
+#define NODES_MAGIC    "NODE"
+#define NODES_VERSION  1
 
 typedef struct __attribute__((packed)) {
-    char     magic[4];      // "NODE"
-    uint16_t version;       // NODES_VERSION
-    uint16_t count;          // number of records that follow
+    char     magic[4];  // "NODE"
+    uint16_t version;   // NODES_VERSION
+    uint16_t count;     // number of records that follow
     uint8_t  reserved[8];
 } node_file_hdr_t;
 
 typedef struct __attribute__((packed)) {
-    uint8_t  pub_key[MESHCORE_PUB_KEY_SIZE];   // 32
-    char     name[MESHCORE_MAX_NAME_SIZE + 1]; // 33
+    uint8_t  pub_key[MESHCORE_PUB_KEY_SIZE];    // 32
+    char     name[MESHCORE_MAX_NAME_SIZE + 1];  // 33
     uint8_t  role;                              // 1
     uint8_t  flags;                             // bit0=position_valid, bit1=stats_valid
     int64_t  last_seen_unix;                    // 8
@@ -61,28 +58,33 @@ void nodes_init(void) {
     if (node_mutex == NULL) node_mutex = xSemaphoreCreateMutex();
 }
 
-const char *role_label(meshcore_device_role_t role) {
+const char* role_label(meshcore_device_role_t role) {
     switch (role) {
-        case MESHCORE_DEVICE_ROLE_CHAT_NODE:   return "Chat";
-        case MESHCORE_DEVICE_ROLE_REPEATER:    return "Rptr";
-        case MESHCORE_DEVICE_ROLE_ROOM_SERVER: return "Room";
-        case MESHCORE_DEVICE_ROLE_SENSOR:      return "Sens";
-        default:                               return "?";
+        case MESHCORE_DEVICE_ROLE_CHAT_NODE:
+            return "Chat";
+        case MESHCORE_DEVICE_ROLE_REPEATER:
+            return "Rptr";
+        case MESHCORE_DEVICE_ROLE_ROOM_SERVER:
+            return "Room";
+        case MESHCORE_DEVICE_ROLE_SENSOR:
+            return "Sens";
+        default:
+            return "?";
     }
 }
 
-int build_node_display(display_row_t *rows, int max_rows) {
+int build_node_display(display_row_t* rows, int max_rows) {
     int n = 0;
 
     // 1) Contacts first, filtered by node_filter on the stored role.
     for (int ci = 0; ci < contact_count && n < max_rows; ci++) {
-        if (node_filter != MESHCORE_DEVICE_ROLE_UNKNOWN &&
-            (meshcore_device_role_t)contacts[ci].role != node_filter) continue;
+        if (node_filter != MESHCORE_DEVICE_ROLE_UNKNOWN && (meshcore_device_role_t)contacts[ci].role != node_filter)
+            continue;
         int ni = -1;
         for (int j = 0; j < MAX_NODES; j++) {
-            if (node_list[j].active &&
-                memcmp(node_list[j].pub_key, contacts[ci].pub_key, MESHCORE_PUB_KEY_SIZE) == 0) {
-                ni = j; break;
+            if (node_list[j].active && memcmp(node_list[j].pub_key, contacts[ci].pub_key, MESHCORE_PUB_KEY_SIZE) == 0) {
+                ni = j;
+                break;
             }
         }
         rows[n].is_contact  = true;
@@ -96,15 +98,15 @@ int build_node_display(display_row_t *rows, int max_rows) {
     int live_count = 0;
     for (int i = 0; i < MAX_NODES; i++) {
         if (!node_list[i].active) continue;
-        if (node_filter != MESHCORE_DEVICE_ROLE_UNKNOWN &&
-            node_list[i].role != node_filter) continue;
+        if (node_filter != MESHCORE_DEVICE_ROLE_UNKNOWN && node_list[i].role != node_filter) continue;
         if (contact_find(node_list[i].pub_key) >= 0) continue;
         live[live_count++] = i;
     }
     for (int i = 1; i < live_count; i++) {
         int k = live[i], j = i - 1;
         while (j >= 0 && node_list[live[j]].last_seen_ms < node_list[k].last_seen_ms) {
-            live[j + 1] = live[j]; j--;
+            live[j + 1] = live[j];
+            j--;
         }
         live[j + 1] = k;
     }
@@ -117,21 +119,22 @@ int build_node_display(display_row_t *rows, int max_rows) {
     return n;
 }
 
-void update_node(const meshcore_advert_t *advert, uint32_t now_ms,
-                 const lora_packet_stats_t *stats) {
+void update_node(const meshcore_advert_t* advert, uint32_t now_ms, const lora_packet_stats_t* stats) {
     if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
 
     int slot = -1;
     for (int i = 0; i < MAX_NODES; i++) {
-        if (node_list[i].active &&
-            memcmp(node_list[i].pub_key, advert->pub_key, MESHCORE_PUB_KEY_SIZE) == 0) {
+        if (node_list[i].active && memcmp(node_list[i].pub_key, advert->pub_key, MESHCORE_PUB_KEY_SIZE) == 0) {
             slot = i;
             break;
         }
     }
     if (slot < 0) {
         for (int i = 0; i < MAX_NODES; i++) {
-            if (!node_list[i].active) { slot = i; break; }
+            if (!node_list[i].active) {
+                slot = i;
+                break;
+            }
         }
     }
     // Evict oldest if full. Prefer last_seen_unix when set (consistent
@@ -145,8 +148,10 @@ void update_node(const meshcore_advert_t *advert, uint32_t now_ms,
         // node exists. Tracking the two clocks separately avoids the bug where
         // one zero-unix node sets oldest_unix to 0 and then no later unix-stamped
         // node can ever win the `u < oldest_unix` test.
-        int64_t  oldest_unix = INT64_MAX; int unix_slot = -1;
-        uint32_t oldest_ms   = UINT32_MAX; int ms_slot  = -1;
+        int64_t  oldest_unix = INT64_MAX;
+        int      unix_slot   = -1;
+        uint32_t oldest_ms   = UINT32_MAX;
+        int      ms_slot     = -1;
         for (int i = 0; i < MAX_NODES; i++) {
             if (node_list[i].last_seen_unix != 0) {
                 if (node_list[i].last_seen_unix < oldest_unix) {
@@ -162,13 +167,13 @@ void update_node(const meshcore_advert_t *advert, uint32_t now_ms,
     }
 
     if (slot >= 0) {
-        node_entry_t *n = &node_list[slot];
+        node_entry_t* n      = &node_list[slot];
         // is_new when this slot is being populated for a *different* identity
         // than it currently holds: an empty slot, or one we just evicted. Only a
         // genuine re-hit of the same pubkey is an update. Comparing pubkeys
         // (not n->active) stops an evicted slot from inheriting the previous
         // node's name, packet_count, position and signal stats.
-        bool is_new = memcmp(n->pub_key, advert->pub_key, MESHCORE_PUB_KEY_SIZE) != 0;
+        bool          is_new = memcmp(n->pub_key, advert->pub_key, MESHCORE_PUB_KEY_SIZE) != 0;
         if (is_new) memset(n, 0, sizeof(*n));  // fresh identity takes over the slot
         n->active       = true;
         n->role         = advert->role;
@@ -181,12 +186,14 @@ void update_node(const meshcore_advert_t *advert, uint32_t now_ms,
             n->last_seen_unix = (int64_t)time(NULL);
         }
         memcpy(n->pub_key, advert->pub_key, MESHCORE_PUB_KEY_SIZE);
-        if (!is_new) n->packet_count++;
-        else         n->packet_count = 1;
+        if (!is_new)
+            n->packet_count++;
+        else
+            n->packet_count = 1;
         if (advert->position_valid) {
             n->position_valid = true;
-            n->lat = advert->position_lat;
-            n->lon = advert->position_lon;
+            n->lat            = advert->position_lat;
+            n->lon            = advert->position_lon;
         }
 
         if (advert->name_valid && advert->name[0] != '\0') {
@@ -194,8 +201,7 @@ void update_node(const meshcore_advert_t *advert, uint32_t now_ms,
             n->name[MESHCORE_MAX_NAME_SIZE] = '\0';
         } else if (is_new) {
             // First 4 bytes of pub_key as fallback ID.
-            snprintf(n->name, sizeof(n->name), "%02X%02X%02X%02X",
-                     advert->pub_key[0], advert->pub_key[1],
+            snprintf(n->name, sizeof(n->name), "%02X%02X%02X%02X", advert->pub_key[0], advert->pub_key[1],
                      advert->pub_key[2], advert->pub_key[3]);
         }
 
@@ -211,8 +217,7 @@ void update_node(const meshcore_advert_t *advert, uint32_t now_ms,
         for (int i = 0; i < MAX_NODES; i++) {
             if (node_list[i].active) node_count++;
         }
-        ESP_LOGI(TAG, "Node %s (%s) seen — total %d nodes",
-                 n->name, role_label(n->role), node_count);
+        ESP_LOGI(TAG, "Node %s (%s) seen — total %d nodes", n->name, role_label(n->role), node_count);
         s_dirty = true;
     }
 
@@ -226,7 +231,7 @@ void nodes_save_to_sd(void) {
 
     // Write to a temp file then rename, so a power-cut mid-write can't
     // corrupt the canonical file.
-    FILE *f = fopen(NODES_FILE_TMP, "wb");
+    FILE* f = fopen(NODES_FILE_TMP, "wb");
     if (!f) {
         xSemaphoreGive(node_mutex);
         ESP_LOGW(TAG, "nodes_save: fopen failed (SD missing?)");
@@ -248,8 +253,7 @@ void nodes_save_to_sd(void) {
         memcpy(r.pub_key, node_list[i].pub_key, MESHCORE_PUB_KEY_SIZE);
         strncpy(r.name, node_list[i].name, sizeof(r.name) - 1);
         r.role           = (uint8_t)node_list[i].role;
-        r.flags          = (node_list[i].position_valid ? 0x01 : 0)
-                         | (node_list[i].stats_valid    ? 0x02 : 0);
+        r.flags          = (node_list[i].position_valid ? 0x01 : 0) | (node_list[i].stats_valid ? 0x02 : 0);
         r.last_seen_unix = node_list[i].last_seen_unix;
         r.lat            = node_list[i].lat;
         r.lon            = node_list[i].lon;
@@ -279,15 +283,13 @@ fail:
 
 void nodes_load_from_sd(void) {
     if (node_mutex == NULL) return;
-    FILE *f = fopen(NODES_FILE, "rb");
+    FILE* f = fopen(NODES_FILE, "rb");
     if (!f) {
         ESP_LOGI(TAG, "nodes_load: no saved file (fresh boot)");
         return;
     }
     node_file_hdr_t hdr = {0};
-    if (fread(&hdr, sizeof(hdr), 1, f) != 1 ||
-        memcmp(hdr.magic, NODES_MAGIC, 4) != 0 ||
-        hdr.version != NODES_VERSION) {
+    if (fread(&hdr, sizeof(hdr), 1, f) != 1 || memcmp(hdr.magic, NODES_MAGIC, 4) != 0 || hdr.version != NODES_VERSION) {
         ESP_LOGW(TAG, "nodes_load: bad header (magic/version mismatch)");
         fclose(f);
         return;
@@ -305,12 +307,12 @@ void nodes_load_from_sd(void) {
     for (int i = 0; i < hdr.count && i < MAX_NODES; i++) {
         node_record_t r;
         if (fread(&r, sizeof(r), 1, f) != 1) break;
-        node_entry_t *n = &node_list[i];
-        n->active = true;
+        node_entry_t* n = &node_list[i];
+        n->active       = true;
         memcpy(n->pub_key, r.pub_key, MESHCORE_PUB_KEY_SIZE);
         strncpy(n->name, r.name, sizeof(n->name) - 1);
         n->role           = (meshcore_device_role_t)r.role;
-        n->last_seen_ms   = 0;   // boot-relative; unknown for a loaded entry
+        n->last_seen_ms   = 0;  // boot-relative; unknown for a loaded entry
         n->last_seen_unix = r.last_seen_unix;
         n->position_valid = (r.flags & 0x01) != 0;
         n->stats_valid    = (r.flags & 0x02) != 0;
@@ -330,7 +332,7 @@ void nodes_load_from_sd(void) {
 
 // Periodic save task: wakes every ~30 s, checks the dirty flag, persists
 // if needed. Low priority so it never preempts RX. Single instance.
-static void nodes_save_task(void *arg) {
+static void nodes_save_task(void* arg) {
     (void)arg;
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(30 * 1000));

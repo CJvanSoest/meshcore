@@ -12,5 +12,5 @@
 
 typedef void (*cat_icon_fn)(int cx, int cy, int sz, pax_col_t col);
 
-extern const cat_icon_fn  settings_category_icons[];
-extern const int          settings_category_icons_count;
+extern const cat_icon_fn settings_category_icons[];
+extern const int         settings_category_icons_count;

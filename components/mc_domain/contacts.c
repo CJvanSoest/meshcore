@@ -2,18 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 #include "contacts.h"
-
 #include <string.h>
-
 #include "esp_log.h"
 #include "nvs.h"
 
 #define NVS_CONTACTS_BLOB "mc.contacts"
 
-static const char *TAG = "contacts";
+static const char* TAG = "contacts";
 
 contact_t contacts[MAX_CONTACTS];
-int       contact_count = 0;
+int       contact_count                = 0;
 int       contact_unread[MAX_CONTACTS] = {0};
 
 void contacts_load(void) {
@@ -40,15 +38,14 @@ void contacts_save(void) {
     if (contact_count == 0) {
         nvs_erase_key(handle, NVS_CONTACTS_BLOB);
     } else {
-        nvs_set_blob(handle, NVS_CONTACTS_BLOB, contacts,
-                     (size_t)contact_count * sizeof(contact_t));
+        nvs_set_blob(handle, NVS_CONTACTS_BLOB, contacts, (size_t)contact_count * sizeof(contact_t));
     }
     nvs_commit(handle);
     nvs_close(handle);
     ESP_LOGI(TAG, "Saved %d contact(s) to NVS", contact_count);
 }
 
-int contact_find(const uint8_t *pub) {
+int contact_find(const uint8_t* pub) {
     for (int i = 0; i < contact_count; i++) {
         if (memcmp(contacts[i].pub_key, pub, MESHCORE_PUB_KEY_SIZE) == 0) return i;
     }
@@ -57,23 +54,23 @@ int contact_find(const uint8_t *pub) {
 
 // Idempotent add — used to persist anyone we've ever DM'd with.
 // Returns 1 if added, 0 if already known, -1 if full.
-int contact_ensure(const uint8_t *pub, const char *name, uint8_t role) {
+int contact_ensure(const uint8_t* pub, const char* name, uint8_t role) {
     if (contact_find(pub) >= 0) return 0;
     if (contact_count >= MAX_CONTACTS) return -1;
-    int slot = contact_count;
-    contact_t *c = &contacts[contact_count++];
+    int        slot = contact_count;
+    contact_t* c    = &contacts[contact_count++];
     memcpy(c->pub_key, pub, MESHCORE_PUB_KEY_SIZE);
     strncpy(c->alias, name ? name : "", CONTACT_ALIAS_LEN - 1);
     c->alias[CONTACT_ALIAS_LEN - 1] = '\0';
-    c->role  = role;
-    c->flags = 0;
-    contact_unread[slot] = 0;
+    c->role                         = role;
+    c->flags                        = 0;
+    contact_unread[slot]            = 0;
     contacts_save();
     return 1;
 }
 
 // Add (uses node name as alias) or remove. Returns +1 added, 0 removed, -1 full.
-int contact_toggle(const uint8_t *pub, const char *name, uint8_t role) {
+int contact_toggle(const uint8_t* pub, const char* name, uint8_t role) {
     int idx = contact_find(pub);
     if (idx >= 0) {
         for (int i = idx; i < contact_count - 1; i++) {
@@ -87,24 +84,24 @@ int contact_toggle(const uint8_t *pub, const char *name, uint8_t role) {
         return 0;
     }
     if (contact_count >= MAX_CONTACTS) return -1;
-    int slot = contact_count;
-    contact_t *c = &contacts[contact_count++];
+    int        slot = contact_count;
+    contact_t* c    = &contacts[contact_count++];
     memcpy(c->pub_key, pub, MESHCORE_PUB_KEY_SIZE);
     strncpy(c->alias, name ? name : "", CONTACT_ALIAS_LEN - 1);
     c->alias[CONTACT_ALIAS_LEN - 1] = '\0';
-    c->role  = role;
-    c->flags = 0;
-    contact_unread[slot] = 0;
+    c->role                         = role;
+    c->flags                        = 0;
+    contact_unread[slot]            = 0;
     contacts_save();
     return 1;
 }
 
-void contact_mark_unread(const uint8_t *pub) {
+void contact_mark_unread(const uint8_t* pub) {
     int idx = contact_find(pub);
     if (idx >= 0) contact_unread[idx]++;
 }
 
-void contact_clear_unread(const uint8_t *pub) {
+void contact_clear_unread(const uint8_t* pub) {
     int idx = contact_find(pub);
     if (idx >= 0) contact_unread[idx] = 0;
 }

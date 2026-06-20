@@ -19,15 +19,15 @@
  *                       © 2025 Nicolai Electronics, MIT License
  */
 
+#include <ctype.h>
+#include <math.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <math.h>
-#include <ctype.h>
-#include <time.h>
 #include <sys/time.h>
+#include <time.h>
 #include "bsp/device.h"
 #include "bsp/display.h"
 #include "bsp/input.h"
@@ -35,27 +35,27 @@
 #include "bsp/power.h"
 #include "bsp/rtc.h"
 #include "bsp/tanmatsu.h"
-#include "tanmatsu_coprocessor.h"
 #include "driver/gpio.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
-#include "nvs_flash.h"
+#include "esp_random.h"
+#include "esp_sntp.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
+#include "http_server.h"
+#include "lora.h"
 #include "nvs.h"
+#include "nvs_flash.h"
 #include "pax_fonts.h"
 #include "pax_gfx.h"
 #include "pax_text.h"
 #include "pax_types.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/semphr.h"
-#include "lora.h"
+#include "qrcodegen.h"
 #include "radio_system_protocol_client.h"
-#include "http_server.h"
+#include "tanmatsu_coprocessor.h"
 #include "wifi_connection.h"
 #include "wifi_keepalive.h"
-#include "esp_random.h"
-#include "esp_sntp.h"
-#include "qrcodegen.h"
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 #include "esp_hosted.h"
 #endif
@@ -86,8 +86,8 @@ app_view_t current_view = VIEW_HOME;
 
 // ── Radio (TX/RX/stats) ──────────────────────────────────────────────────────
 // rx_buf + rx_count + RF stats + send_*/lora_rx_task all live in radio.c/h.
-#include "radio.h"
 #include "mc_rx.h"
+#include "radio.h"
 
 // ── Node list ─────────────────────────────────────────────────────────────────
 // Storage + update_node + build_node_display + role_label live in nodes.c/h.
@@ -95,22 +95,22 @@ app_view_t current_view = VIEW_HOME;
 
 // ── Contacts (favorites) ──────────────────────────────────────────────────────
 // State + NVS persistence live in contacts.c/h.
-#include "contacts.h"
 #include "ble_companion.h"
 #include "companion_transport.h"
+#include "contacts.h"
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
 // chat_msg_t, ring buffers, DM target, public-channel key, notification LED,
 // ch_*/chat_* helpers all live in chat.c/h.
-#include "chat.h"
 #include "channels.h"
+#include "chat.h"
 
 // field_t lives in ui_state.h (shared with input.c and render.c).
 
 // LoRa defaults, BW choices, presets, NVS load/save, owner_name / advert_name /
 // region_scope / lora_cfg / flood+direct advert interval / lora_role /
 // path_hash_size all live in settings_nvs.c/h.
-#define NVS_LAST_TIME  "last_time_s"  // int64 SNTP timestamp (also defined in identity.c)
+#define NVS_LAST_TIME "last_time_s"  // int64 SNTP timestamp (also defined in identity.c)
 
 // ── Node identity ─────────────────────────────────────────────────────────────
 // node_pub_key, node_prv_key + ready/sntp-sync flags live in identity.c/h.
@@ -120,28 +120,28 @@ app_view_t current_view = VIEW_HOME;
 
 // ── App state (definitions for externs declared in ui_state.h) ───────────────
 #include "ui_state.h"
-int  selected              = 0;
-bool edit_mode             = false;
-bool dirty                 = false;
-bool lora_ready            = false;
-bool c6_available          = false;
-bool time_from_nvs         = false;
-bool qr_overlay_active     = false;
-qr_mode_t qr_overlay_mode  = QR_MODE_CONTACT;
+int       selected                    = 0;
+bool      edit_mode                   = false;
+bool      dirty                       = false;
+bool      lora_ready                  = false;
+bool      c6_available                = false;
+bool      time_from_nvs               = false;
+bool      qr_overlay_active           = false;
+qr_mode_t qr_overlay_mode             = QR_MODE_CONTACT;
 // Shared text-edit scratch for FIELD_OWNER / FIELD_ADV_NAME / FIELD_REGION_SCOPE.
-char field_edit_buf[33]    = {0};
-int  field_edit_len        = 0;
-bool field_editing_text    = false;
-int  settings_scroll       = 0;
-int  home_cursor           = 0;  // VIEW_HOME tile-grid focus (0..HOME_TILE_COUNT-1)
-bool qr_from_home          = false;
-bool qr_from_settings      = false;
-char     toast_text[64]    = {0};
-uint32_t toast_duration_ms  = 2000;
-uint32_t toast_start_ms    = 0;
-bool settings_category_list_mode = true;   // start in list when entering Settings
-int  settings_category_cursor    = 0;
-int  settings_category_active    = 0;
+char      field_edit_buf[33]          = {0};
+int       field_edit_len              = 0;
+bool      field_editing_text          = false;
+int       settings_scroll             = 0;
+int       home_cursor                 = 0;  // VIEW_HOME tile-grid focus (0..HOME_TILE_COUNT-1)
+bool      qr_from_home                = false;
+bool      qr_from_settings            = false;
+char      toast_text[64]              = {0};
+uint32_t  toast_duration_ms           = 2000;
+uint32_t  toast_start_ms              = 0;
+bool      settings_category_list_mode = true;  // start in list when entering Settings
+int       settings_category_cursor    = 0;
+int       settings_category_active    = 0;
 
 // Display blanking: F3 (yellow square) toggles the MIPI backlight off so
 // the badge is silent in the pocket while keyboard input + chat LEDs remain
@@ -151,7 +151,7 @@ int  settings_category_active    = 0;
 // Auto-blank: when display_blank_after_s (Settings) > 0, the same blank
 // trips automatically after that many seconds of input-idle time.
 static bool     display_blanked = false;
-static uint32_t last_input_ms   = 0;    // updated on any input event
+static uint32_t last_input_ms   = 0;  // updated on any input event
 
 // Drop display + keyboard backlight to 0. The RGB notification LED stays live
 // so in-pocket DM and channel alerts still show (issue #7).
@@ -190,10 +190,11 @@ void app_main(void) {
     }
 
     const bsp_configuration_t bsp_cfg = {
-        .display = {
-            .requested_color_format = BSP_DISPLAY_COLOR_FORMAT_24_888RGB,
-            .num_fbs                = 1,
-        },
+        .display =
+            {
+                .requested_color_format = BSP_DISPLAY_COLOR_FORMAT_24_888RGB,
+                .num_fbs                = 1,
+            },
     };
     res = bsp_device_initialize(&bsp_cfg);
     if (res != ESP_OK) {
@@ -205,17 +206,29 @@ void app_main(void) {
     if (res != ESP_ERR_NOT_SUPPORTED && res == ESP_OK) {
         pax_buf_type_t fmt = PAX_BUF_24_888RGB;
         switch (display_color_format) {
-            case BSP_DISPLAY_COLOR_FORMAT_16_565RGB:   fmt = PAX_BUF_16_565RGB;   break;
-            case BSP_DISPLAY_COLOR_FORMAT_32_8888ARGB: fmt = PAX_BUF_32_8888ARGB; break;
-            default: break;
+            case BSP_DISPLAY_COLOR_FORMAT_16_565RGB:
+                fmt = PAX_BUF_16_565RGB;
+                break;
+            case BSP_DISPLAY_COLOR_FORMAT_32_8888ARGB:
+                fmt = PAX_BUF_32_8888ARGB;
+                break;
+            default:
+                break;
         }
         bsp_display_rotation_t rot = bsp_display_get_default_rotation();
-        pax_orientation_t ori = PAX_O_UPRIGHT;
+        pax_orientation_t      ori = PAX_O_UPRIGHT;
         switch (rot) {
-            case BSP_DISPLAY_ROTATION_90:  ori = PAX_O_ROT_CCW;  break;
-            case BSP_DISPLAY_ROTATION_180: ori = PAX_O_ROT_HALF; break;
-            case BSP_DISPLAY_ROTATION_270: ori = PAX_O_ROT_CW;   break;
-            default: break;
+            case BSP_DISPLAY_ROTATION_90:
+                ori = PAX_O_ROT_CCW;
+                break;
+            case BSP_DISPLAY_ROTATION_180:
+                ori = PAX_O_ROT_HALF;
+                break;
+            case BSP_DISPLAY_ROTATION_270:
+                ori = PAX_O_ROT_CW;
+                break;
+            default:
+                break;
         }
         pax_buf_init(&fb, NULL, display_h_res, display_v_res, fmt);
         pax_buf_reversed(&fb, display_data_endian == BSP_DISPLAY_ENDIAN_BIG);
@@ -233,28 +246,27 @@ void app_main(void) {
 
     // Splash header is title (TXT_TITLE=24) + attribution (TXT_SMALL=16).
     // Start diag output below both so they don't overlap.
-    int  diag_y    = 74;
-    int  diag_line = 22;
-#define DIAG(col, fmt, ...) do { \
-        char _buf[80]; \
-        snprintf(_buf, sizeof(_buf), fmt, ##__VA_ARGS__); \
-        ESP_LOGI(TAG, "%s", _buf); \
+    int diag_y    = 74;
+    int diag_line = 22;
+#define DIAG(col, fmt, ...)                                           \
+    do {                                                              \
+        char _buf[80];                                                \
+        snprintf(_buf, sizeof(_buf), fmt, ##__VA_ARGS__);             \
+        ESP_LOGI(TAG, "%s", _buf);                                    \
         pax_draw_text(&fb, (col), FONT, TXT_SMALL, 14, diag_y, _buf); \
-        diag_y += diag_line; \
-        blit(); \
-    } while(0)
+        diag_y += diag_line;                                          \
+        blit();                                                       \
+    } while (0)
 
     pax_background(&fb, COL_BG);
     {
-        const esp_app_desc_t *desc = esp_app_get_description();
-        char title[48];
-        snprintf(title, sizeof(title), "MeshCore %s",
-                 (desc && desc->version[0]) ? desc->version : "?");
+        const esp_app_desc_t* desc = esp_app_get_description();
+        char                  title[48];
+        snprintf(title, sizeof(title), "MeshCore %s", (desc && desc->version[0]) ? desc->version : "?");
         pax_draw_text(&fb, COL_AMBER, FONT, TXT_TITLE, 14, 16, title);
         // Boot-splash attribution so users see at a glance this is the
         // community app, not the official MeshCore iOS/Android client.
-        pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL, 14, 16 + TXT_TITLE + 4,
-                      "Community app by CJ van Soest");
+        pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL, 14, 16 + TXT_TITLE + 4, "Community app by CJ van Soest");
     }
     blit();
     vTaskDelay(pdMS_TO_TICKS(1500));
@@ -271,8 +283,7 @@ void app_main(void) {
     // not a WiFi client, so no scan / associate / DHCP / SNTP wastes air.
     DIAG(COL_GRAY, "wifi_connection_init_stack...");
     res = wifi_connection_init_stack();
-    DIAG(res == ESP_OK ? COL_GREEN : COL_YELLOW, "  wifi init: %s (%d)",
-         res == ESP_OK ? "OK" : "FAIL", res);
+    DIAG(res == ESP_OK ? COL_GREEN : COL_YELLOW, "  wifi init: %s (%d)", res == ESP_OK ? "OK" : "FAIL", res);
 
     // Time comes from the C6 coprocessor RTC (set by launcher/firmware SNTP
     // at boot). bsp_rtc_update_time pulls that value into the P4 system
@@ -292,7 +303,7 @@ void app_main(void) {
         if (nvs_open("system", NVS_READONLY, &h) == ESP_OK) {
             int64_t saved = 0;
             if (nvs_get_i64(h, NVS_LAST_TIME, &saved) == ESP_OK && saved > 1000000000LL) {
-                struct timeval tv = { .tv_sec = (time_t)saved, .tv_usec = 0 };
+                struct timeval tv = {.tv_sec = (time_t)saved, .tv_usec = 0};
                 settimeofday(&tv, NULL);
                 time_from_nvs = true;
                 DIAG(COL_YELLOW, "  time: NVS restore (approx)");
@@ -311,8 +322,8 @@ void app_main(void) {
     load_ble_gps_pref();
     load_advert_loc_policy();
     load_wifi();
-    load_wifi_prefs();      // enabled toggle + chosen slot
-    wifi_slots_refresh();   // populate the picker cache from launcher slots
+    load_wifi_prefs();     // enabled toggle + chosen slot
+    wifi_slots_refresh();  // populate the picker cache from launcher slots
     load_or_init_http_api_key();
     // Auto-connect to the saved WiFi network at boot when WiFi is enabled.
     // We honour the user-chosen slot explicitly (instead of try_all) so
@@ -352,14 +363,16 @@ void app_main(void) {
     // sees no files. Re-scan now that /sd is live so the Settings UI shows the
     // real filenames + the slot pickers see the full list.
     if (history_is_ready()) sounds_refresh_list();
-    map_state_init();  // restore last centre + zoom (or fall back to defaults)
-    map_loader_init(); // background tile fetcher (SD → lodepng → RGB565)
+    map_state_init();   // restore last centre + zoom (or fall back to defaults)
+    map_loader_init();  // background tile fetcher (SD → lodepng → RGB565)
     load_map_profile();
     load_gps_track_prefs();
     gps_task_start();
     // DM history is loaded per peer in dm_select_target — no boot-time DM load.
     // Channel history is per-channel; load the active channel (Public at boot).
-    if (history_is_ready()) { ch_select_channel(active_channel_idx); }
+    if (history_is_ready()) {
+        ch_select_channel(active_channel_idx);
+    }
 
     // Restore previously-discovered nodes so the user can see + promote
     // entries from earlier sessions. Persistence task writes back every
@@ -371,13 +384,12 @@ void app_main(void) {
 
     DIAG(COL_GRAY, "lora_init_remote(16)...");
     res = lora_init_remote(&lora_handle, 16);
-    DIAG(res == ESP_OK ? COL_GREEN : COL_RED, "  lora_init_remote: %s (%d)",
-         res == ESP_OK ? "OK" : "FAIL", res);
+    DIAG(res == ESP_OK ? COL_GREEN : COL_RED, "  lora_init_remote: %s (%d)", res == ESP_OK ? "OK" : "FAIL", res);
 
     load_lora_from_nvs();
     lora_ready = true;
-    DIAG(COL_GREEN, "NVS: %.3fMHz SF%d BW%d",
-         (double)lora_cfg.frequency / 1000000.0, lora_cfg.spreading_factor, (int)lora_cfg.bandwidth);
+    DIAG(COL_GREEN, "NVS: %.3fMHz SF%d BW%d", (double)lora_cfg.frequency / 1000000.0, lora_cfg.spreading_factor,
+         (int)lora_cfg.bandwidth);
 
     if (res == ESP_OK) {
         // Query radio firmware version once at boot (for display in Settings).
@@ -410,15 +422,15 @@ void app_main(void) {
             DIAG(COL_YELLOW, "  fw: init failed - hardcoded fallback");
         }
         DIAG(COL_GRAY, "lora_get_config from C6...");
-        lora_protocol_config_params_t c6_cfg = {0};
-        esp_err_t cfg_res = lora_get_config(&lora_handle, &c6_cfg);
+        lora_protocol_config_params_t c6_cfg  = {0};
+        esp_err_t                     cfg_res = lora_get_config(&lora_handle, &c6_cfg);
         if (cfg_res == ESP_OK) {
             c6_available = true;
             if (c6_cfg.frequency != 0) {
                 lora_cfg = c6_cfg;
                 save_lora_to_nvs();
-                DIAG(COL_GREEN, "  C6 OK! %.3fMHz SF%d",
-                     (double)lora_cfg.frequency / 1000000.0, lora_cfg.spreading_factor);
+                DIAG(COL_GREEN, "  C6 OK! %.3fMHz SF%d", (double)lora_cfg.frequency / 1000000.0,
+                     lora_cfg.spreading_factor);
             } else {
                 DIAG(COL_YELLOW, "  C6 fresh - pushing NVS config");
                 lora_set_config(&lora_handle, &lora_cfg);
@@ -473,8 +485,7 @@ void app_main(void) {
 
         // F3 (yellow square) toggles backlight. Only act on press-edge so
         // a single tap doesn't immediately wake the display again.
-        if (event.type == INPUT_EVENT_TYPE_NAVIGATION &&
-            event.args_navigation.key == BSP_INPUT_NAVIGATION_KEY_F3 &&
+        if (event.type == INPUT_EVENT_TYPE_NAVIGATION && event.args_navigation.key == BSP_INPUT_NAVIGATION_KEY_F3 &&
             event.args_navigation.state) {
             if (!display_blanked) {
                 enter_display_blank();
@@ -492,8 +503,7 @@ void app_main(void) {
         // handled above. The RGB LED kept blinking the whole time.
         if (display_blanked) {
             bool press = (event.type == INPUT_EVENT_TYPE_KEYBOARD) ||
-                         (event.type == INPUT_EVENT_TYPE_NAVIGATION &&
-                          event.args_navigation.state);
+                         (event.type == INPUT_EVENT_TYPE_NAVIGATION && event.args_navigation.state);
             if (press) {
                 exit_display_blank();
                 last_input_ms = now_ms;  // re-arm idle timer on wake

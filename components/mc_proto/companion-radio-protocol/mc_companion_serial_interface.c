@@ -22,11 +22,13 @@ static void mc_companion_handle_serial_command_frame(mc_companion_server_callbac
         return;
     }
 
-    mc_companion_command_parser_error_t error = mc_companion_parse_command(&rx_buffer[3], length - 3, &command_packet_buffer);
+    mc_companion_command_parser_error_t error =
+        mc_companion_parse_command(&rx_buffer[3], length - 3, &command_packet_buffer);
     callback(&command_packet_buffer, error);
 }
 
-void mc_companion_read_serial_command(uint8_t* received_data, size_t received_data_length, mc_companion_server_callback server_callback) {
+void mc_companion_read_serial_command(uint8_t* received_data, size_t received_data_length,
+                                      mc_companion_server_callback server_callback) {
     while (received_data_length > 0) {
         if (rx_position == 0) {
             // Ready to receive a frame, search for start byte
@@ -77,7 +79,8 @@ void mc_companion_read_serial_command(uint8_t* received_data, size_t received_da
     }
 }
 
-void mc_companion_write_serial_response(companion_response_packet_t* packet, uint16_t args_length, size_t output_buffer_size, uint8_t* out_framed_data,
+void mc_companion_write_serial_response(companion_response_packet_t* packet, uint16_t args_length,
+                                        size_t output_buffer_size, uint8_t* out_framed_data,
                                         size_t* out_framed_data_length) {
 
     uint16_t packet_length = args_length;
