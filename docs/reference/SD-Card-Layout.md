@@ -12,6 +12,8 @@ internal pull-ups, default frequency, no auto-format.
 /sd
 └── meshcore/
     ├── channel.bin                       ← public-channel history
+    ├── coverage/
+    │   └── cov_<unix>.csv                ← Toolbox coverage-test session log
     └── dm/
         ├── a3f2c91a8b7e4f5d.bin          ← per-peer DM log (16 hex chars
         ├── 7e29c84d1b0f6a52.bin             = first 8 bytes of peer pubkey)
@@ -100,10 +102,28 @@ the corruption and only the bad records (and everything after them) are
 lost on the next load. This is intentional — we avoid destroying readable
 history on a single bit flip.
 
+## Coverage-test logs (Toolbox)
+
+The Toolbox coverage test writes one **plaintext CSV per session** under
+`/sd/meshcore/coverage/cov_<unix>.csv` (the filename timestamp comes from the C6
+RTC). Starting a new session (the `R` key, or re-entering the tool) opens a new
+file with a header row; every ping attempt appends one row:
+
+```
+ts_unix,repeater,pubkey,lat_e6,lon_e6,attempt,ack,rtt_ms
+```
+
+Unlike chat history these rows are **not encrypted**: they carry no message
+content, only reachability telemetry (repeater name, 4-byte pubkey prefix, GPS
+position when the fix is valid, attempt index, ack 0/1, round-trip ms). Owned by
+`mc_domain/coverage.c`, which `mkdir`s the directory and appends with the same
+`fopen("ab")` pattern; writing is a no-op when no card is mounted.
+
 ## Locking
 
 A single `s_mutex` (FreeRTOS binary semaphore) serialises all SD access
 within `history.c`. Holds are kept short (one append or one full load).
+`coverage.c` has its own mutex for its result table + log writes.
 
 ## Disabled / missing SD
 

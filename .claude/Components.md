@@ -100,7 +100,9 @@ failed load.
 Persisted state and app data: `settings_nvs.c` (all settings + LoRa config),
 `nodes.c` (node_list + the dirty-flag save task), `contacts.c`, `chat.c`
 (message history + ACK matching), `channels.c`, `identity.c` (keypair, the boot
-crypto self-test, time sync flags), `sounds.c`. **`node_mutex` protects both
+crypto self-test, time sync flags), `sounds.c`, `coverage.c` (the Toolbox
+coverage-test result table, repeater collector, SD CSV log and a chat-ring-free
+ACK matcher; the ping task itself lives in `mc_rx`). **`node_mutex` protects both
 `node_list` and `contacts`.** Bounds on the fixed arrays matter here.
 
 ### `mc_crypto` (L2)
@@ -134,8 +136,10 @@ cursors versus shrinking lists are the classic bug here. Must not include
 The MeshCore application brain. RX handlers (`rx_handle_advert/grp_txt/dm/path`)
 decrypt, write domain state, notify, and ACK. TX composers (`send_advert*`,
 `send_dm_message`, `send_chat_message`, the advert task) build payloads and call
-`radio_tx_message`. The RX sink is registered with `radio_set_rx_sink` in
-`mc_rx_init`. This is where most protocol logic and most of the real bugs live.
+`radio_tx_message`. `coverage_ping_start` runs a transient `cov_ping` task on
+the same DM primitive for the Toolbox coverage test, feeding `mc_domain/coverage`.
+The RX sink is registered with `radio_set_rx_sink` in `mc_rx_init`. This is where
+most protocol logic and most of the real bugs live.
 
 ### `main`
 `main.c` only: the cold-start sequence and the event loop. No first-party logic

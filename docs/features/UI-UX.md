@@ -203,6 +203,20 @@ dissected once at snapshot time, so the render loop never re-decodes a visible
 row. The dissect runs on the captured prefix (`DIAG_RAW_MAX` = 176 B), so a
 longer frame shows a display-only truncation; header fields stay complete.
 
+### Coverage Test (`VIEW_TOOLBOX_COVERAGE`)
+
+A repeater reachability tester. The view lists discovered repeaters
+(`role == REPEATER`) with an `x/3` counter and a green/orange/red status. Enter
+pings the selected repeater 3x at a 10 s interval — a background task in `mc_rx`
+sends a DM and matches the PATH_RETURN ACK outside the chat ring, so DM history
+stays clean — classifies the result (3/3 green, 1-2 orange, 0 red), and appends
+every GPS-stamped attempt to one CSV per session on SD (`/sd/meshcore/coverage/`,
+see [SD-Card-Layout.md](../reference/SD-Card-Layout.md)). `WS` / D-pad move the
+cursor, Enter pings, `R` starts a new session, ESC returns to the launcher.
+Results and the SD log live in `mc_domain/coverage`. The coverage map
+(z15/16 markers + PNG export) is a later sub-phase; see
+[Toolbox-Coverage-Test.md](Toolbox-Coverage-Test.md).
+
 ## Edit-mode state machine (Settings drilldown)
 
 ```
