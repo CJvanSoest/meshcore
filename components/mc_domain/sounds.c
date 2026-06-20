@@ -124,7 +124,7 @@ static void stream_wav(FILE *f, uint16_t channels, uint32_t data_size) {
             want_frames = bytes_left / (in_stride * 2);
         }
         if (want_frames == 0) break;
-        size_t got = fread(in_buf, 2, want_frames * in_stride, f);
+        size_t got = fread(in_buf, 2, (size_t)want_frames * in_stride, f);
         if (got == 0) break;
         bytes_left -= got * 2;
 

@@ -1,0 +1,7 @@
+name: meshcore CodeQL config
+
+# Vendored drops and the upstream protocol mirror are not ours to change
+# (see CLAUDE.md). Keep them out of scope so their findings do not mask ours.
+paths-ignore:
+  - components/vendor
+  - components/mc_proto/meshcore
