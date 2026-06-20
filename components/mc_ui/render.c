@@ -2,30 +2,26 @@
 // SPDX-License-Identifier: MIT
 
 #include "render.h"
-#include "render_internal.h"
-
 #include <stdio.h>
 #include <string.h>
-
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-
+#include "app_config.h"
 #include "bsp/display.h"
 #include "bsp/power.h"
-#include "esp_log.h"
-#include "pax_fonts.h"
-#include "pax_gfx.h"
-#include "pax_text.h"
-
-#include "app_config.h"
 #include "channels.h"
 #include "chat.h"
 #include "contacts.h"
 #include "emoji.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "pax_fonts.h"
+#include "pax_gfx.h"
+#include "pax_text.h"
 #include "radio.h"
+#include "render_internal.h"
 #include "ui_state.h"
 
-static const char *TAG = "render";
+static const char* TAG = "render";
 
 size_t    display_h_res = 0;
 size_t    display_v_res = 0;
@@ -43,10 +39,10 @@ void blit(void) {
 // the right. Replaces the original coloured tab-bar so the home screen and
 // the classic views share one visual identity.
 void render_tab_bar(void) {
-    int w = (int)pax_buf_get_width(&fb);
-    static const char *tab_labels[VIEW_TAB_COUNT] = {"Settings", "Nodes", "DM", "Channel"};
+    int                w                          = (int)pax_buf_get_width(&fb);
+    static const char* tab_labels[VIEW_TAB_COUNT] = {"Settings", "Nodes", "DM", "Channel"};
 
-    pax_simple_rect(&fb, COL_PAGER_BG,     0, 0, w, TAB_BAR_H);
+    pax_simple_rect(&fb, COL_PAGER_BG, 0, 0, w, TAB_BAR_H);
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, TAB_BAR_H - 1, w, 1);
 
     int label_y = (TAB_BAR_H - TXT_TAB) / 2;
@@ -54,8 +50,7 @@ void render_tab_bar(void) {
 
     // Left: view name in Pager text colour. Falls back gracefully if
     // current_view is out of range (shouldn't happen, but be safe).
-    const char *vname = (current_view >= 0 && current_view < VIEW_TAB_COUNT)
-                        ? tab_labels[current_view] : "";
+    const char* vname = (current_view >= 0 && current_view < VIEW_TAB_COUNT) ? tab_labels[current_view] : "";
     if (vname[0]) {
         pax_vec2f vsz = pax_text_size(FONT, TXT_TAB, vname);
         pax_draw_text(&fb, COL_PAGER_TEXT, FONT, TXT_TAB, x, label_y, vname);
@@ -64,14 +59,14 @@ void render_tab_bar(void) {
 
     // Inline unread badges for the *other* conversation tabs — so a DM or
     // channel message arriving while you're in Settings is still visible.
-    int badge_y = (TAB_BAR_H - TXT_SMALL) / 2 - 2;
-    int badge_h = TXT_SMALL + 4;
+    int badge_y   = (TAB_BAR_H - TXT_SMALL) / 2 - 2;
+    int badge_h   = TXT_SMALL + 4;
     int dm_unread = contact_unread_total();
     if (dm_unread > 0 && current_view != VIEW_CHAT) {
         char buf[8];
         snprintf(buf, sizeof(buf), "DM %d", dm_unread > 99 ? 99 : dm_unread);
         pax_vec2f sz = pax_text_size(FONT, TXT_SMALL, buf);
-        int bw = (int)sz.x + 12;
+        int       bw = (int)sz.x + 12;
         pax_simple_rect(&fb, COL_RED, x, badge_y, bw, badge_h);
         pax_draw_text(&fb, COL_PAGER_BG, FONT, TXT_SMALL, x + 6, badge_y + 2, buf);
         x += bw + 8;
@@ -81,7 +76,7 @@ void render_tab_bar(void) {
         char buf[8];
         snprintf(buf, sizeof(buf), "# %d", ch_unread > 99 ? 99 : ch_unread);
         pax_vec2f sz = pax_text_size(FONT, TXT_SMALL, buf);
-        int bw = (int)sz.x + 12;
+        int       bw = (int)sz.x + 12;
         pax_simple_rect(&fb, COL_RED, x, badge_y, bw, badge_h);
         pax_draw_text(&fb, COL_PAGER_BG, FONT, TXT_SMALL, x + 6, badge_y + 2, buf);
         x += bw + 8;
@@ -98,21 +93,20 @@ void render_tab_bar(void) {
         if (pct > 100) pct = 100;
         char buf[16];
         snprintf(buf, sizeof(buf), "%d%%%s", pct, bat.battery_charging ? "+" : "");
-        pax_col_t col = pct <= 20 ? COL_RED : (pct <= 50 ? COL_AMBER : COL_GREEN);
-        pax_vec2f sz = pax_text_size(FONT, TXT_BODY, buf);
-        status_x -= (int)sz.x;
+        pax_col_t col  = pct <= 20 ? COL_RED : (pct <= 50 ? COL_AMBER : COL_GREEN);
+        pax_vec2f sz   = pax_text_size(FONT, TXT_BODY, buf);
+        status_x      -= (int)sz.x;
         pax_draw_text(&fb, col, FONT, TXT_BODY, status_x, status_y, buf);
         status_x -= 14;
     }
 
     if (dc_budget_ms > 0 && dc_budget_ms < 3600000u) {
         unsigned pct_x10 = (unsigned)(((uint64_t)dc_used_ms * 1000u) / dc_budget_ms);
-        char buf[16];
+        char     buf[16];
         snprintf(buf, sizeof(buf), "TX:%u.%u%%", pct_x10 / 10u, pct_x10 % 10u);
-        pax_col_t col = dc_last_tx_blocked ? COL_RED :
-                        (pct_x10 >= 800)   ? COL_AMBER : COL_PAGER_TEXT;
-        pax_vec2f sz = pax_text_size(FONT, TXT_BODY, buf);
-        status_x -= (int)sz.x;
+        pax_col_t col  = dc_last_tx_blocked ? COL_RED : (pct_x10 >= 800) ? COL_AMBER : COL_PAGER_TEXT;
+        pax_vec2f sz   = pax_text_size(FONT, TXT_BODY, buf);
+        status_x      -= (int)sz.x;
         pax_draw_text(&fb, col, FONT, TXT_BODY, status_x, status_y, buf);
         status_x -= 14;
     }
@@ -125,8 +119,8 @@ void render_tab_bar(void) {
         }
         char buf[12];
         snprintf(buf, sizeof(buf), "RX:%d", cnt);
-        pax_vec2f sz = pax_text_size(FONT, TXT_BODY, buf);
-        status_x -= (int)sz.x;
+        pax_vec2f sz  = pax_text_size(FONT, TXT_BODY, buf);
+        status_x     -= (int)sz.x;
         pax_draw_text(&fb, COL_GREEN, FONT, TXT_BODY, status_x, status_y, buf);
     }
 }
@@ -149,22 +143,19 @@ void render_emoji_picker_overlay(void) {
 
     pax_simple_rect(&fb, COL_HEADER, panel_x, panel_y, panel_w, panel_h);
     pax_simple_rect(&fb, COL_ACCENT, panel_x, panel_y, panel_w, 2);
-    pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL,
-                  panel_x + pad, panel_y + 4, "Pick emoji");
+    pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL, panel_x + pad, panel_y + 4, "Pick emoji");
 
     int grid_x = panel_x + pad;
     int grid_y = panel_y + 6 + TXT_SMALL;
 
     for (int i = 0; i < EMOJI_COUNT; i++) {
-        int r  = i / cols;
-        int c  = i % cols;
-        int cx = grid_x + c * cell + cell / 2;
-        int cy = grid_y + r * cell + cell / 2;
+        int  r   = i / cols;
+        int  c   = i % cols;
+        int  cx  = grid_x + c * cell + cell / 2;
+        int  cy  = grid_y + r * cell + cell / 2;
         bool sel = (i == emoji_picker_cursor);
         if (sel) {
-            pax_simple_rect(&fb, COL_PANEL,
-                            cx - cell / 2 + 2, cy - cell / 2 + 2,
-                            cell - 4, cell - 4);
+            pax_simple_rect(&fb, COL_PANEL, cx - cell / 2 + 2, cy - cell / 2 + 2, cell - 4, cell - 4);
         }
         emoji_draw(i, cx, cy, cell / 2 - 6, &fb);
     }
@@ -176,25 +167,38 @@ void render(void) {
     // exactly once at the end so the user never sees the base layer briefly
     // through an overlay swap (the old double-blit caused QR/emoji flicker).
     switch (current_view) {
-        case VIEW_HOME:        render_home();        break;
-        case VIEW_ABOUT:       render_about();       break;
-        case VIEW_MAP:         render_map();         break;
-        case VIEW_TOOLBOX:     render_toolbox();     break;
-        case VIEW_TOOLBOX_LOG: render_toolbox_log(); break;
+        case VIEW_HOME:
+            render_home();
+            break;
+        case VIEW_ABOUT:
+            render_about();
+            break;
+        case VIEW_MAP:
+            render_map();
+            break;
+        case VIEW_TOOLBOX:
+            render_toolbox();
+            break;
+        case VIEW_TOOLBOX_LOG:
+            render_toolbox_log();
+            break;
         case VIEW_NODES:
             render_nodes();
             if (qr_overlay_active) render_qr_overlay();
             break;
-        case VIEW_CHAT:    render_chat();    break;
-        case VIEW_CHANNEL: render_channel(); break;
+        case VIEW_CHAT:
+            render_chat();
+            break;
+        case VIEW_CHANNEL:
+            render_channel();
+            break;
         case VIEW_SETTINGS:
         default:
             render_settings();
             if (qr_overlay_active) render_qr_overlay();
             break;
     }
-    if (emoji_picker_active && chat_typing &&
-        (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL)) {
+    if (emoji_picker_active && chat_typing && (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL)) {
         render_emoji_picker_overlay();
     }
     blit();

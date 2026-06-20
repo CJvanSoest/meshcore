@@ -16,20 +16,20 @@
 // Top-level tab/view selection. Lives here because both render, input, and
 // rx_task need to read it.
 typedef enum {
-    VIEW_SETTINGS = 0,
-    VIEW_NODES    = 1,
-    VIEW_CHAT     = 2,   // DM conversations
-    VIEW_CHANNEL  = 3,   // public channel (GRP_TXT)
-    VIEW_HOME     = 4,   // tile-grid landing screen (Pager-style)
-    VIEW_ABOUT    = 5,   // version / authors / credits / license
-    VIEW_MAP      = 6,   // OSM tile-based map + live GPS overlay
+    VIEW_SETTINGS    = 0,
+    VIEW_NODES       = 1,
+    VIEW_CHAT        = 2,  // DM conversations
+    VIEW_CHANNEL     = 3,  // public channel (GRP_TXT)
+    VIEW_HOME        = 4,  // tile-grid landing screen (Pager-style)
+    VIEW_ABOUT       = 5,  // version / authors / credits / license
+    VIEW_MAP         = 6,  // OSM tile-based map + live GPS overlay
     VIEW_TOOLBOX     = 7,  // Toolbox launcher (sub-tool menu, reached from Settings)
     VIEW_TOOLBOX_LOG = 8,  // Live packet log (hex dump / dissector)
     VIEW_COUNT       = 9,
     // Number of views that appear in the legacy top tab-bar. VIEW_HOME,
     // VIEW_ABOUT, VIEW_MAP and the Toolbox views have their own headers, so the
     // tab-bar still iterates only the four classic views (0..3).
-    VIEW_TAB_COUNT = 4,
+    VIEW_TAB_COUNT   = 4,
 } app_view_t;
 
 extern app_view_t current_view;

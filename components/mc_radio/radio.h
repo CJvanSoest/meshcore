@@ -6,11 +6,9 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-
-#include "lora.h"  // lora_protocol_lora_packet_t
+#include "lora.h"             // lora_protocol_lora_packet_t
 #include "meshcore/packet.h"  // meshcore_message_t for the RX sink + TX primitive
 
 // Shared LoRa radio handle (radio v3.0.0 handle-based API).
@@ -46,15 +44,15 @@ extern SemaphoreHandle_t rx_mutex;
 extern bool lora_rx_ok;
 
 // ── RF statistics (last RX packet + ambient noise floor) ─────────────────────
-extern volatile int8_t   last_rx_rssi_dbm;          // 0 = no data
-extern volatile int8_t   last_rx_snr_db_x4;         // SNR in 1/4 dB units
+extern volatile int8_t   last_rx_rssi_dbm;   // 0 = no data
+extern volatile int8_t   last_rx_snr_db_x4;  // SNR in 1/4 dB units
 extern volatile int8_t   last_rx_signal_rssi_dbm;
 extern volatile uint32_t last_rx_stats_ms;
 extern volatile bool     last_rx_stats_valid;
 
-extern volatile int8_t   noise_floor_dbm;           // 0 = no data
-extern volatile bool     noise_floor_valid;
-extern volatile bool     noise_floor_supported;     // false after NACK from old C6
+extern volatile int8_t noise_floor_dbm;  // 0 = no data
+extern volatile bool   noise_floor_valid;
+extern volatile bool   noise_floor_supported;  // false after NACK from old C6
 
 // ── Last advert TX timestamp (ms since boot) — read by render_settings ───────
 extern uint32_t last_advert_ms;
@@ -84,14 +82,14 @@ typedef struct {
     lora_packet_stats_t stats;  // raw C6 stats (the advert handler stores them)
 } radio_rx_meta_t;
 
-typedef void (*radio_rx_sink_fn)(const meshcore_message_t *msg, const radio_rx_meta_t *meta);
+typedef void (*radio_rx_sink_fn)(const meshcore_message_t* msg, const radio_rx_meta_t* meta);
 void radio_set_rx_sink(radio_rx_sink_fn sink);
 
 // Finalize + transmit a composed message: apply region scope, serialize, gate
 // on the duty-cycle budget, then send over the C6. Returns false on a
 // serialize failure or an exhausted budget. Used by the TX paths and by the
 // RX ACK return in mc_rx.
-bool radio_tx_message(meshcore_message_t *msg);
+bool radio_tx_message(meshcore_message_t* msg);
 
 // Reconcile the LoRa config in NVS with the live C6 radio over lora_handle.
 // load_lora_config pulls from NVS then prefers/pushes against the C6; save

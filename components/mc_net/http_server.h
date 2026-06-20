@@ -24,4 +24,4 @@ esp_err_t http_server_regen_cert(void);
 
 // Live cert PEM (NUL-terminated) or NULL until first load. UI uses this
 // to compute and display the SHA-256 fingerprint.
-const char *http_server_cert_pem(void);
+const char* http_server_cert_pem(void);

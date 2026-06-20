@@ -12,9 +12,9 @@
 
 typedef struct __attribute__((packed)) {
     uint8_t pub_key[MESHCORE_PUB_KEY_SIZE];  // 32
-    char    alias[CONTACT_ALIAS_LEN];         // 24, NUL-padded
-    uint8_t role;                              // meshcore_device_role_t (1)
-    uint8_t flags;                             // reserved (1)
+    char    alias[CONTACT_ALIAS_LEN];        // 24, NUL-padded
+    uint8_t role;                            // meshcore_device_role_t (1)
+    uint8_t flags;                           // reserved (1)
 } contact_t;
 
 // Public state — main.c iterates over these for rendering. Mutation goes
@@ -30,11 +30,11 @@ extern int contact_unread[MAX_CONTACTS];
 void contacts_load(void);
 void contacts_save(void);
 
-int contact_find  (const uint8_t *pub);
-int contact_ensure(const uint8_t *pub, const char *name, uint8_t role);
-int contact_toggle(const uint8_t *pub, const char *name, uint8_t role);
+int contact_find(const uint8_t* pub);
+int contact_ensure(const uint8_t* pub, const char* name, uint8_t role);
+int contact_toggle(const uint8_t* pub, const char* name, uint8_t role);
 
 // Unread helpers (no-op if the pubkey isn't a known contact).
-void contact_mark_unread (const uint8_t *pub);  // +1 on the matching slot
-void contact_clear_unread(const uint8_t *pub);  // zero the matching slot
+void contact_mark_unread(const uint8_t* pub);   // +1 on the matching slot
+void contact_clear_unread(const uint8_t* pub);  // zero the matching slot
 int  contact_unread_total(void);                // sum across all contacts

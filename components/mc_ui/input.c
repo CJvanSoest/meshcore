@@ -2,42 +2,38 @@
 // SPDX-License-Identifier: MIT
 
 #include "input.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "freertos/FreeRTOS.h"
-
+#include "app_config.h"
+#include "ble_companion.h"
 #include "bsp/device.h"
 #include "bsp/input.h"
 #include "bsp/led.h"
-#include "esp_log.h"
-
-#include "app_config.h"
-#include "ble_companion.h"
-#include "chat.h"
-#include "diag.h"
-#include "wifi_connection.h"
 #include "channels.h"
+#include "chat.h"
 #include "contacts.h"
+#include "diag.h"
 #include "emoji.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
 #include "gps.h"
 #include "history.h"
 #include "http_server.h"
 #include "identity.h"
 #include "map.h"
+#include "mc_rx.h"
 #include "nodes.h"
 #include "radio.h"
-#include "mc_rx.h"
 #include "region_limits.h"
 #include "render.h"
 #include "render_internal.h"
-#include "sounds.h"
 #include "settings_nvs.h"
+#include "sounds.h"
 #include "ui_state.h"
+#include "wifi_connection.h"
 
-static const char *TAG = "input";
+static const char* TAG = "input";
 
 // Open the tile under the home-cursor: switch current_view to its target
 // and initialise per-view modal state (DM inbox, channel list, etc.). TBD
@@ -72,9 +68,9 @@ static void open_home_tile(int idx) {
         led_dm_pending = false;
         update_notification_led();
     } else if (target == VIEW_CHANNEL) {
-        channel_list_mode    = true;
-        channel_adding       = false;
-        led_channel_pending  = false;
+        channel_list_mode   = true;
+        channel_adding      = false;
+        led_channel_pending = false;
         update_notification_led();
     } else if (target == VIEW_SETTINGS) {
         // Opening Settings from the home tile starts at the category list so
@@ -110,7 +106,7 @@ void field_adjust(int field, int delta) {
             break;
         case FIELD_SF: {
             int sf = (int)lora_cfg.spreading_factor + delta;
-            if (sf < 5)  sf = 5;
+            if (sf < 5) sf = 5;
             if (sf > 12) sf = 12;
             lora_cfg.spreading_factor = (uint8_t)sf;
             break;
@@ -131,7 +127,7 @@ void field_adjust(int field, int delta) {
         }
         case FIELD_POWER: {
             int p = (int)lora_cfg.power + delta;
-            if (p < 2)  p = 2;
+            if (p < 2) p = 2;
             if (p > 22) p = 22;
             lora_cfg.power = (uint8_t)p;
             break;
@@ -141,7 +137,7 @@ void field_adjust(int field, int delta) {
             break;
         case FIELD_PREAMBLE: {
             int pre = (int)lora_cfg.preamble_length + delta;
-            if (pre < 2)     pre = 2;
+            if (pre < 2) pre = 2;
             if (pre > 65535) pre = 65535;
             lora_cfg.preamble_length = (uint16_t)pre;
             break;
@@ -152,16 +148,17 @@ void field_adjust(int field, int delta) {
             // MeshCore upstream-default flood interval that Renze recommends.
             // Capped at 12h (43200 s) -- fits uint16_t. Add a uint32_t
             // variant if a 24h+ preset is ever wanted.
-            static const uint16_t presets[] = {
-                0, 30, 60, 300, 900, 1800, 3600, 7200, 21600, 43200
-            };
-            const int n = (int)(sizeof(presets) / sizeof(presets[0]));
-            uint16_t *target = (selected == FIELD_FLOOD_ADVERT_INT)
-                                 ? &flood_advert_interval_s
-                                 : &direct_advert_interval_s;
+            static const uint16_t presets[] = {0, 30, 60, 300, 900, 1800, 3600, 7200, 21600, 43200};
+            const int             n         = (int)(sizeof(presets) / sizeof(presets[0]));
+            uint16_t*             target =
+                (selected == FIELD_FLOOD_ADVERT_INT) ? &flood_advert_interval_s : &direct_advert_interval_s;
             int idx = 0;  // default to off
-            for (int i = 0; i < n; i++) if (presets[i] == *target) { idx = i; break; }
-            idx = ((idx + delta) % n + n) % n;
+            for (int i = 0; i < n; i++)
+                if (presets[i] == *target) {
+                    idx = i;
+                    break;
+                }
+            idx     = ((idx + delta) % n + n) % n;
             *target = presets[idx];
             break;
         }
@@ -184,10 +181,14 @@ void field_adjust(int field, int delta) {
                 MESHCORE_DEVICE_ROLE_ROOM_SERVER,
                 MESHCORE_DEVICE_ROLE_SENSOR,
             };
-            const int n = (int)(sizeof(ROLES) / sizeof(ROLES[0]));
-            int idx = 0;
-            for (int i = 0; i < n; i++) if (ROLES[i] == lora_role) { idx = i; break; }
-            idx = ((idx + delta) % n + n) % n;
+            const int n   = (int)(sizeof(ROLES) / sizeof(ROLES[0]));
+            int       idx = 0;
+            for (int i = 0; i < n; i++)
+                if (ROLES[i] == lora_role) {
+                    idx = i;
+                    break;
+                }
+            idx       = ((idx + delta) % n + n) % n;
             lora_role = ROLES[idx];
             break;
         }
@@ -230,9 +231,12 @@ void field_adjust(int field, int delta) {
             if (n == 0) break;
             int pos = 0;
             for (int i = 0; i < n; i++) {
-                if (wifi_slot_idx_at(i) == wifi_slot) { pos = i; break; }
+                if (wifi_slot_idx_at(i) == wifi_slot) {
+                    pos = i;
+                    break;
+                }
             }
-            pos = ((pos + delta) % n + n) % n;
+            pos       = ((pos + delta) % n + n) % n;
             wifi_slot = wifi_slot_idx_at(pos);
             break;
         }
@@ -242,14 +246,18 @@ void field_adjust(int field, int delta) {
             // Backlight + LED brightness all cycle through the same 6 stops so
             // the slider feel is identical across the three fields.
             static const uint8_t stops[] = {5, 10, 25, 50, 75, 100};
-            const int n = (int)(sizeof(stops) / sizeof(stops[0]));
-            uint8_t *v = (field == FIELD_DISPLAY_BL) ? &display_brightness
-                       : (field == FIELD_KB_BL)     ? &keyboard_brightness
-                                                    : &led_brightness;
-            int idx = 0;
-            for (int i = 0; i < n; i++) if (stops[i] == *v) { idx = i; break; }
+            const int            n       = (int)(sizeof(stops) / sizeof(stops[0]));
+            uint8_t*             v       = (field == FIELD_DISPLAY_BL) ? &display_brightness
+                                           : (field == FIELD_KB_BL)    ? &keyboard_brightness
+                                                                       : &led_brightness;
+            int                  idx     = 0;
+            for (int i = 0; i < n; i++)
+                if (stops[i] == *v) {
+                    idx = i;
+                    break;
+                }
             idx = ((idx + delta) % n + n) % n;
-            *v = stops[idx];
+            *v  = stops[idx];
             // Apply live so the user sees the brightness change while scrolling.
             apply_brightness();
             break;
@@ -257,20 +265,28 @@ void field_adjust(int field, int delta) {
         case FIELD_BLANK_AFTER: {
             // Idle-blank timeout cycler. 0 = off; otherwise seconds.
             static const uint16_t stops[] = {0, 30, 60, 300, 600, 1800};
-            const int n = (int)(sizeof(stops) / sizeof(stops[0]));
-            int idx = 0;
-            for (int i = 0; i < n; i++) if (stops[i] == display_blank_after_s) { idx = i; break; }
-            idx = ((idx + delta) % n + n) % n;
+            const int             n       = (int)(sizeof(stops) / sizeof(stops[0]));
+            int                   idx     = 0;
+            for (int i = 0; i < n; i++)
+                if (stops[i] == display_blank_after_s) {
+                    idx = i;
+                    break;
+                }
+            idx                   = ((idx + delta) % n + n) % n;
             display_blank_after_s = stops[idx];
             break;
         }
         case FIELD_SOUND_VOLUME: {
             // Notification volume in 10% steps.
             static const uint8_t stops[] = {0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
-            const int n = (int)(sizeof(stops) / sizeof(stops[0]));
-            int idx = 0;
-            for (int i = 0; i < n; i++) if (stops[i] == sound_volume_pct) { idx = i; break; }
-            idx = ((idx + delta) % n + n) % n;
+            const int            n       = (int)(sizeof(stops) / sizeof(stops[0]));
+            int                  idx     = 0;
+            for (int i = 0; i < n; i++)
+                if (stops[i] == sound_volume_pct) {
+                    idx = i;
+                    break;
+                }
+            idx              = ((idx + delta) % n + n) % n;
             sound_volume_pct = stops[idx];
             sounds_apply_volume();
             break;
@@ -280,50 +296,58 @@ void field_adjust(int field, int delta) {
         case FIELD_SOUND_ERROR:
         case FIELD_SOUND_BOOT: {
             // 0=off, 1..sounds_count() = index into /sd/meshcore/sounds/.
-            uint8_t *slot = (field == FIELD_SOUND_DM)      ? &sound_dm_slot
-                         : (field == FIELD_SOUND_CHANNEL)  ? &sound_channel_slot
-                         : (field == FIELD_SOUND_ERROR)    ? &sound_error_slot
-                                                           : &sound_boot_slot;
+            uint8_t* slot  = (field == FIELD_SOUND_DM)        ? &sound_dm_slot
+                             : (field == FIELD_SOUND_CHANNEL) ? &sound_channel_slot
+                             : (field == FIELD_SOUND_ERROR)   ? &sound_error_slot
+                                                              : &sound_boot_slot;
             // Off + one row per discovered WAV, capped at SOUNDS_MAX_SLOTS.
-            int avail = sounds_count();
+            int      avail = sounds_count();
             if (avail > SOUNDS_MAX_SLOTS) avail = SOUNDS_MAX_SLOTS;
-            const int n = avail + 1;  // include "Off"
-            int idx = (int)*slot;
-            idx = ((idx + delta) % n + n) % n;
-            *slot = (uint8_t)idx;
+            const int n   = avail + 1;  // include "Off"
+            int       idx = (int)*slot;
+            idx           = ((idx + delta) % n + n) % n;
+            *slot         = (uint8_t)idx;
             break;
         }
         case FIELD_GPS_PROFILE: {
-            int idx = (int)gps_profile;
-            const int n = (int)GPS_PROFILE_COUNT;
-            idx = ((idx + delta) % n + n) % n;
-            gps_profile = (gps_profile_t)idx;
+            int       idx = (int)gps_profile;
+            const int n   = (int)GPS_PROFILE_COUNT;
+            idx           = ((idx + delta) % n + n) % n;
+            gps_profile   = (gps_profile_t)idx;
             break;
         }
         case FIELD_GPS_INTERVAL_S: {
             // Stops: 0 (Auto/profile default), 1, 2, 5, 10, 15, 30, 60, 120 s
             static const uint16_t stops[] = {0, 1, 2, 5, 10, 15, 30, 60, 120};
-            const int n = sizeof(stops) / sizeof(stops[0]);
-            int idx = 0;
-            for (int i = 0; i < n; i++) if (stops[i] == gps_custom_interval_s) { idx = i; break; }
-            idx = ((idx + delta) % n + n) % n;
+            const int             n       = sizeof(stops) / sizeof(stops[0]);
+            int                   idx     = 0;
+            for (int i = 0; i < n; i++)
+                if (stops[i] == gps_custom_interval_s) {
+                    idx = i;
+                    break;
+                }
+            idx                   = ((idx + delta) % n + n) % n;
             gps_custom_interval_s = stops[idx];
             break;
         }
         case FIELD_GPS_DISTANCE_M: {
             // Stops: 0 (Auto/profile default), 5, 10, 25, 50, 100, 250, 500 m
             static const uint16_t stops[] = {0, 5, 10, 25, 50, 100, 250, 500};
-            const int n = sizeof(stops) / sizeof(stops[0]);
-            int idx = 0;
-            for (int i = 0; i < n; i++) if (stops[i] == gps_custom_distance_m) { idx = i; break; }
-            idx = ((idx + delta) % n + n) % n;
+            const int             n       = sizeof(stops) / sizeof(stops[0]);
+            int                   idx     = 0;
+            for (int i = 0; i < n; i++)
+                if (stops[i] == gps_custom_distance_m) {
+                    idx = i;
+                    break;
+                }
+            idx                   = ((idx + delta) % n + n) % n;
             gps_custom_distance_m = stops[idx];
             break;
         }
         case FIELD_MAP_PROFILE: {
-            int idx = (int)map_profile;
-            const int n = (int)MAP_PROFILE_COUNT;
-            idx = ((idx + delta) % n + n) % n;
+            int       idx = (int)map_profile;
+            const int n   = (int)MAP_PROFILE_COUNT;
+            idx           = ((idx + delta) % n + n) % n;
             map_profile_set((map_profile_t)idx);
             break;
         }
@@ -355,19 +379,17 @@ static void settings_trigger_gps_autofill(void) {
         gps_last_source    = GPS_SRC_PA1010D;
         save_gps_coords();
         int total = st.fix_used_sats;
-        snprintf(toast_text, sizeof(toast_text), "GPS fix: %.5f, %.5f (%d sats)",
-                 (double)st.lat_e6 / 1e6, (double)st.lon_e6 / 1e6, total);
+        snprintf(toast_text, sizeof(toast_text), "GPS fix: %.5f, %.5f (%d sats)", (double)st.lat_e6 / 1e6,
+                 (double)st.lon_e6 / 1e6, total);
     } else if (st.sentences_seen == 0) {
         snprintf(toast_text, sizeof(toast_text), "GPS silent (chip reachable but no NMEA)");
     } else {
         int total_view = st.gps_sats_view + st.glo_sats_view;
         if (total_view > 0) {
-            snprintf(toast_text, sizeof(toast_text),
-                     "No fix - %d sats visible (%dG+%dL)",
-                     total_view, st.gps_sats_view, st.glo_sats_view);
+            snprintf(toast_text, sizeof(toast_text), "No fix - %d sats visible (%dG+%dL)", total_view, st.gps_sats_view,
+                     st.glo_sats_view);
         } else {
-            snprintf(toast_text, sizeof(toast_text),
-                     "No fix - 0 sats visible (clear sky?)");
+            snprintf(toast_text, sizeof(toast_text), "No fix - 0 sats visible (clear sky?)");
         }
     }
     toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
@@ -375,11 +397,14 @@ static void settings_trigger_gps_autofill(void) {
 
 // ── Settings: text-field edit helpers (shared between handle_nav & handle_key)
 static void settings_begin_text_edit(field_t f) {
-    const char *src = "";
-    char numbuf[24] = {0};
-    if (f == FIELD_OWNER && owner_name[0] && owner_name[0] != '(') src = owner_name;
-    else if (f == FIELD_ADV_NAME && lora_advert_name[0])           src = lora_advert_name;
-    else if (f == FIELD_REGION_SCOPE && region_scope[0])           src = region_scope;
+    const char* src        = "";
+    char        numbuf[24] = {0};
+    if (f == FIELD_OWNER && owner_name[0] && owner_name[0] != '(')
+        src = owner_name;
+    else if (f == FIELD_ADV_NAME && lora_advert_name[0])
+        src = lora_advert_name;
+    else if (f == FIELD_REGION_SCOPE && region_scope[0])
+        src = region_scope;
     else if (f == FIELD_GPS_LAT) {
         if (gps_position_valid) snprintf(numbuf, sizeof(numbuf), "%.6f", (double)gps_lat_e6 / 1e6);
         src = numbuf;
@@ -389,8 +414,8 @@ static void settings_begin_text_edit(field_t f) {
     }
     strncpy(field_edit_buf, src, sizeof(field_edit_buf) - 1);
     field_edit_buf[sizeof(field_edit_buf) - 1] = '\0';
-    field_edit_len     = (int)strlen(field_edit_buf);
-    field_editing_text = true;
+    field_edit_len                             = (int)strlen(field_edit_buf);
+    field_editing_text                         = true;
 }
 static void settings_commit_text_edit(field_t f) {
     if (f == FIELD_OWNER) {
@@ -409,7 +434,7 @@ static void settings_commit_text_edit(field_t f) {
         // Empty (or whitespace) clears both coords; otherwise parse as decimal
         // degrees. We don't want a half-set position so both keys live or die
         // together — a single-axis edit re-saves the other from current state.
-        char *trim = field_edit_buf;
+        char* trim = field_edit_buf;
         while (*trim == ' ') trim++;
         if (*trim == '\0') {
             gps_position_valid = false;
@@ -417,11 +442,14 @@ static void settings_commit_text_edit(field_t f) {
             gps_lon_e6         = 0;
         } else {
             // Accept comma as decimal separator too (Dutch keyboard habit).
-            for (char *p = field_edit_buf; *p; p++) if (*p == ',') *p = '.';
+            for (char* p = field_edit_buf; *p; p++)
+                if (*p == ',') *p = '.';
             double  v    = atof(field_edit_buf);
             int32_t v_e6 = (int32_t)(v * 1e6);
-            if (f == FIELD_GPS_LAT) gps_lat_e6 = v_e6;
-            else                    gps_lon_e6 = v_e6;
+            if (f == FIELD_GPS_LAT)
+                gps_lat_e6 = v_e6;
+            else
+                gps_lon_e6 = v_e6;
             // Mark valid once at least one axis has been set non-zero, OR if
             // both keys already had values (allowing fine-tune of one axis).
             if (gps_lat_e6 != 0 || gps_lon_e6 != 0) {
@@ -466,24 +494,24 @@ static void nav_nodes(uint32_t key) {
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
         if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
-            int idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
+            int           idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
             if (node_cursor < idx_count) {
-                display_row_t *d = &rows_dl[node_cursor];
+                display_row_t* d = &rows_dl[node_cursor];
                 if (d->node_idx >= 0) {
-                    node_entry_t *n = &node_list[d->node_idx];
+                    node_entry_t* n = &node_list[d->node_idx];
                     dm_select_target(n->pub_key, n->name);
                     contact_ensure(n->pub_key, n->name, (uint8_t)n->role);
                 } else if (d->is_contact) {
-                    contact_t *c = &contacts[d->contact_idx];
+                    contact_t* c = &contacts[d->contact_idx];
                     dm_select_target(c->pub_key, c->alias);
                 }
             }
             xSemaphoreGive(node_mutex);
         }
         if (dm_target_set) {
-            current_view    = VIEW_CHAT;
-            dm_inbox_mode   = false;
-            led_dm_pending  = false;
+            current_view   = VIEW_CHAT;
+            dm_inbox_mode  = false;
+            led_dm_pending = false;
             update_notification_led();
         }
     }
@@ -506,13 +534,12 @@ static void nav_chat(uint32_t key) {
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
         if (dm_inbox_mode && !chat_typing) {
-            int idx_map[MAX_CONTACTS + 1];
-            int idx_count = 0;
+            int  idx_map[MAX_CONTACTS + 1];
+            int  idx_count     = 0;
             bool active_on_top = dm_target_set;
             if (active_on_top) idx_map[idx_count++] = -1;
             for (int i = 0; i < contact_count && idx_count < MAX_CONTACTS + 1; i++) {
-                if (active_on_top && memcmp(contacts[i].pub_key, dm_target_pub, MESHCORE_PUB_KEY_SIZE) == 0)
-                    continue;
+                if (active_on_top && memcmp(contacts[i].pub_key, dm_target_pub, MESHCORE_PUB_KEY_SIZE) == 0) continue;
                 idx_map[idx_count++] = i;
             }
             if (dm_inbox_cursor < idx_count) {
@@ -538,7 +565,8 @@ static void nav_chat(uint32_t key) {
                     for (int ni = 0; ni < MAX_NODES; ni++) {
                         if (node_list[ni].active &&
                             memcmp(node_list[ni].pub_key, dm_target_pub, MESHCORE_PUB_KEY_SIZE) == 0) {
-                            r = node_list[ni].role; break;
+                            r = node_list[ni].role;
+                            break;
                         }
                     }
                     // contacts[] is shared with the RX task; ensure under the lock.
@@ -574,10 +602,13 @@ static void nav_channel(uint32_t key) {
         if (channel_adding) {
             if (field_edit_len > 0) {
                 char name[CHANNEL_NAME_MAX_LEN + 1];
-                name[0] = '\0';
+                name[0]         = '\0';
                 bool needs_hash = (field_edit_buf[0] != '#');
                 int  cap        = CHANNEL_NAME_MAX_LEN - (needs_hash ? 1 : 0);
-                if (needs_hash) { name[0] = '#'; name[1] = '\0'; }
+                if (needs_hash) {
+                    name[0] = '#';
+                    name[1] = '\0';
+                }
                 strncat(name, field_edit_buf, cap);
                 int slot = channels_add_by_name(name);
                 if (slot > 0) channel_list_cursor = slot;
@@ -592,7 +623,7 @@ static void nav_channel(uint32_t key) {
             if (channel_list_cursor >= 0 && channel_list_cursor < channel_count &&
                 channels[channel_list_cursor].active) {
                 ch_select_channel(channel_list_cursor);
-                channel_list_mode  = false;
+                channel_list_mode = false;
             }
             return;
         }
@@ -612,35 +643,36 @@ static void nav_settings(uint32_t key) {
     if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
         if (settings_category_list_mode) {
             int cols = 4;
-            if (settings_category_cursor - cols >= 0)
-                settings_category_cursor -= cols;
+            if (settings_category_cursor - cols >= 0) settings_category_cursor -= cols;
         } else if (!edit_mode) {
             int first, last;
             settings_category_bounds(settings_category_active, &first, &last);
-            int n = last - first + 1;
+            int n    = last - first + 1;
             selected = first + (selected - first - 1 + n) % n;
-        } else if (!field_editing_text) field_adjust(selected, +1);
+        } else if (!field_editing_text)
+            field_adjust(selected, +1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
         if (settings_category_list_mode) {
             int cols  = 4;
             int total = settings_visible_category_count();
-            if (settings_category_cursor + cols < total)
-                settings_category_cursor += cols;
+            if (settings_category_cursor + cols < total) settings_category_cursor += cols;
         } else if (!edit_mode) {
             int first, last;
             settings_category_bounds(settings_category_active, &first, &last);
-            int n = last - first + 1;
+            int n    = last - first + 1;
             selected = first + (selected - first + 1) % n;
-        } else if (!field_editing_text) field_adjust(selected, -1);
+        } else if (!field_editing_text)
+            field_adjust(selected, -1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_LEFT) {
         if (settings_category_list_mode) {
             if (settings_category_cursor > 0) settings_category_cursor--;
-        } else if (edit_mode && !field_editing_text) field_adjust(selected, -1);
+        } else if (edit_mode && !field_editing_text)
+            field_adjust(selected, -1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT) {
         if (settings_category_list_mode) {
-            if (settings_category_cursor < settings_visible_category_count() - 1)
-                settings_category_cursor++;
-        } else if (edit_mode && !field_editing_text) field_adjust(selected, +1);
+            if (settings_category_cursor < settings_visible_category_count() - 1) settings_category_cursor++;
+        } else if (edit_mode && !field_editing_text)
+            field_adjust(selected, +1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
         if (settings_category_list_mode) {
             // Drill into the focused category: the grid cursor is in
@@ -660,19 +692,16 @@ static void nav_settings(uint32_t key) {
             settings_category_list_mode = false;
             int first, last;
             settings_category_bounds(settings_category_active, &first, &last);
-            selected = first;
+            selected        = first;
             settings_scroll = 0;
             return;
         }
         // FIELD_RADIO_FW / FIELD_RADIO_FW_APP / FIELD_DUTY_CYCLE are read-only.
         // FIELD_ANTENNA_GAIN is read-only until country is set.
-        bool gain_locked = (selected == FIELD_ANTENNA_GAIN &&
-                            (country_code[0] == '-' || country_code[0] == '\0'));
-        if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP ||
-            selected == FIELD_DUTY_CYCLE || selected == FIELD_GPS_SOURCE ||
-            selected == FIELD_WIFI_SSID  || selected == FIELD_WIFI_STATUS ||
-            selected == FIELD_HTTP_URL ||
-            selected == FIELD_HTTP_API_KEY || selected == FIELD_HTTPS_CERT_FP ||
+        bool gain_locked = (selected == FIELD_ANTENNA_GAIN && (country_code[0] == '-' || country_code[0] == '\0'));
+        if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP || selected == FIELD_DUTY_CYCLE ||
+            selected == FIELD_GPS_SOURCE || selected == FIELD_WIFI_SSID || selected == FIELD_WIFI_STATUS ||
+            selected == FIELD_HTTP_URL || selected == FIELD_HTTP_API_KEY || selected == FIELD_HTTPS_CERT_FP ||
             gain_locked) {
             // ignore (read-only rows)
         } else if (selected == FIELD_HTTP_KEY_REGEN) {
@@ -682,8 +711,7 @@ static void nav_settings(uint32_t key) {
         } else if (selected == FIELD_HTTPS_CERT_REGEN) {
             esp_err_t rc = http_server_regen_cert();
             snprintf(toast_text, sizeof(toast_text),
-                     rc == ESP_OK ? "Cert regen'd — reinstall iPhone profile"
-                                   : "Cert regen FAILED (rc=%d)", rc);
+                     rc == ESP_OK ? "Cert regen'd — reinstall iPhone profile" : "Cert regen FAILED (rc=%d)", rc);
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         } else if (selected == FIELD_HTTP_QR) {
             qr_overlay_mode   = QR_MODE_OWNTRACKS;
@@ -697,11 +725,15 @@ static void nav_settings(uint32_t key) {
             send_advert_direct();
             snprintf(toast_text, sizeof(toast_text), "Direct adverts queued (1-hop)");
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_SOUND_TEST_DM)      { sounds_play_dm(); }
-        else if   (selected == FIELD_SOUND_TEST_CHANNEL) { sounds_play_channel(); }
-        else if   (selected == FIELD_SOUND_TEST_ERROR)   { sounds_play_error(); }
-        else if   (selected == FIELD_SOUND_TEST_BOOT)    { sounds_play_boot(); }
-        else if   (selected == FIELD_GPS_AUTOFILL) {
+        } else if (selected == FIELD_SOUND_TEST_DM) {
+            sounds_play_dm();
+        } else if (selected == FIELD_SOUND_TEST_CHANNEL) {
+            sounds_play_channel();
+        } else if (selected == FIELD_SOUND_TEST_ERROR) {
+            sounds_play_error();
+        } else if (selected == FIELD_SOUND_TEST_BOOT) {
+            sounds_play_boot();
+        } else if (selected == FIELD_GPS_AUTOFILL) {
             settings_trigger_gps_autofill();
         } else if (selected == FIELD_BLE_ENABLED) {
             // Toggle row: flip + save. Takes effect on next app start;
@@ -709,22 +741,22 @@ static void nav_settings(uint32_t key) {
             // a relaunch is the simpler contract.
             ble_enabled = !ble_enabled;
             save_ble_enabled();
-            snprintf(toast_text, sizeof(toast_text),
-                     "BLE %s on next start", ble_enabled ? "ON" : "OFF");
+            snprintf(toast_text, sizeof(toast_text), "BLE %s on next start", ble_enabled ? "ON" : "OFF");
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         } else if (!edit_mode) {
             // Refresh the cached launcher-slot list right before letting
             // the user cycle through it, so newly added networks land.
             if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
             edit_mode = true;
-            if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME ||
-                selected == FIELD_REGION_SCOPE ||
+            if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME || selected == FIELD_REGION_SCOPE ||
                 selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
                 settings_begin_text_edit(selected);
             }
         } else {
-            if (field_editing_text) settings_commit_text_edit(selected);
-            else                    field_save(selected);
+            if (field_editing_text)
+                settings_commit_text_edit(selected);
+            else
+                field_save(selected);
             edit_mode = false;
             dirty     = false;
         }
@@ -803,8 +835,7 @@ void handle_nav(uint32_t key) {
 
     // Emoji picker (F4 button = green circle on Tanmatsu) opens during chat typing.
     if (key == BSP_INPUT_NAVIGATION_KEY_F4 && chat_typing &&
-        (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL) &&
-        !emoji_picker_active) {
+        (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL) && !emoji_picker_active) {
         emoji_picker_active = true;
         emoji_picker_cursor = 0;
         return;
@@ -814,8 +845,7 @@ void handle_nav(uint32_t key) {
     // selecting on Tanmatsu's D-pad (which fires RETURN as nav-event, not as
     // '\r' in handle_key) wouldn't close the picker — leaving it hanging open
     // for the next chat-typing session.
-    if (emoji_picker_active && chat_typing &&
-        (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL)) {
+    if (emoji_picker_active && chat_typing && (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL)) {
         const int cols = 4;
         // ESC/F1 close; F4 (the green circle) toggles — pressing it again closes
         // the picker instead of leaving it stuck open (which blocked leaving chat).
@@ -827,11 +857,11 @@ void handle_nav(uint32_t key) {
         if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
             int idx = emoji_picker_cursor;
             if (idx >= 0 && idx < EMOJI_COUNT) {
-                const emoji_entry_t *e = &EMOJI_SET[idx];
+                const emoji_entry_t* e = &EMOJI_SET[idx];
                 if (chat_input_len + e->utf8_len <= MAX_INPUT_LEN) {
                     memcpy(&chat_input[chat_input_len], e->utf8, e->utf8_len);
-                    chat_input_len           += e->utf8_len;
-                    chat_input[chat_input_len] = '\0';
+                    chat_input_len             += e->utf8_len;
+                    chat_input[chat_input_len]  = '\0';
                 }
             }
             emoji_picker_active = false;
@@ -903,22 +933,41 @@ void handle_nav(uint32_t key) {
     } else {
         // Direction / RETURN: dispatch to the active view's handler.
         switch (current_view) {
-            case VIEW_HOME:    nav_home(key);    break;
-            case VIEW_SETTINGS:nav_settings(key);break;
-            case VIEW_NODES:   nav_nodes(key);   break;
-            case VIEW_CHAT:    nav_chat(key);    break;
-            case VIEW_CHANNEL: nav_channel(key); break;
+            case VIEW_HOME:
+                nav_home(key);
+                break;
+            case VIEW_SETTINGS:
+                nav_settings(key);
+                break;
+            case VIEW_NODES:
+                nav_nodes(key);
+                break;
+            case VIEW_CHAT:
+                nav_chat(key);
+                break;
+            case VIEW_CHANNEL:
+                nav_channel(key);
+                break;
             case VIEW_MAP:
                 // Arrow-key pan. 1/4 tile per press matches a comfortable
                 // step at zoom 8–10 (≈ 64 px on screen).
-                if      (key == BSP_INPUT_NAVIGATION_KEY_UP)    map_state_pan(0, -1);
-                else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN)  map_state_pan(0,  1);
-                else if (key == BSP_INPUT_NAVIGATION_KEY_LEFT)  map_state_pan(-1, 0);
-                else if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT) map_state_pan( 1, 0);
+                if (key == BSP_INPUT_NAVIGATION_KEY_UP)
+                    map_state_pan(0, -1);
+                else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN)
+                    map_state_pan(0, 1);
+                else if (key == BSP_INPUT_NAVIGATION_KEY_LEFT)
+                    map_state_pan(-1, 0);
+                else if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT)
+                    map_state_pan(1, 0);
                 break;
-            case VIEW_TOOLBOX:     nav_toolbox(key);     break;
-            case VIEW_TOOLBOX_LOG: nav_toolbox_log(key); break;
-            default: break;
+            case VIEW_TOOLBOX:
+                nav_toolbox(key);
+                break;
+            case VIEW_TOOLBOX_LOG:
+                nav_toolbox_log(key);
+                break;
+            default:
+                break;
         }
     }
 }
@@ -957,14 +1006,14 @@ static void key_nodes(char c) {
     } else if (c == 'f' || c == 'F') {
         if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
-            int idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
+            int           idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
             if (node_cursor < idx_count) {
-                display_row_t *d = &rows_dl[node_cursor];
+                display_row_t* d = &rows_dl[node_cursor];
                 if (d->is_contact) {
                     contact_toggle(contacts[d->contact_idx].pub_key, NULL, 0);
                 } else if (d->node_idx >= 0) {
-                    node_entry_t *n = &node_list[d->node_idx];
-                    int r = contact_toggle(n->pub_key, n->name, (uint8_t)n->role);
+                    node_entry_t* n = &node_list[d->node_idx];
+                    int           r = contact_toggle(n->pub_key, n->name, (uint8_t)n->role);
                     if (r < 0) ESP_LOGW(TAG, "Contacts list is full (%d/%d)", contact_count, MAX_CONTACTS);
                 }
             }
@@ -972,15 +1021,16 @@ static void key_nodes(char c) {
         }
     } else if (c == 'l' || c == 'L') {
         static const meshcore_device_role_t cycle[] = {
-            MESHCORE_DEVICE_ROLE_UNKNOWN,
-            MESHCORE_DEVICE_ROLE_CHAT_NODE,
-            MESHCORE_DEVICE_ROLE_REPEATER,
-            MESHCORE_DEVICE_ROLE_ROOM_SERVER,
-            MESHCORE_DEVICE_ROLE_SENSOR,
+            MESHCORE_DEVICE_ROLE_UNKNOWN,     MESHCORE_DEVICE_ROLE_CHAT_NODE, MESHCORE_DEVICE_ROLE_REPEATER,
+            MESHCORE_DEVICE_ROLE_ROOM_SERVER, MESHCORE_DEVICE_ROLE_SENSOR,
         };
-        const int n = (int)(sizeof(cycle) / sizeof(cycle[0]));
-        int idx = 0;
-        for (int i = 0; i < n; i++) if (cycle[i] == node_filter) { idx = i; break; }
+        const int n   = (int)(sizeof(cycle) / sizeof(cycle[0]));
+        int       idx = 0;
+        for (int i = 0; i < n; i++)
+            if (cycle[i] == node_filter) {
+                idx = i;
+                break;
+            }
         node_filter = cycle[(idx + 1) % n];
         node_scroll = 0;
         node_cursor = 0;
@@ -989,24 +1039,24 @@ static void key_nodes(char c) {
     } else if (c == '\r' || c == '\n') {
         if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
-            int idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
+            int           idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
             if (node_cursor < idx_count) {
-                display_row_t *d = &rows_dl[node_cursor];
+                display_row_t* d = &rows_dl[node_cursor];
                 if (d->node_idx >= 0) {
-                    node_entry_t *n = &node_list[d->node_idx];
+                    node_entry_t* n = &node_list[d->node_idx];
                     dm_select_target(n->pub_key, n->name);
                     contact_ensure(n->pub_key, n->name, (uint8_t)n->role);
                 } else if (d->is_contact) {
-                    contact_t *c2 = &contacts[d->contact_idx];
+                    contact_t* c2 = &contacts[d->contact_idx];
                     dm_select_target(c2->pub_key, c2->alias);
                 }
             }
             xSemaphoreGive(node_mutex);
         }
         if (dm_target_set) {
-            current_view    = VIEW_CHAT;
-            dm_inbox_mode   = false;
-            led_dm_pending  = false;
+            current_view   = VIEW_CHAT;
+            dm_inbox_mode  = false;
+            led_dm_pending = false;
             update_notification_led();
         }
     }
@@ -1016,31 +1066,30 @@ static void key_settings(char c) {
     if (c == 'w' || c == 'W') {
         if (settings_category_list_mode) {
             int cols = 4;
-            if (settings_category_cursor - cols >= 0)
-                settings_category_cursor -= cols;
+            if (settings_category_cursor - cols >= 0) settings_category_cursor -= cols;
         } else if (!edit_mode) {
             int first, last;
             settings_category_bounds(settings_category_active, &first, &last);
-            int n = last - first + 1;
+            int n    = last - first + 1;
             selected = first + (selected - first - 1 + n) % n;
-        } else if (!field_editing_text) field_adjust(selected, +1);
+        } else if (!field_editing_text)
+            field_adjust(selected, +1);
     } else if (c == 's' || c == 'S') {
         if (settings_category_list_mode) {
             int cols  = 4;
             int total = settings_visible_category_count();
-            if (settings_category_cursor + cols < total)
-                settings_category_cursor += cols;
+            if (settings_category_cursor + cols < total) settings_category_cursor += cols;
         } else if (!edit_mode) {
             int first, last;
             settings_category_bounds(settings_category_active, &first, &last);
-            int n = last - first + 1;
+            int n    = last - first + 1;
             selected = first + (selected - first + 1) % n;
-        } else if (!field_editing_text) field_adjust(selected, -1);
+        } else if (!field_editing_text)
+            field_adjust(selected, -1);
     } else if ((c == 'a' || c == 'A') && settings_category_list_mode) {
         if (settings_category_cursor > 0) settings_category_cursor--;
     } else if ((c == 'd' || c == 'D') && settings_category_list_mode) {
-        if (settings_category_cursor < settings_visible_category_count() - 1)
-            settings_category_cursor++;
+        if (settings_category_cursor < settings_visible_category_count() - 1) settings_category_cursor++;
     } else if (c == '<' || c == ',') {
         if (edit_mode && !field_editing_text) field_adjust(selected, -1);
     } else if (c == '>' || c == '.') {
@@ -1063,19 +1112,16 @@ static void key_settings(char c) {
             settings_category_list_mode = false;
             int first, last;
             settings_category_bounds(settings_category_active, &first, &last);
-            selected = first;
+            selected        = first;
             settings_scroll = 0;
             return;
         }
         // FIELD_RADIO_FW / FIELD_RADIO_FW_APP / FIELD_DUTY_CYCLE are read-only — Enter no-op.
         // FIELD_ANTENNA_GAIN is read-only until country is set (otherwise gain has no effect).
-        bool gain_locked = (selected == FIELD_ANTENNA_GAIN &&
-                            (country_code[0] == '-' || country_code[0] == '\0'));
-        if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP ||
-            selected == FIELD_DUTY_CYCLE || selected == FIELD_GPS_SOURCE ||
-            selected == FIELD_WIFI_SSID  || selected == FIELD_WIFI_STATUS ||
-            selected == FIELD_HTTP_URL ||
-            selected == FIELD_HTTP_API_KEY || selected == FIELD_HTTPS_CERT_FP ||
+        bool gain_locked = (selected == FIELD_ANTENNA_GAIN && (country_code[0] == '-' || country_code[0] == '\0'));
+        if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP || selected == FIELD_DUTY_CYCLE ||
+            selected == FIELD_GPS_SOURCE || selected == FIELD_WIFI_SSID || selected == FIELD_WIFI_STATUS ||
+            selected == FIELD_HTTP_URL || selected == FIELD_HTTP_API_KEY || selected == FIELD_HTTPS_CERT_FP ||
             gain_locked) {
             // ignore (read-only rows)
         } else if (selected == FIELD_HTTP_KEY_REGEN) {
@@ -1085,8 +1131,7 @@ static void key_settings(char c) {
         } else if (selected == FIELD_HTTPS_CERT_REGEN) {
             esp_err_t rc = http_server_regen_cert();
             snprintf(toast_text, sizeof(toast_text),
-                     rc == ESP_OK ? "Cert regen'd — reinstall iPhone profile"
-                                   : "Cert regen FAILED (rc=%d)", rc);
+                     rc == ESP_OK ? "Cert regen'd — reinstall iPhone profile" : "Cert regen FAILED (rc=%d)", rc);
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         } else if (selected == FIELD_HTTP_QR) {
             qr_overlay_mode   = QR_MODE_OWNTRACKS;
@@ -1113,20 +1158,20 @@ static void key_settings(char c) {
         } else if (selected == FIELD_BLE_ENABLED) {
             ble_enabled = !ble_enabled;
             save_ble_enabled();
-            snprintf(toast_text, sizeof(toast_text),
-                     "BLE %s on next start", ble_enabled ? "ON" : "OFF");
+            snprintf(toast_text, sizeof(toast_text), "BLE %s on next start", ble_enabled ? "ON" : "OFF");
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         } else if (!edit_mode) {
             if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
             edit_mode = true;
-            if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME ||
-                selected == FIELD_REGION_SCOPE ||
+            if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME || selected == FIELD_REGION_SCOPE ||
                 selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
                 settings_begin_text_edit(selected);
             }
         } else {
-            if (field_editing_text) settings_commit_text_edit(selected);
-            else                    field_save(selected);
+            if (field_editing_text)
+                settings_commit_text_edit(selected);
+            else
+                field_save(selected);
             edit_mode = false;
             dirty     = false;
         }
@@ -1149,17 +1194,16 @@ static void key_chat(char c) {
     // typing intercept.
     if (!((c == 'd' || c == 'D') && dm_inbox_mode && !chat_typing)) return;
 
-    int idx_map[MAX_CONTACTS + 1];
-    int idx_count = 0;
+    int  idx_map[MAX_CONTACTS + 1];
+    int  idx_count     = 0;
     bool active_on_top = dm_target_set;
     if (active_on_top) idx_map[idx_count++] = -1;
     for (int i = 0; i < contact_count && idx_count < MAX_CONTACTS + 1; i++) {
-        if (active_on_top && memcmp(contacts[i].pub_key, dm_target_pub, MESHCORE_PUB_KEY_SIZE) == 0)
-            continue;
+        if (active_on_top && memcmp(contacts[i].pub_key, dm_target_pub, MESHCORE_PUB_KEY_SIZE) == 0) continue;
         idx_map[idx_count++] = i;
     }
     if (dm_inbox_cursor < idx_count) {
-        int e = idx_map[dm_inbox_cursor];
+        int     e = idx_map[dm_inbox_cursor];
         uint8_t target_pub[MESHCORE_PUB_KEY_SIZE];
         char    target_name[MESHCORE_MAX_NAME_SIZE + 1];
         int     ci = -1;
@@ -1167,7 +1211,7 @@ static void key_chat(char c) {
             memcpy(target_pub, dm_target_pub, MESHCORE_PUB_KEY_SIZE);
             strncpy(target_name, dm_target_name, sizeof(target_name) - 1);
             target_name[sizeof(target_name) - 1] = '\0';
-            dm_target_set = false;
+            dm_target_set                        = false;
             memset(chat_msgs, 0, sizeof(chat_msgs));
             chat_head = chat_count = chat_scroll = 0;
         }
@@ -1209,16 +1253,14 @@ static void key_channel(char c) {
 
     if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         memset(ch_msgs, 0, sizeof(ch_msgs));
-        ch_head    = 0;
-        ch_count   = 0;
-        ch_scroll  = 0;
+        ch_head   = 0;
+        ch_count  = 0;
+        ch_scroll = 0;
         xSemaphoreGive(ch_mutex);
     }
-    if (active_channel_idx >= 0 && active_channel_idx < channel_count &&
-        channels[active_channel_idx].active) {
+    if (active_channel_idx >= 0 && active_channel_idx < channel_count && channels[active_channel_idx].active) {
         history_delete_channel(channels[active_channel_idx].secret);
-        ESP_LOGI(TAG, "Channel history cleared by user (R): %s",
-                 channels[active_channel_idx].name);
+        ESP_LOGI(TAG, "Channel history cleared by user (R): %s", channels[active_channel_idx].name);
     }
 }
 
@@ -1268,7 +1310,10 @@ void handle_key(char c) {
 
     // DM inbox view: own keymap (no typing here).
     if (current_view == VIEW_CHAT && dm_inbox_mode && !chat_typing) {
-        if (c == 'w' || c == 'W') { if (dm_inbox_cursor > 0) dm_inbox_cursor--; return; }
+        if (c == 'w' || c == 'W') {
+            if (dm_inbox_cursor > 0) dm_inbox_cursor--;
+            return;
+        }
         if (c == 's' || c == 'S') {
             int upper = (dm_target_set ? 1 : 0) + contact_count - 1;
             if (upper < 0) upper = 0;
@@ -1299,10 +1344,13 @@ void handle_key(char c) {
                     // Buf is sizeof(field_edit_buf)=33; cap input slice at
                     // CHANNEL_NAME_MAX_LEN-1 so even after prefix we fit.
                     char name[CHANNEL_NAME_MAX_LEN + 1];
-                    name[0] = '\0';
+                    name[0]         = '\0';
                     bool needs_hash = (field_edit_buf[0] != '#');
                     int  cap        = CHANNEL_NAME_MAX_LEN - (needs_hash ? 1 : 0);
-                    if (needs_hash) { name[0] = '#'; name[1] = '\0'; }
+                    if (needs_hash) {
+                        name[0] = '#';
+                        name[1] = '\0';
+                    }
                     strncat(name, field_edit_buf, cap);
                     int slot = channels_add_by_name(name);
                     if (slot > 0) {
@@ -1350,7 +1398,7 @@ void handle_key(char c) {
                 int removed = channel_list_cursor;
                 channels_remove(removed);
                 if (channel_list_cursor >= channel_count) channel_list_cursor = channel_count - 1;
-                if (channel_list_cursor < 0)              channel_list_cursor = 0;
+                if (channel_list_cursor < 0) channel_list_cursor = 0;
             }
             return;
         }
@@ -1358,7 +1406,7 @@ void handle_key(char c) {
             if (channel_list_cursor >= 0 && channel_list_cursor < channel_count &&
                 channels[channel_list_cursor].active) {
                 ch_select_channel(channel_list_cursor);  // clears + reloads this channel's history
-                channel_list_mode  = false;
+                channel_list_mode = false;
             }
             return;
         }
@@ -1377,20 +1425,32 @@ void handle_key(char c) {
             if (c == '\r' || c == '\n') {
                 int idx = emoji_picker_cursor;
                 if (idx >= 0 && idx < EMOJI_COUNT) {
-                    const emoji_entry_t *e = &EMOJI_SET[idx];
+                    const emoji_entry_t* e = &EMOJI_SET[idx];
                     if (chat_input_len + e->utf8_len <= MAX_INPUT_LEN) {
                         memcpy(&chat_input[chat_input_len], e->utf8, e->utf8_len);
-                        chat_input_len           += e->utf8_len;
-                        chat_input[chat_input_len] = '\0';
+                        chat_input_len             += e->utf8_len;
+                        chat_input[chat_input_len]  = '\0';
                     }
                 }
                 emoji_picker_active = false;
                 return;
             }
-            if (c == 'a' || c == 'A') { if (emoji_picker_cursor > 0)                  emoji_picker_cursor--;       return; }
-            if (c == 'd' || c == 'D') { if (emoji_picker_cursor < EMOJI_COUNT - 1)    emoji_picker_cursor++;       return; }
-            if (c == 'w' || c == 'W') { if (emoji_picker_cursor - cols >= 0)          emoji_picker_cursor -= cols; return; }
-            if (c == 's' || c == 'S') { if (emoji_picker_cursor + cols < EMOJI_COUNT) emoji_picker_cursor += cols; return; }
+            if (c == 'a' || c == 'A') {
+                if (emoji_picker_cursor > 0) emoji_picker_cursor--;
+                return;
+            }
+            if (c == 'd' || c == 'D') {
+                if (emoji_picker_cursor < EMOJI_COUNT - 1) emoji_picker_cursor++;
+                return;
+            }
+            if (c == 'w' || c == 'W') {
+                if (emoji_picker_cursor - cols >= 0) emoji_picker_cursor -= cols;
+                return;
+            }
+            if (c == 's' || c == 'S') {
+                if (emoji_picker_cursor + cols < EMOJI_COUNT) emoji_picker_cursor += cols;
+                return;
+            }
             return;  // swallow the rest
         }
         if (chat_typing) {
@@ -1433,13 +1493,18 @@ void handle_key(char c) {
                 return;
             }
             if (c == 'w' || c == 'W') {
-                if (current_view == VIEW_CHANNEL) { if (ch_scroll > 0) ch_scroll--; }
-                else                              { if (chat_scroll > 0) chat_scroll--; }
+                if (current_view == VIEW_CHANNEL) {
+                    if (ch_scroll > 0) ch_scroll--;
+                } else {
+                    if (chat_scroll > 0) chat_scroll--;
+                }
                 return;
             }
             if (c == 's' || c == 'S') {
-                if (current_view == VIEW_CHANNEL) ch_scroll++;
-                else                              chat_scroll++;
+                if (current_view == VIEW_CHANNEL)
+                    ch_scroll++;
+                else
+                    chat_scroll++;
                 return;
             }
             // Tab and ESC fall through.
@@ -1457,14 +1522,14 @@ void handle_key(char c) {
                 current_view = (app_view_t)((int)(current_view + 1) % VIEW_TAB_COUNT);
             }
             if (current_view == VIEW_CHAT) {
-                dm_inbox_mode    = true;
-                led_dm_pending   = false;
+                dm_inbox_mode  = true;
+                led_dm_pending = false;
                 update_notification_led();
             }
             if (current_view == VIEW_CHANNEL) {
-                channel_list_mode    = true;
-                channel_adding       = false;
-                led_channel_pending  = false;
+                channel_list_mode   = true;
+                channel_adding      = false;
+                led_channel_pending = false;
                 update_notification_led();
             }
         }
@@ -1504,15 +1569,32 @@ void handle_key(char c) {
 
     // All remaining keys (W/S/A/D/F/L/Q/Enter/R/`<>,.`/D) are view-specific.
     switch (current_view) {
-        case VIEW_HOME:        key_home(c);        break;
-        case VIEW_SETTINGS:    key_settings(c);    break;
-        case VIEW_NODES:       key_nodes(c);       break;
-        case VIEW_CHAT:        key_chat(c);        break;
-        case VIEW_CHANNEL:     key_channel(c);     break;
-        case VIEW_MAP:         key_map(c);         break;
-        case VIEW_TOOLBOX:     key_toolbox(c);     break;
-        case VIEW_TOOLBOX_LOG: key_toolbox_log(c); break;
-        default: break;
+        case VIEW_HOME:
+            key_home(c);
+            break;
+        case VIEW_SETTINGS:
+            key_settings(c);
+            break;
+        case VIEW_NODES:
+            key_nodes(c);
+            break;
+        case VIEW_CHAT:
+            key_chat(c);
+            break;
+        case VIEW_CHANNEL:
+            key_channel(c);
+            break;
+        case VIEW_MAP:
+            key_map(c);
+            break;
+        case VIEW_TOOLBOX:
+            key_toolbox(c);
+            break;
+        case VIEW_TOOLBOX_LOG:
+            key_toolbox_log(c);
+            break;
+        default:
+            break;
     }
 }
 
@@ -1520,13 +1602,20 @@ void handle_key(char c) {
 // path; here we handle the WASD aliases for pan plus '+' / '-' for zoom and
 // 'L' for the lock-to-position toggle.
 static void key_map(char c) {
-    if      (c == 'w' || c == 'W') map_state_pan(0, -1);
-    else if (c == 's' || c == 'S') map_state_pan(0,  1);
-    else if (c == 'a' || c == 'A') map_state_pan(-1, 0);
-    else if (c == 'd' || c == 'D') map_state_pan( 1, 0);
-    else if (c == '+' || c == '=') map_state_zoom( 1);  // '=' is the unshifted '+' key
-    else if (c == '-' || c == '_') map_state_zoom(-1);
-    else if (c == 'l' || c == 'L') map_state_toggle_lock();
+    if (c == 'w' || c == 'W')
+        map_state_pan(0, -1);
+    else if (c == 's' || c == 'S')
+        map_state_pan(0, 1);
+    else if (c == 'a' || c == 'A')
+        map_state_pan(-1, 0);
+    else if (c == 'd' || c == 'D')
+        map_state_pan(1, 0);
+    else if (c == '+' || c == '=')
+        map_state_zoom(1);  // '=' is the unshifted '+' key
+    else if (c == '-' || c == '_')
+        map_state_zoom(-1);
+    else if (c == 'l' || c == 'L')
+        map_state_toggle_lock();
 }
 
 // ── BLE pairing UI hooks ────────────────────────────────────────────────────
@@ -1543,7 +1632,7 @@ static void key_map(char c) {
 // dance to make this strictly correct is not worth it for a 6-digit value.
 void ble_companion_show_passkey(uint32_t passkey) {
     snprintf(toast_text, sizeof(toast_text), "BLE pair: %06lu", (unsigned long)passkey);
-    toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    toast_start_ms    = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
     toast_duration_ms = 60000;  // 60 s for the user to read + type on iPhone
     ESP_LOGI("ble-ui", "passkey %06lu shown on toast", (unsigned long)passkey);
 }
@@ -1552,6 +1641,6 @@ void ble_companion_pair_done(bool success) {
     // Replace the long passkey toast with a 2 s confirmation. Reset duration
     // here so the next regular toast keeps the usual 2 s dismissal.
     snprintf(toast_text, sizeof(toast_text), "BLE pair: %s", success ? "OK" : "FAILED");
-    toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    toast_start_ms    = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
     toast_duration_ms = 2000;
 }

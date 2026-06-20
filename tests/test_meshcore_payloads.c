@@ -11,19 +11,21 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-
 #include "meshcore/payload/advert.h"
 #include "meshcore/payload/grp_txt.h"
 
 static int failures = 0;
-#define CHECK(cond, msg)                                                        \
-    do {                                                                        \
-        if (!(cond)) { printf("FAIL: %s\n", (msg)); failures++; }               \
+#define CHECK(cond, msg)                 \
+    do {                                 \
+        if (!(cond)) {                   \
+            printf("FAIL: %s\n", (msg)); \
+            failures++;                  \
+        }                                \
     } while (0)
 
 static void test_grp_txt_roundtrip(void) {
     meshcore_grp_txt_t in = {0};
-    in.channel_hash = 0x7A;
+    in.channel_hash       = 0x7A;
     for (int i = 0; i < MESHCORE_CIPHER_MAC_SIZE; i++) in.mac[i] = (uint8_t)(0x10 + i);
     in.data_length = 32;
     for (int i = 0; i < 32; i++) in.data[i] = (uint8_t)(i * 7);
@@ -45,8 +47,8 @@ static void test_advert_roundtrip(void) {
     for (int i = 0; i < MESHCORE_PUB_KEY_SIZE; i++) in.pub_key[i] = (uint8_t)i;
     in.timestamp = 0x01020304u;
     for (int i = 0; i < MESHCORE_SIGNATURE_SIZE; i++) in.signature[i] = (uint8_t)(255 - i);
-    in.role           = MESHCORE_DEVICE_ROLE_CHAT_NODE;
-    in.name_valid     = true;
+    in.role       = MESHCORE_DEVICE_ROLE_CHAT_NODE;
+    in.name_valid = true;
     strcpy(in.name, "tanmatsu");
     in.position_valid = true;
     in.position_lat   = 52123456;
@@ -73,8 +75,7 @@ static void test_advert_roundtrip(void) {
     CHECK(memcmp(out.signature, in.signature, MESHCORE_SIGNATURE_SIZE) == 0, "advert signature survives");
     CHECK(out.role == in.role, "advert role survives");
     CHECK(out.name_valid && strcmp(out.name, in.name) == 0, "advert name survives");
-    CHECK(out.position_valid && out.position_lat == in.position_lat &&
-              out.position_lon == in.position_lon,
+    CHECK(out.position_valid && out.position_lat == in.position_lat && out.position_lon == in.position_lon,
           "advert position survives");
     CHECK(out.extra1_valid && out.extra1 == in.extra1, "advert extra1 survives");
     CHECK(!out.extra2_valid, "advert extra2 stays absent");
@@ -86,17 +87,16 @@ static void test_advert_roundtrip(void) {
 static void test_advert_rejects_and_optional(void) {
     meshcore_advert_t in = {0};
     for (int i = 0; i < MESHCORE_PUB_KEY_SIZE; i++) in.pub_key[i] = (uint8_t)i;
-    in.timestamp = 0x11223344u;
-    in.role      = MESHCORE_DEVICE_ROLE_CHAT_NODE;
+    in.timestamp      = 0x11223344u;
+    in.role           = MESHCORE_DEVICE_ROLE_CHAT_NODE;
     uint8_t base[256] = {0}, blen = 0;
     meshcore_advert_serialize(&in, base, &blen);  // no optional fields set
 
-    const uint8_t prefix = MESHCORE_PUB_KEY_SIZE + 4 + MESHCORE_SIGNATURE_SIZE;
-    meshcore_advert_t out = {0};
+    const uint8_t     prefix = MESHCORE_PUB_KEY_SIZE + 4 + MESHCORE_SIGNATURE_SIZE;
+    meshcore_advert_t out    = {0};
 
     // Too short to even hold pub_key + timestamp + signature.
-    CHECK(meshcore_advert_deserialize(base, (uint8_t)(prefix - 1), &out) < 0,
-          "advert rejects a sub-header buffer");
+    CHECK(meshcore_advert_deserialize(base, (uint8_t)(prefix - 1), &out) < 0, "advert rejects a sub-header buffer");
 
     // Bare advert: exactly the prefix, no flags byte -> valid, no optionals.
     CHECK(meshcore_advert_deserialize(base, prefix, &out) >= 0, "bare advert is valid");
@@ -115,8 +115,8 @@ static void test_advert_rejects_and_optional(void) {
     memcpy(n, base, prefix);
     n[prefix] = 0x80;  // ADVERT_FLAG_NAME
     for (int i = 0; i < MESHCORE_MAX_NAME_SIZE + 1; i++) n[prefix + 1 + i] = 'A';
-    CHECK(meshcore_advert_deserialize(n, (uint8_t)(prefix + 1 + MESHCORE_MAX_NAME_SIZE), &out) >= 0 &&
-              out.name_valid && (int)strlen(out.name) == MESHCORE_MAX_NAME_SIZE,
+    CHECK(meshcore_advert_deserialize(n, (uint8_t)(prefix + 1 + MESHCORE_MAX_NAME_SIZE), &out) >= 0 && out.name_valid &&
+              (int)strlen(out.name) == MESHCORE_MAX_NAME_SIZE,
           "advert accepts a max-length name and NUL terminates it");
     CHECK(meshcore_advert_deserialize(n, (uint8_t)(prefix + 1 + MESHCORE_MAX_NAME_SIZE + 1), &out) < 0,
           "advert rejects a name over the max length");
@@ -125,8 +125,8 @@ static void test_advert_rejects_and_optional(void) {
 // GRP_TXT deserialize runs on every received channel packet; its two bounds
 // checks (min size, oversized data_length) had no coverage.
 static void test_grp_txt_rejects(void) {
-    meshcore_grp_txt_t out = {0};
-    uint8_t buf[256] = {0};
+    meshcore_grp_txt_t out      = {0};
+    uint8_t            buf[256] = {0};
     CHECK(meshcore_grp_txt_deserialize(buf, MESHCORE_CIPHER_MAC_SIZE, &out) < 0,
           "grp_txt rejects a frame shorter than channel_hash + mac");
     CHECK(meshcore_grp_txt_deserialize(buf, (uint8_t)(1 + MESHCORE_CIPHER_MAC_SIZE + 200), &out) < 0,

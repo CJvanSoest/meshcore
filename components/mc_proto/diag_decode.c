@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "diag_decode.h"
-
 #include <string.h>
-
 #include "meshcore/packet.h"
 #include "meshcore/payload/advert.h"
 
-bool diag_decode(const uint8_t *frame, uint8_t len, diag_decoded_t *out) {
+bool diag_decode(const uint8_t* frame, uint8_t len, diag_decoded_t* out) {
     if (!out) return false;
     memset(out, 0, sizeof(*out));
     if (!frame || len == 0) return false;
@@ -66,40 +64,63 @@ bool diag_decode(const uint8_t *frame, uint8_t len, diag_decoded_t *out) {
     return true;
 }
 
-const char *diag_type_name(uint8_t ptype) {
+const char* diag_type_name(uint8_t ptype) {
     switch (ptype) {
-        case MESHCORE_PAYLOAD_TYPE_REQ:        return "REQ";
-        case MESHCORE_PAYLOAD_TYPE_RESPONSE:   return "RESP";
-        case MESHCORE_PAYLOAD_TYPE_TXT_MSG:    return "DM";
-        case MESHCORE_PAYLOAD_TYPE_ACK:        return "ACK";
-        case MESHCORE_PAYLOAD_TYPE_ADVERT:     return "ADVERT";
-        case MESHCORE_PAYLOAD_TYPE_GRP_TXT:    return "CHAN";
-        case MESHCORE_PAYLOAD_TYPE_GRP_DATA:   return "GRPDAT";
-        case MESHCORE_PAYLOAD_TYPE_ANON_REQ:   return "ANONRQ";
-        case MESHCORE_PAYLOAD_TYPE_PATH:       return "PATH";
-        case MESHCORE_PAYLOAD_TYPE_TRACE:      return "TRACE";
-        case MESHCORE_PAYLOAD_TYPE_MULTIPART:  return "MULTI";
-        case MESHCORE_PAYLOAD_TYPE_RAW_CUSTOM: return "RAW";
-        default:                               return "?";
+        case MESHCORE_PAYLOAD_TYPE_REQ:
+            return "REQ";
+        case MESHCORE_PAYLOAD_TYPE_RESPONSE:
+            return "RESP";
+        case MESHCORE_PAYLOAD_TYPE_TXT_MSG:
+            return "DM";
+        case MESHCORE_PAYLOAD_TYPE_ACK:
+            return "ACK";
+        case MESHCORE_PAYLOAD_TYPE_ADVERT:
+            return "ADVERT";
+        case MESHCORE_PAYLOAD_TYPE_GRP_TXT:
+            return "CHAN";
+        case MESHCORE_PAYLOAD_TYPE_GRP_DATA:
+            return "GRPDAT";
+        case MESHCORE_PAYLOAD_TYPE_ANON_REQ:
+            return "ANONRQ";
+        case MESHCORE_PAYLOAD_TYPE_PATH:
+            return "PATH";
+        case MESHCORE_PAYLOAD_TYPE_TRACE:
+            return "TRACE";
+        case MESHCORE_PAYLOAD_TYPE_MULTIPART:
+            return "MULTI";
+        case MESHCORE_PAYLOAD_TYPE_RAW_CUSTOM:
+            return "RAW";
+        default:
+            return "?";
     }
 }
 
-const char *diag_route_name(uint8_t route) {
+const char* diag_route_name(uint8_t route) {
     switch (route) {
-        case MESHCORE_ROUTE_TYPE_TRANSPORT_FLOOD:  return "T-FLOOD";
-        case MESHCORE_ROUTE_TYPE_FLOOD:            return "FLOOD";
-        case MESHCORE_ROUTE_TYPE_DIRECT:           return "DIRECT";
-        case MESHCORE_ROUTE_TYPE_TRANSPORT_DIRECT: return "T-DIRECT";
-        default:                                   return "?";
+        case MESHCORE_ROUTE_TYPE_TRANSPORT_FLOOD:
+            return "T-FLOOD";
+        case MESHCORE_ROUTE_TYPE_FLOOD:
+            return "FLOOD";
+        case MESHCORE_ROUTE_TYPE_DIRECT:
+            return "DIRECT";
+        case MESHCORE_ROUTE_TYPE_TRANSPORT_DIRECT:
+            return "T-DIRECT";
+        default:
+            return "?";
     }
 }
 
-const char *diag_role_name(uint8_t role) {
+const char* diag_role_name(uint8_t role) {
     switch (role) {
-        case MESHCORE_DEVICE_ROLE_CHAT_NODE:   return "Chat";
-        case MESHCORE_DEVICE_ROLE_REPEATER:    return "Repeater";
-        case MESHCORE_DEVICE_ROLE_ROOM_SERVER: return "Room";
-        case MESHCORE_DEVICE_ROLE_SENSOR:      return "Sensor";
-        default:                               return "Unknown";
+        case MESHCORE_DEVICE_ROLE_CHAT_NODE:
+            return "Chat";
+        case MESHCORE_DEVICE_ROLE_REPEATER:
+            return "Repeater";
+        case MESHCORE_DEVICE_ROLE_ROOM_SERVER:
+            return "Room";
+        case MESHCORE_DEVICE_ROLE_SENSOR:
+            return "Sensor";
+        default:
+            return "Unknown";
     }
 }

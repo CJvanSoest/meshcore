@@ -23,11 +23,11 @@
 // `gps_live_lock` critical section; writes happen only inside gps_task.
 extern int32_t  gps_live_lat_e6;
 extern int32_t  gps_live_lon_e6;
-extern uint8_t  gps_live_sats;          // gps_sats_view + glo_sats_view
+extern uint8_t  gps_live_sats;  // gps_sats_view + glo_sats_view
 extern float    gps_live_hdop;
-extern uint32_t gps_live_last_fix_ms;   // 0 = never; xTaskGetTickCount × portTICK_PERIOD_MS
+extern uint32_t gps_live_last_fix_ms;  // 0 = never; xTaskGetTickCount × portTICK_PERIOD_MS
 extern bool     gps_live_valid;
-extern bool     gps_live_bus_ok;        // true after first successful bus probe
+extern bool     gps_live_bus_ok;  // true after first successful bus probe
 
 // Spawn the task. Idempotent; safe to call multiple times.
 void gps_task_start(void);

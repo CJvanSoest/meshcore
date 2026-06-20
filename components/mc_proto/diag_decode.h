@@ -22,26 +22,26 @@ typedef struct {
     uint16_t payload_len;
 
     // ADVERT only: the signer's identity + optional name / position.
-    bool     has_pubkey;
-    uint8_t  pubkey[32];
-    uint8_t  role;           // meshcore_device_role_t value
-    bool     has_name;
-    char     name[33];
-    bool     has_pos;
-    int32_t  lat_e6;
-    int32_t  lon_e6;
+    bool    has_pubkey;
+    uint8_t pubkey[32];
+    uint8_t role;  // meshcore_device_role_t value
+    bool    has_name;
+    char    name[33];
+    bool    has_pos;
+    int32_t lat_e6;
+    int32_t lon_e6;
 
     // DM / PATH / ACK: the 1-byte destination + source key hashes on the wire.
-    bool     has_hash;
-    uint8_t  dest_hash;
-    uint8_t  src_hash;
+    bool    has_hash;
+    uint8_t dest_hash;
+    uint8_t src_hash;
 } diag_decoded_t;
 
 // Parse `len` bytes of a captured frame. Returns true when at least the header
 // parsed; per-type extraction is best-effort and skipped on truncated frames.
-bool diag_decode(const uint8_t *frame, uint8_t len, diag_decoded_t *out);
+bool diag_decode(const uint8_t* frame, uint8_t len, diag_decoded_t* out);
 
 // Short uppercase labels for the log columns. Always return a valid string.
-const char *diag_type_name(uint8_t ptype);
-const char *diag_route_name(uint8_t route);
-const char *diag_role_name(uint8_t role);
+const char* diag_type_name(uint8_t ptype);
+const char* diag_route_name(uint8_t route);
+const char* diag_role_name(uint8_t role);

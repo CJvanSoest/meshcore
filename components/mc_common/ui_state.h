@@ -13,14 +13,14 @@
 // those out when the radio is unavailable, so FIELD_FREQ must stay that boundary.
 typedef enum {
     // ── Device & identity ──
-    FIELD_RADIO_FW = 0,      // read-only — SX126x silicon ID (version register) reported by C6
-    FIELD_RADIO_FW_APP,      // read-only — hand-maintained tanmatsu-radio app fw label
+    FIELD_RADIO_FW = 0,  // read-only — SX126x silicon ID (version register) reported by C6
+    FIELD_RADIO_FW_APP,  // read-only — hand-maintained tanmatsu-radio app fw label
     FIELD_OWNER,
     FIELD_ADV_NAME,
     // ── Regulatory ──
-    FIELD_COUNTRY,           // regulatory country — gates freq/power warnings + DC enforcement
-    FIELD_ANTENNA_GAIN,      // dBi — only editable once country is set
-    FIELD_DUTY_CYCLE,        // read-only: rolling 1h airtime vs sub-band budget
+    FIELD_COUNTRY,       // regulatory country — gates freq/power warnings + DC enforcement
+    FIELD_ANTENNA_GAIN,  // dBi — only editable once country is set
+    FIELD_DUTY_CYCLE,    // read-only: rolling 1h airtime vs sub-band budget
     // ── Radio (FIELD_FREQ down = needs C6) ──
     FIELD_FREQ,
     FIELD_SF,
@@ -30,12 +30,12 @@ typedef enum {
     FIELD_SYNC,
     FIELD_PREAMBLE,
     FIELD_PRESET,
-    FIELD_SENSITIVITY,       // RX boost on/off (radio gain vs power-save)
+    FIELD_SENSITIVITY,  // RX boost on/off (radio gain vs power-save)
     // ── Advert (own category — flood + direct intervals, manual sends) ──
-    FIELD_FLOOD_ADVERT_INT,    // periodic flood-route advert; 0 = off (default)
-    FIELD_DIRECT_ADVERT_INT,   // periodic direct-route advert; 0 = off
-    FIELD_SEND_FLOOD_NOW,      // Action row: emit a single flood advert immediately
-    FIELD_SEND_DIRECT_NOW,     // Action row: emit a single direct advert (1-hop) now
+    FIELD_FLOOD_ADVERT_INT,   // periodic flood-route advert; 0 = off (default)
+    FIELD_DIRECT_ADVERT_INT,  // periodic direct-route advert; 0 = off
+    FIELD_SEND_FLOOD_NOW,     // Action row: emit a single flood advert immediately
+    FIELD_SEND_DIRECT_NOW,    // Action row: emit a single direct advert (1-hop) now
     // ── Network & behavior ──
     FIELD_ROLE,
     FIELD_PATH_HASH_SIZE,
@@ -43,29 +43,29 @@ typedef enum {
     //     Slot management (add/edit SSID + password for new networks) lives
     //     in the launcher's WiFi settings; our app only flips the on/off
     //     toggle and lets the user pick which already-stored slot to use.
-    FIELD_WIFI_SSID,      // Read-only: SSID of the currently selected slot
-    FIELD_WIFI_STATUS,    // Read-only: "Disconnected" / "Connecting..." / "IP: x.x.x.x"
-    FIELD_WIFI_NETWORK,   // Picker: cycles launcher-stored slots (idx + SSID)
-    FIELD_WIFI_ENABLED,   // Toggle: On = wifi_connection_connect, Off = disconnect
-    FIELD_HTTP_URL,       // Read-only: https://<ip>:8443/ping (for MeshMapper config)
-    FIELD_HTTP_API_KEY,   // Read-only: 64 hex chars (paste into MeshMapper)
-    FIELD_HTTP_KEY_REGEN, // Action row: press OK to roll a new API key
-    FIELD_HTTPS_CERT_FP,  // Read-only: SHA-256 fingerprint of the on-device cert
-    FIELD_HTTPS_CERT_REGEN, // Action row: wipe NVS cert + regenerate self-signed
-    FIELD_HTTP_QR,        // Action row: open QR overlay with /ping URL + key for iPhone capture
-    FIELD_BLE_ENABLED,        // Toggle: BLE companion radio on/off (takes effect on next app start)
+    FIELD_WIFI_SSID,         // Read-only: SSID of the currently selected slot
+    FIELD_WIFI_STATUS,       // Read-only: "Disconnected" / "Connecting..." / "IP: x.x.x.x"
+    FIELD_WIFI_NETWORK,      // Picker: cycles launcher-stored slots (idx + SSID)
+    FIELD_WIFI_ENABLED,      // Toggle: On = wifi_connection_connect, Off = disconnect
+    FIELD_HTTP_URL,          // Read-only: https://<ip>:8443/ping (for MeshMapper config)
+    FIELD_HTTP_API_KEY,      // Read-only: 64 hex chars (paste into MeshMapper)
+    FIELD_HTTP_KEY_REGEN,    // Action row: press OK to roll a new API key
+    FIELD_HTTPS_CERT_FP,     // Read-only: SHA-256 fingerprint of the on-device cert
+    FIELD_HTTPS_CERT_REGEN,  // Action row: wipe NVS cert + regenerate self-signed
+    FIELD_HTTP_QR,           // Action row: open QR overlay with /ping URL + key for iPhone capture
+    FIELD_BLE_ENABLED,       // Toggle: BLE companion radio on/off (takes effect on next app start)
     // ── Region & location ──
     FIELD_REGION_SCOPE,
     FIELD_GPS_LAT,
     FIELD_GPS_LON,
-    FIELD_GPS_SOURCE,         // Read-only: shows whether coords are from PA1010D / Manual / CDC / BLE
-    FIELD_GPS_AUTOFILL,       // Action-row: press OK to scan PA1010D on QWIIC and auto-fill lat/lon
+    FIELD_GPS_SOURCE,    // Read-only: shows whether coords are from PA1010D / Manual / CDC / BLE
+    FIELD_GPS_AUTOFILL,  // Action-row: press OK to scan PA1010D on QWIIC and auto-fill lat/lon
     // ── Live GPS tracking (background gps_task) ──
-    FIELD_GPS_PROFILE,        // Walking / Cycling / Driving / Manual
-    FIELD_GPS_INTERVAL_S,     // Custom poll interval seconds; 0 = use profile default
-    FIELD_GPS_DISTANCE_M,     // Custom commit distance metres; 0 = use profile default
+    FIELD_GPS_PROFILE,     // Walking / Cycling / Driving / Manual
+    FIELD_GPS_INTERVAL_S,  // Custom poll interval seconds; 0 = use profile default
+    FIELD_GPS_DISTANCE_M,  // Custom commit distance metres; 0 = use profile default
     // ── Map style (VIEW_MAP tile profile) ──
-    FIELD_MAP_PROFILE,        // Ripple / OSM Bright / CyclOSM / OpenTopo — picks the SD subdir
+    FIELD_MAP_PROFILE,  // Ripple / OSM Bright / CyclOSM / OpenTopo — picks the SD subdir
     // ── Brightness (display backlight, keyboard backlight, RGB LED) ──
     FIELD_DISPLAY_BL,
     FIELD_KB_BL,
@@ -77,10 +77,10 @@ typedef enum {
     FIELD_SOUND_CHANNEL,
     FIELD_SOUND_ERROR,
     FIELD_SOUND_BOOT,
-    FIELD_SOUND_TEST_DM,        // Action: preview DM sound
-    FIELD_SOUND_TEST_CHANNEL,   // Action: preview channel sound
-    FIELD_SOUND_TEST_ERROR,     // Action: preview error sound
-    FIELD_SOUND_TEST_BOOT,      // Action: preview boot sound
+    FIELD_SOUND_TEST_DM,       // Action: preview DM sound
+    FIELD_SOUND_TEST_CHANNEL,  // Action: preview channel sound
+    FIELD_SOUND_TEST_ERROR,    // Action: preview error sound
+    FIELD_SOUND_TEST_BOOT,     // Action: preview boot sound
     FIELD_COUNT,
 } field_t;
 
@@ -133,10 +133,10 @@ extern int  settings_category_active;
 
 // Toolbox launcher + packet-log view state. cursor selects a sub-tool on the
 // launcher; the log view scrolls a frozen-or-live window of captured frames.
-extern int  toolbox_cursor;        // selected sub-tool on the Toolbox launcher
-extern int  toolbox_log_scroll;    // rows scrolled back from the newest frame
-extern bool toolbox_log_paused;    // freeze the displayed window (capture continues)
-extern bool toolbox_log_dissect;   // false = hex dump, true = field dissector
+extern int  toolbox_cursor;       // selected sub-tool on the Toolbox launcher
+extern int  toolbox_log_scroll;   // rows scrolled back from the newest frame
+extern bool toolbox_log_paused;   // freeze the displayed window (capture continues)
+extern bool toolbox_log_dissect;  // false = hex dump, true = field dissector
 
 // Short on-screen status toast (e.g. "Flood advert sent"). The string is empty
 // when no toast is active. toast_start_ms is the tick-time the toast became

@@ -9,19 +9,21 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-
 #include "diag_decode.h"
 #include "meshcore/packet.h"
 #include "meshcore/payload/advert.h"
 
 static int failures = 0;
-#define CHECK(cond, msg)                                          \
-    do {                                                          \
-        if (!(cond)) { printf("FAIL: %s\n", (msg)); failures++; } \
+#define CHECK(cond, msg)                 \
+    do {                                 \
+        if (!(cond)) {                   \
+            printf("FAIL: %s\n", (msg)); \
+            failures++;                  \
+        }                                \
     } while (0)
 
 // Build a full frame from a message and decode it.
-static bool decode_message(const meshcore_message_t *msg, diag_decoded_t *out) {
+static bool decode_message(const meshcore_message_t* msg, diag_decoded_t* out) {
     uint8_t frame[MESHCORE_MAX_TRANS_UNIT] = {0};
     uint8_t flen                           = 0;
     if (meshcore_serialize(msg, frame, &flen) < 0) return false;
@@ -33,21 +35,21 @@ static void test_advert_frame(void) {
     for (int i = 0; i < MESHCORE_PUB_KEY_SIZE; i++) adv.pub_key[i] = (uint8_t)(0xA0 + i);
     adv.timestamp = 0x01020304u;
     for (int i = 0; i < MESHCORE_SIGNATURE_SIZE; i++) adv.signature[i] = (uint8_t)(i);
-    adv.role           = MESHCORE_DEVICE_ROLE_REPEATER;
-    adv.name_valid     = true;
+    adv.role       = MESHCORE_DEVICE_ROLE_REPEATER;
+    adv.name_valid = true;
     strcpy(adv.name, "repeater-south");
     adv.position_valid = true;
     adv.position_lat   = 52123456;
     adv.position_lon   = 4567890;
 
     meshcore_message_t msg = {0};
-    msg.type           = MESHCORE_PAYLOAD_TYPE_ADVERT;
-    msg.route          = MESHCORE_ROUTE_TYPE_FLOOD;
-    msg.path_length    = 2;
-    msg.bytes_per_hop  = 1;
-    msg.path[0]        = 0x11;
-    msg.path[1]        = 0x22;
-    uint8_t psize      = 0;
+    msg.type               = MESHCORE_PAYLOAD_TYPE_ADVERT;
+    msg.route              = MESHCORE_ROUTE_TYPE_FLOOD;
+    msg.path_length        = 2;
+    msg.bytes_per_hop      = 1;
+    msg.path[0]            = 0x11;
+    msg.path[1]            = 0x22;
+    uint8_t psize          = 0;
     CHECK(meshcore_advert_serialize(&adv, msg.payload, &psize) >= 0, "advert payload serialize");
     msg.payload_length = psize;
 
@@ -66,14 +68,14 @@ static void test_advert_frame(void) {
 
 static void test_dm_frame(void) {
     meshcore_message_t msg = {0};
-    msg.type           = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
-    msg.route          = MESHCORE_ROUTE_TYPE_DIRECT;
-    msg.path_length    = 0;
-    msg.bytes_per_hop  = 1;
-    msg.payload[0]     = 0xDE;  // dest hash
-    msg.payload[1]     = 0x5C;  // src hash
-    msg.payload[2]     = 0xAA;  // ciphertext byte
-    msg.payload_length = 18;    // 2 hashes + 16-byte cipher block
+    msg.type               = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
+    msg.route              = MESHCORE_ROUTE_TYPE_DIRECT;
+    msg.path_length        = 0;
+    msg.bytes_per_hop      = 1;
+    msg.payload[0]         = 0xDE;  // dest hash
+    msg.payload[1]         = 0x5C;  // src hash
+    msg.payload[2]         = 0xAA;  // ciphertext byte
+    msg.payload_length     = 18;    // 2 hashes + 16-byte cipher block
 
     diag_decoded_t d = {0};
     CHECK(decode_message(&msg, &d), "dm frame decodes");
@@ -87,11 +89,11 @@ static void test_truncated_dm(void) {
     // A TXT_MSG whose payload is too short to hold both 1-byte hashes must not
     // report dest/src — exercises the payload_length >= 2 guard.
     meshcore_message_t msg = {0};
-    msg.type           = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
-    msg.route          = MESHCORE_ROUTE_TYPE_DIRECT;
-    msg.bytes_per_hop  = 1;
-    msg.payload[0]     = 0x42;
-    msg.payload_length = 1;
+    msg.type               = MESHCORE_PAYLOAD_TYPE_TXT_MSG;
+    msg.route              = MESHCORE_ROUTE_TYPE_DIRECT;
+    msg.bytes_per_hop      = 1;
+    msg.payload[0]         = 0x42;
+    msg.payload_length     = 1;
 
     diag_decoded_t d = {0};
     CHECK(decode_message(&msg, &d), "truncated dm frame decodes");
@@ -107,15 +109,15 @@ static void test_overlong_advert_name(void) {
     uint8_t payload[160] = {0};
     int     p            = 0;
     for (int i = 0; i < MESHCORE_PUB_KEY_SIZE; i++) payload[p++] = (uint8_t)i;
-    for (int i = 0; i < 4; i++) payload[p++] = 0;                  // timestamp
+    for (int i = 0; i < 4; i++) payload[p++] = 0;  // timestamp
     for (int i = 0; i < MESHCORE_SIGNATURE_SIZE; i++) payload[p++] = 0;
-    payload[p++] = 0x80;                                           // flags: name present
-    for (int i = 0; i < 40; i++) payload[p++] = 'A';              // 40-char name (> 32)
+    payload[p++] = 0x80;                              // flags: name present
+    for (int i = 0; i < 40; i++) payload[p++] = 'A';  // 40-char name (> 32)
 
     meshcore_message_t msg = {0};
-    msg.type          = MESHCORE_PAYLOAD_TYPE_ADVERT;
-    msg.route         = MESHCORE_ROUTE_TYPE_FLOOD;
-    msg.bytes_per_hop = 1;
+    msg.type               = MESHCORE_PAYLOAD_TYPE_ADVERT;
+    msg.route              = MESHCORE_ROUTE_TYPE_FLOOD;
+    msg.bytes_per_hop      = 1;
     memcpy(msg.payload, payload, p);
     msg.payload_length = (uint8_t)p;
 
@@ -134,7 +136,7 @@ static void test_names_and_guards(void) {
 
     diag_decoded_t d;
     CHECK(!diag_decode(NULL, 0, &d), "decode rejects NULL frame");
-    CHECK(!diag_decode((const uint8_t *)"\x00", 0, &d), "decode rejects zero length");
+    CHECK(!diag_decode((const uint8_t*)"\x00", 0, &d), "decode rejects zero length");
 }
 
 int main(void) {

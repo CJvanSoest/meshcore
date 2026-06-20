@@ -25,10 +25,10 @@ typedef enum {
 } gps_profile_t;
 
 extern gps_profile_t gps_profile;
-extern uint16_t      gps_custom_interval_s;   // 0 = use profile default
-extern uint16_t      gps_custom_distance_m;   // 0 = use profile default
+extern uint16_t      gps_custom_interval_s;  // 0 = use profile default
+extern uint16_t      gps_custom_distance_m;  // 0 = use profile default
 
-const char *gps_profile_label(gps_profile_t p);
+const char* gps_profile_label(gps_profile_t p);
 
 // Map style profile (owner: map.c).
 typedef enum {
@@ -42,4 +42,4 @@ typedef enum {
 extern map_profile_t map_profile;
 extern bool          map_lock_on;
 
-const char *map_profile_label(map_profile_t p);
+const char* map_profile_label(map_profile_t p);

@@ -17,5 +17,4 @@
 // Copy the signable slice of a serialized ADVERT `payload` into `out`
 // (size >= MESHCORE_MAX_PAYLOAD_SIZE) and return its length. Returns 0 if
 // the payload is too short to hold pub_key + timestamp.
-uint8_t meshcore_advert_signable_bytes(const uint8_t *payload,
-                                       uint8_t payload_len, uint8_t *out);
+uint8_t meshcore_advert_signable_bytes(const uint8_t* payload, uint8_t payload_len, uint8_t* out);
