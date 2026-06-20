@@ -10,6 +10,9 @@ jobs:
   scan:
     name: Secret scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -23,5 +26,22 @@ jobs:
             | tar -xz -C "$HOME/.local/bin" gitleaks
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # continue-on-error so the SARIF still uploads when a secret is found;
+      # the Enforce step below turns a finding back into a red check.
       - name: Scan history and tree
-        run: gitleaks detect --source . --redact --no-banner -v
+        id: scan
+        continue-on-error: true
+        run: gitleaks detect --source . --redact --no-banner -v --report-format sarif --report-path gitleaks.sarif
+
+      - name: Upload findings to code scanning
+        if: always() && hashFiles('gitleaks.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
+
+      - name: Fail if secrets were found
+        if: steps.scan.outcome == 'failure'
+        run: |
+          echo "::error::gitleaks found potential secrets. See the Security tab and the annotations on this pull request."
+          exit 1
