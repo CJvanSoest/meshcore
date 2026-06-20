@@ -85,7 +85,9 @@ esp32-p4-function-ev-board).
 
 - Every source file starts with an SPDX header
   (`SPDX-FileCopyrightText` + `SPDX-License-Identifier: MIT`).
-- Formatting is `.clang-format` (run `clang-format -i` on touched files).
+- Formatting is `.clang-format`, gated in CI by `check-format.sh`. Run
+  `clang-format -i` (canonical version **18.1.8**) on touched files; vendored
+  code and the `meshcore/` mirror are excluded.
 - Comments are sparse: explain the non-obvious (a wire quirk, a locking
   coupling), not the obvious.
 - Commit messages and all repo text are in English.
