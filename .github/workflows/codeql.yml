@@ -1,0 +1,33 @@
+name: CodeQL
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  analyze:
+    name: Analyze (c-cpp)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # build-mode: none uses the no build extractor. The firmware build runs
+      # inside the espressif/idf docker image, which the CodeQL tracer cannot
+      # wrap, so we extract without compiling. Coverage of the packet parsing
+      # path (the untrusted LoRa input attack surface) is what matters here.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          build-mode: none
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:c-cpp"
