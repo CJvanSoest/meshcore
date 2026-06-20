@@ -21,6 +21,12 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+### Added
+- **Toolbox** — a new tile under Settings opening a launcher for LoRa
+  diagnostic tools. First tool: **Packet Log**, a live hex-dump / dissector
+  view of received and transmitted radio frames, with pause, scroll and clear
+  (#3).
+
 ## [2.6.0] - 2026-06-19
 
 ### Changed
