@@ -71,7 +71,9 @@ void render_toolbox(void) {
         pax_col_t desc_col  = focused ? COL_HEADER : COL_GRAY;
 
         pax_draw_text(&fb, title_col, FONT, TXT_BODY, x + 16, y + 12, t->label);
-        pax_draw_text(&fb, desc_col, FONT, TXT_SMALL, x + 16, y + 12 + TXT_BODY + 4, t->desc);
+        // Description in mono: on the bright focused tile a proportional face
+        // blurs thin glyphs (i / l), so the monospace face keeps them legible.
+        pax_draw_text(&fb, desc_col, MONO, TXT_SMALL, x + 16, y + 12 + TXT_BODY + 4, t->desc);
 
         if (!t->enabled) {
             const char* tag = "soon";

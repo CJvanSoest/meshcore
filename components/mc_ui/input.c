@@ -771,6 +771,8 @@ static void open_toolbox_tile(void) {
     app_view_t t = toolbox_tile_target(toolbox_cursor);
     if (t == VIEW_TOOLBOX_LOG) {
         toolbox_log_scroll = 0;
+        toolbox_log_cursor = 0;
+        toolbox_log_detail = false;
         toolbox_log_paused = false;
     } else if (t == VIEW_TOOLBOX_COVERAGE) {
         toolbox_coverage_cursor = 0;
@@ -825,12 +827,13 @@ static void nav_toolbox(uint32_t key) {
 }
 
 static void nav_toolbox_log(uint32_t key) {
+    if (toolbox_log_detail) return;  // detail view is read-only; ESC closes it
     if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
-        if (toolbox_log_scroll > 0) toolbox_log_scroll--;
+        if (toolbox_log_cursor > 0) toolbox_log_cursor--;
     } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
-        toolbox_log_scroll++;  // render clamps to the available range
+        toolbox_log_cursor++;  // render clamps to the available range
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
-        toolbox_log_paused = !toolbox_log_paused;
+        toolbox_log_detail = true;  // open the full breakdown of the selected entry
     }
 }
 
@@ -845,16 +848,20 @@ static void key_toolbox(char c) {
 }
 
 static void key_toolbox_log(char c) {
+    if (toolbox_log_detail) return;  // read-only; ESC closes it
     if (c == 'w' || c == 'W') {
-        if (toolbox_log_scroll > 0) toolbox_log_scroll--;
+        if (toolbox_log_cursor > 0) toolbox_log_cursor--;
     } else if (c == 's' || c == 'S') {
-        toolbox_log_scroll++;
+        toolbox_log_cursor++;
+    } else if (c == '\r' || c == '\n') {
+        toolbox_log_detail = true;
     } else if (c == 'h' || c == 'H') {
         toolbox_log_dissect = !toolbox_log_dissect;
     } else if (c == 'p' || c == 'P') {
         toolbox_log_paused = !toolbox_log_paused;
     } else if (c == 'c' || c == 'C') {
         diag_clear();
+        toolbox_log_cursor = 0;
         toolbox_log_scroll = 0;
     }
 }
@@ -955,6 +962,8 @@ void handle_nav(uint32_t key) {
             // category list; second ESC then falls through to HOME.
             settings_category_list_mode = true;
             settings_scroll             = 0;
+        } else if (current_view == VIEW_TOOLBOX_LOG && toolbox_log_detail) {
+            toolbox_log_detail = false;  // first ESC closes the detail breakdown
         } else if (current_view == VIEW_TOOLBOX_LOG || current_view == VIEW_TOOLBOX_COVERAGE) {
             current_view = VIEW_TOOLBOX;  // back to the launcher
         } else if (current_view == VIEW_TOOLBOX) {
@@ -1595,6 +1604,8 @@ void handle_key(char c) {
         } else if (current_view == VIEW_SETTINGS && !settings_category_list_mode) {
             settings_category_list_mode = true;
             settings_scroll             = 0;
+        } else if (current_view == VIEW_TOOLBOX_LOG && toolbox_log_detail) {
+            toolbox_log_detail = false;
         } else if (current_view == VIEW_TOOLBOX_LOG || current_view == VIEW_TOOLBOX_COVERAGE) {
             current_view = VIEW_TOOLBOX;
         } else if (current_view == VIEW_TOOLBOX) {

@@ -103,6 +103,77 @@ static void format_detail(const diag_entry_t* e, const diag_decoded_t* d, char* 
     }
 }
 
+// Map a newest-first index to the raw ring slot in the frozen snapshot.
+static int snap_ri(int newest_idx) {
+    return (s_snap_head - 1 - newest_idx + 2 * DIAG_LOG_SIZE) % DIAG_LOG_SIZE;
+}
+
+// Full-screen breakdown of one captured frame: every field plus the complete
+// 32-byte public key and the raw bytes, in mono so the hex lines up and i/l/1
+// stay distinct. Reached with Enter on a selected row; ESC returns to the list.
+static void render_log_detail(int w, int h, const diag_entry_t* e, const diag_decoded_t* d) {
+    pax_simple_rect(&fb, COL_HEADER, 0, 0, w, LOG_HEADER_H);
+    pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, LOG_HEADER_H - 1, w, 1);
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_TAB, 10, (LOG_HEADER_H - TXT_TAB) / 2, "Packet Detail");
+
+    int  x  = 12;
+    int  y  = LOG_HEADER_H + 10;
+    bool rx = (e->dir == DIAG_DIR_RX);
+    char line[96];
+
+    snprintf(line, sizeof(line), "%s   %s   %s", rx ? "RX" : "TX", d->valid ? diag_type_name(d->ptype) : "?",
+             d->valid ? diag_route_name(d->route) : "");
+    pax_draw_text(&fb, rx ? COL_GREEN : COL_AMBER, FONT, TXT_BODY, x, y, line);
+    y += TXT_BODY + 6;
+
+    snprintf(line, sizeof(line), "time %lus   len %uB   hops %u", (unsigned long)(e->now_ms / 1000), e->full_len,
+             d->hops);
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, x, y, line);
+    y += TXT_SMALL + 4;
+
+    if (rx && e->rssi_dbm != DIAG_RSSI_NONE) {
+        int sw = e->snr_db_x4 / 4, sf = (e->snr_db_x4 < 0 ? -e->snr_db_x4 : e->snr_db_x4) % 4 * 25;
+        snprintf(line, sizeof(line), "RSSI %d dBm   SNR %d.%02d dB", e->rssi_dbm, sw, sf);
+        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, x, y, line);
+        y += TXT_SMALL + 4;
+    }
+
+    if (d->has_pubkey) {
+        pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL, x, y, "Public key:");
+        y += TXT_SMALL + 2;
+        for (int half = 0; half < 2; half++) {
+            char hex[40];
+            int  p = 0;
+            for (int b = 0; b < 16; b++) p += snprintf(hex + p, sizeof(hex) - p, "%02X", d->pubkey[half * 16 + b]);
+            pax_draw_text(&fb, COL_GREEN, MONO, TXT_SMALL, x + 8, y, hex);
+            y += TXT_SMALL + 2;
+        }
+        snprintf(line, sizeof(line), "role %s   name %s", diag_role_name(d->role), d->has_name ? d->name : "-");
+        pax_draw_text(&fb, COL_PAGER_TEXT, FONT, TXT_SMALL, x, y, line);
+        y += TXT_SMALL + 6;
+    } else if (d->has_hash) {
+        snprintf(line, sizeof(line), "dst-hash %02X   src-hash %02X", d->dest_hash, d->src_hash);
+        pax_draw_text(&fb, COL_PAGER_TEXT, FONT, TXT_SMALL, x, y, line);
+        y += TXT_SMALL + 6;
+    }
+
+    pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL, x, y, "Bytes (on-air):");
+    y      += TXT_SMALL + 2;
+    int fy  = h - LOG_FOOTER_H;
+    for (int off = 0; off < e->raw_len && y < fy - TXT_SMALL; off += 16) {
+        char hex[56];
+        int  p = 0;
+        for (int b = off; b < off + 16 && b < e->raw_len; b++)
+            p += snprintf(hex + p, sizeof(hex) - p, "%02X ", e->raw[b]);
+        pax_draw_text(&fb, COL_PAGER_TEXT, MONO, TXT_SMALL, x + 8, y, hex);
+        y += TXT_SMALL + 2;
+    }
+
+    pax_simple_rect(&fb, COL_HEADER, 0, fy, w, LOG_FOOTER_H);
+    pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (LOG_FOOTER_H - TXT_SMALL) / 2, "ESC: back to list");
+}
+
 void render_toolbox_log(void) {
     int w = (int)pax_buf_get_width(&fb);
     int h = (int)pax_buf_get_height(&fb);
@@ -130,11 +201,23 @@ void render_toolbox_log(void) {
         }
     }
 
+    // Clamp the selection cursor, then show its full breakdown if requested.
+    if (toolbox_log_cursor >= s_snap_count) toolbox_log_cursor = s_snap_count - 1;
+    if (toolbox_log_cursor < 0) toolbox_log_cursor = 0;
+    if (toolbox_log_detail && s_snap_count > 0) {
+        int ri = snap_ri(toolbox_log_cursor);
+        render_log_detail(w, h, &s_snap[ri], &s_decoded[ri]);
+        return;
+    }
+
     int rows_y0  = LOG_HEADER_H + 4;
     int avail_h  = h - rows_y0 - LOG_FOOTER_H;
     int rows_vis = avail_h / LOG_ROW_H;
     if (rows_vis < 1) rows_vis = 1;
 
+    // Scroll follows the cursor so the selected row stays visible.
+    if (toolbox_log_cursor < toolbox_log_scroll) toolbox_log_scroll = toolbox_log_cursor;
+    if (toolbox_log_cursor >= toolbox_log_scroll + rows_vis) toolbox_log_scroll = toolbox_log_cursor - rows_vis + 1;
     int max_scroll = s_snap_count - rows_vis;
     if (max_scroll < 0) max_scroll = 0;
     if (toolbox_log_scroll > max_scroll) toolbox_log_scroll = max_scroll;
@@ -151,12 +234,17 @@ void render_toolbox_log(void) {
         if (si >= s_snap_count) break;
         // Newest-first walk over the raw-order snapshot via the captured head;
         // the matching dissection was cached at refresh time.
-        int                   ri = (s_snap_head - 1 - si + 2 * DIAG_LOG_SIZE) % DIAG_LOG_SIZE;
+        int                   ri = snap_ri(si);
         const diag_entry_t*   e  = &s_snap[ri];
         const diag_decoded_t* d  = &s_decoded[ri];
         int                   ry = rows_y0 + i * LOG_ROW_H;
 
-        if (i & 1) pax_simple_rect(&fb, COL_HEADER, 0, ry, w, LOG_ROW_H);
+        if (si == toolbox_log_cursor) {
+            pax_simple_rect(&fb, COL_PANEL, 0, ry, w, LOG_ROW_H);
+            pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, ry, 3, LOG_ROW_H);
+        } else if (i & 1) {
+            pax_simple_rect(&fb, COL_HEADER, 0, ry, w, LOG_ROW_H);
+        }
 
         int ty = ry + (LOG_ROW_H - TXT_TINY) / 2;
 
@@ -186,5 +274,5 @@ void render_toolbox_log(void) {
     pax_simple_rect(&fb, COL_HEADER, 0, fy, w, LOG_FOOTER_H);
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
     pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (LOG_FOOTER_H - TXT_SMALL) / 2,
-                  "WS: scroll  H: hex/dissect  P: pause  C: clear  ESC: back");
+                  "WS: select  Enter: detail  H: hex/dissect  P: pause  C: clear  ESC: back");
 }

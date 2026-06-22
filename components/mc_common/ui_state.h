@@ -137,6 +137,8 @@ extern int  toolbox_cursor;           // selected sub-tool on the Toolbox launch
 extern int  toolbox_log_scroll;       // rows scrolled back from the newest frame
 extern bool toolbox_log_paused;       // freeze the displayed window (capture continues)
 extern bool toolbox_log_dissect;      // false = hex dump, true = field dissector
+extern int  toolbox_log_cursor;       // selected entry in the packet log (newest-first index)
+extern bool toolbox_log_detail;       // showing the full breakdown of the selected entry
 extern int  toolbox_coverage_cursor;  // selected repeater in the coverage test
 
 // Short on-screen status toast (e.g. "Flood advert sent"). The string is empty

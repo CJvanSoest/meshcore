@@ -148,6 +148,8 @@ int       toolbox_cursor              = 0;
 int       toolbox_log_scroll          = 0;
 bool      toolbox_log_paused          = false;
 bool      toolbox_log_dissect         = false;
+int       toolbox_log_cursor          = 0;
+bool      toolbox_log_detail          = false;
 int       toolbox_coverage_cursor     = 0;
 
 // Display blanking: F3 (yellow square) toggles the MIPI backlight off so

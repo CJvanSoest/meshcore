@@ -36,6 +36,9 @@
 
 // ── Typography (Saira Regular: ASCII + Latin-1, variable pitch) ──────────────
 #define FONT      pax_font_saira_regular
+// Monospace face for the packet log + hash/hex, where column alignment and a
+// clearly distinct i / l / 1 matter more than a smooth proportional look.
+#define MONO      pax_font_sky_mono
 #define TXT_TITLE 24
 #define TXT_TAB   22
 #define TXT_BODY  20
