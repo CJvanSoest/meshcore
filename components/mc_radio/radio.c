@@ -15,16 +15,27 @@
 static const char* TAG = "radio";
 
 // Upstream MeshCore region scope: when our region_scope NVS string is non-empty,
-// we send packets as ROUTE_TYPE_TRANSPORT_FLOOD with a 4-byte transport_codes
-// prefix. transport_codes[0] = HMAC-SHA256(SHA256(region_name)[0..15],
-// type || payload)[0..1]. Receivers/repeaters that know the same region key
-// can verify the code and route within-scope. transport_codes[1] is reserved
-// for sender's "home" region (upstream marks it REVISIT — left zero for now).
+// we add a 4-byte transport_codes prefix. transport_codes[0] =
+// HMAC-SHA256(SHA256(region_name)[0..15], type || payload)[0..1]. Receivers/
+// repeaters that know the same region key can verify the code and route
+// within-scope. transport_codes[1] is reserved for sender's "home" region
+// (upstream marks it REVISIT — left zero for now).
+//
+// A TRACE is the exception: upstream sends it as plain ROUTE_TYPE_DIRECT with
+// NO transport codes (companion CMD_SEND_TRACE_PATH -> Mesh::sendDirect, the
+// non-scoped overload). Repeaters region-gate only FLOOD packets — their
+// allowPacketForward checks the transport region solely under isRouteFlood(),
+// and forwards any direct packet regardless of scope — so a plain-direct trace
+// is forwarded and echoes back, while wrapping it in a transport route (FLOOD
+// *or* DIRECT) broke the round-trip. So leave a TRACE exactly as send_trace
+// built it (DIRECT, no codes) and only scope the flood traffic.
 //
 // Reference: helpers/TransportKeyStore.cpp::calcTransportCode + MyMesh.cpp
-// (examples/companion_radio) sendFloodScoped path.
+// (examples/companion_radio) sendFloodScoped path; examples/simple_repeater
+// MyMesh::allowPacketForward (region check is flood-only).
 static void apply_region_scope(meshcore_message_t* msg) {
-    if (!region_scope[0]) return;  // no scope: stay on plain FLOOD
+    if (!region_scope[0]) return;                          // no scope: stay on plain FLOOD / DIRECT
+    if (msg->type == MESHCORE_PAYLOAD_TYPE_TRACE) return;  // trace stays plain DIRECT, unscoped (upstream)
     msg->route = MESHCORE_ROUTE_TYPE_TRANSPORT_FLOOD;
     msg->transport_codes[0] =
         mc_crypto_region_transport_code(region_scope, (uint8_t)msg->type, msg->payload, msg->payload_length);
