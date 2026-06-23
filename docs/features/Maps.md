@@ -14,7 +14,7 @@ Open it from the home tile-grid (Map). Navigate with the D-pad / encoder.
 | Zoom range | 6 → 14 (configurable via `MAP_ZOOM_MIN` / `MAP_ZOOM_MAX` in `components/mc_net/map.h`) |
 | Tile cache | LRU, 36 slots in PSRAM (≈ 4.5 MB at 128 KB / RGB565 tile) |
 | Tile loader | Background FreeRTOS task, 128-slot xQueue, render task never touches SD |
-| Profile slots | Ripple / Carto / Cycle / Topo — independent directory per style |
+| Profile slots | Carto enabled by default; Ripple / Cycle / Topo available per the `MAP_PROFILES_ENABLED[]` list — independent directory per style |
 | State persisted | Centre lat/lon, zoom, lock toggle, profile (all in NVS) |
 
 ## Zoom levels — what is each one good for?
@@ -69,6 +69,32 @@ Switch profile under **Settings → Region & Location → Style** (the
 Switching profiles clears the LRU cache, so the first frame after a
 switch shows placeholders until tiles come back from SD.
 
+### Enabled styles (Carto-only by default)
+
+The badge ships with **Carto** as the only enabled style, because that's the
+single tileset rendered onto the SD card. The Settings "Style" row therefore
+shows just `Carto` and the `W`/`S` cycle is a no-op until you enable more.
+
+To offer additional styles (CyclOSM, OpenTopoMap, or the legacy Ripple Europe
+tiles), edit the one-line enabled set in
+[`components/mc_net/map.c`](../../components/mc_net/map.c):
+
+```c
+// Carto-only:
+static const map_profile_t MAP_PROFILES_ENABLED[] = {MAP_PROFILE_CARTO};
+
+// e.g. Carto + Cycle + Topo (cycle order follows this list):
+static const map_profile_t MAP_PROFILES_ENABLED[] = {
+    MAP_PROFILE_CARTO, MAP_PROFILE_CYCLE, MAP_PROFILE_TOPO};
+```
+
+The first entry is the power-on default and the value the NVS loader clamps an
+unknown stored style to. Each enabled style needs matching tiles copied to
+`/sd/maps/<style>/tiles/<z>/<x>/<y>.png` (see the table below) — an enabled
+style with no tiles just renders grey. No other code changes are required; the
+picker, the default, and the NVS clamp all read this list. (This section is
+mirrored to the project wiki "Map styles" page.)
+
 Disk usage scales by 4× per zoom level. For the Netherlands bounding
 box (lon 3.10–7.25, lat 50.75–53.70) at one profile:
 
@@ -93,7 +119,8 @@ time if you need to fit four profiles on a 32 GB SD.
   When locked the crosshair stays at the GPS fix and the map follows
   you; when unlocked you can pan freely without the next GPS push
   dragging the view away.
-- **Profile** — pick Ripple / Carto / Cycle / Topo in Settings.
+- **Profile** — Carto by default; enable Ripple / Cycle / Topo via the one-line
+  `MAP_PROFILES_ENABLED[]` list (see "Enabled styles" above), then pick in Settings.
 
 ### Node pins
 

@@ -89,9 +89,25 @@ static void cat_icon_brightness(int cx, int cy, int sz, pax_col_t col) {
     }
 }
 
+// Toolbox: a tool chest — body box with a lid line and a top handle arch.
+static void cat_icon_toolbox(int cx, int cy, int sz, pax_col_t col) {
+    int half = sz / 2;
+    int bx0 = cx - half, bx1 = cx + half;
+    int by0 = cy - half / 5, by1 = cy + half;
+    pax_simple_line(&fb, col, bx0, by0, bx1, by0);                      // body: top
+    pax_simple_line(&fb, col, bx1, by0, bx1, by1);                      // body: right
+    pax_simple_line(&fb, col, bx1, by1, bx0, by1);                      // body: bottom
+    pax_simple_line(&fb, col, bx0, by1, bx0, by0);                      // body: left
+    pax_simple_line(&fb, col, bx0, cy + half / 4, bx1, cy + half / 4);  // lid seam
+    int hx0 = cx - half / 3, hx1 = cx + half / 3, hy = cy - half / 2;
+    pax_simple_line(&fb, col, hx0, by0, hx0, hy);  // handle: left post
+    pax_simple_line(&fb, col, hx1, by0, hx1, hy);  // handle: right post
+    pax_simple_line(&fb, col, hx0, hy, hx1, hy);   // handle: top
+}
+
 // Index order MUST match s_categories[] in render_settings.c.
 const cat_icon_fn settings_category_icons[] = {
-    cat_icon_identity, cat_icon_regulatory, cat_icon_radio,      cat_icon_advert,
-    cat_icon_network,  cat_icon_region,     cat_icon_brightness, cat_icon_sounds,
+    cat_icon_identity, cat_icon_regulatory, cat_icon_radio,  cat_icon_advert,  cat_icon_network,
+    cat_icon_region,   cat_icon_brightness, cat_icon_sounds, cat_icon_toolbox,
 };
 const int settings_category_icons_count = (int)(sizeof(settings_category_icons) / sizeof(settings_category_icons[0]));

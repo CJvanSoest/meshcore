@@ -12,6 +12,10 @@ internal pull-ups, default frequency, no auto-format.
 /sd
 └── meshcore/
     ├── channel.bin                       ← public-channel history
+    ├── coverage/
+    │   └── cov_<unix>.csv                ← Toolbox coverage-test session log
+    ├── log/
+    │   └── pkt_<unix>.csv                ← Toolbox packet-log export (E key)
     └── dm/
         ├── a3f2c91a8b7e4f5d.bin          ← per-peer DM log (16 hex chars
         ├── 7e29c84d1b0f6a52.bin             = first 8 bytes of peer pubkey)
@@ -100,10 +104,52 @@ the corruption and only the bad records (and everything after them) are
 lost on the next load. This is intentional — we avoid destroying readable
 history on a single bit flip.
 
+## Coverage-test logs (Toolbox)
+
+The Toolbox coverage test writes one **plaintext CSV per session** under
+`/sd/meshcore/coverage/cov_<unix>.csv` (the filename timestamp comes from the C6
+RTC). Starting a new session (the `R` key, or re-entering the tool) opens a new
+file with a header row; every ping attempt appends one row:
+
+```
+ts_unix,repeater,pubkey,lat_e6,lon_e6,attempt,reachable,rtt_ms,uplink_snr_db,downlink_snr_db
+```
+
+Unlike chat history these rows are **not encrypted**: they carry no message
+content, only reachability telemetry (repeater name, 4-byte pubkey prefix, GPS
+position when the fix is valid, attempt index, reachable 0/1, round-trip ms, and
+the uplink/downlink SNR the TRACE returned). Owned by `mc_domain/coverage.c`,
+which `mkdir`s the directory and appends with the same `fopen("ab")` pattern;
+writing is a no-op when no card is mounted.
+
+## Packet-log exports (Toolbox)
+
+The Toolbox packet log (`VIEW_TOOLBOX_LOG`) exports the in-RAM diagnostics ring
+to a **plaintext CSV** on the `E` key (`S` is the row-scroll key in that view).
+Each press snapshots the ring — newest frame first — and writes one fresh file
+`/sd/meshcore/log/pkt_<unix>.csv` (filename timestamp from the C6 RTC). A toast
+reports the path and frame count, or the failure (no card / low memory). The
+header and columns are:
+
+```
+ts_ms,dir,type,route,rssi_dbm,snr_db,len,raw_hex
+```
+
+`ts_ms` is capture time since boot, `dir` is `RX`/`TX`, `type`/`route` are the
+decoded payload + route names (`?` if the header did not parse), `rssi_dbm` and
+`snr_db` are blank on TX rows and on RX frames with no measurement, `len` is the
+true on-air length, and `raw_hex` is the captured leading bytes (up to
+`DIAG_RAW_MAX`) as lower-case hex. The row is formatted by the pure
+`diag_csv_row()` in `mc_proto/diag_decode.c` (host-tested); the UI side in
+`mc_ui/render_toolbox_log.c` `mkdir`s the directory and writes the file, a no-op
+when no card is mounted. These rows carry on-air frame bytes only, no decrypted
+message content.
+
 ## Locking
 
 A single `s_mutex` (FreeRTOS binary semaphore) serialises all SD access
 within `history.c`. Holds are kept short (one append or one full load).
+`coverage.c` has its own mutex for its result table + log writes.
 
 ## Disabled / missing SD
 

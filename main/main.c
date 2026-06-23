@@ -61,6 +61,8 @@
 #endif
 
 #include "app_config.h"
+#include "coverage.h"
+#include "diag.h"
 #include "emoji.h"
 #include "gps_task.h"
 #include "history.h"
@@ -142,6 +144,13 @@ uint32_t  toast_start_ms              = 0;
 bool      settings_category_list_mode = true;  // start in list when entering Settings
 int       settings_category_cursor    = 0;
 int       settings_category_active    = 0;
+int       toolbox_cursor              = 0;
+int       toolbox_log_scroll          = 0;
+bool      toolbox_log_paused          = false;
+bool      toolbox_log_dissect         = false;
+int       toolbox_log_cursor          = 0;
+bool      toolbox_log_detail          = false;
+int       toolbox_coverage_cursor     = 0;
 
 // Display blanking: F3 (yellow square) toggles the MIPI backlight off so
 // the badge is silent in the pocket while keyboard input + chat LEDs remain
@@ -355,6 +364,8 @@ void app_main(void) {
     load_sound_prefs();
     sounds_init();
     contacts_load();
+    diag_init();      // Toolbox packet-log ring — before the radio tasks start capturing
+    coverage_init();  // Toolbox coverage-test result store + ACK matcher
 
     DIAG(COL_GRAY, "SD mount...");
     history_init(node_prv_key);

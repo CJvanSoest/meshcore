@@ -8,6 +8,8 @@ idf_component_register(
         "meshcore/payload/grp_txt.c"
         "region_limits.c"
         "advert_sign.c"
+        "diag_decode.c"
+        "trace.c"
         "gps_parser.c"
         "companion-radio-protocol/mc_companion_command_parser.c"
         "companion-radio-protocol/mc_companion_serial_interface.c"

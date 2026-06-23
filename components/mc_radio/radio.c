@@ -4,6 +4,7 @@
 
 #include "radio.h"
 #include <string.h>
+#include "diag.h"
 #include "esp_log.h"
 #include "freertos/task.h"
 #include "mc_crypto.h"
@@ -14,16 +15,27 @@
 static const char* TAG = "radio";
 
 // Upstream MeshCore region scope: when our region_scope NVS string is non-empty,
-// we send packets as ROUTE_TYPE_TRANSPORT_FLOOD with a 4-byte transport_codes
-// prefix. transport_codes[0] = HMAC-SHA256(SHA256(region_name)[0..15],
-// type || payload)[0..1]. Receivers/repeaters that know the same region key
-// can verify the code and route within-scope. transport_codes[1] is reserved
-// for sender's "home" region (upstream marks it REVISIT — left zero for now).
+// we add a 4-byte transport_codes prefix. transport_codes[0] =
+// HMAC-SHA256(SHA256(region_name)[0..15], type || payload)[0..1]. Receivers/
+// repeaters that know the same region key can verify the code and route
+// within-scope. transport_codes[1] is reserved for sender's "home" region
+// (upstream marks it REVISIT — left zero for now).
+//
+// A TRACE is the exception: upstream sends it as plain ROUTE_TYPE_DIRECT with
+// NO transport codes (companion CMD_SEND_TRACE_PATH -> Mesh::sendDirect, the
+// non-scoped overload). Repeaters region-gate only FLOOD packets — their
+// allowPacketForward checks the transport region solely under isRouteFlood(),
+// and forwards any direct packet regardless of scope — so a plain-direct trace
+// is forwarded and echoes back, while wrapping it in a transport route (FLOOD
+// *or* DIRECT) broke the round-trip. So leave a TRACE exactly as send_trace
+// built it (DIRECT, no codes) and only scope the flood traffic.
 //
 // Reference: helpers/TransportKeyStore.cpp::calcTransportCode + MyMesh.cpp
-// (examples/companion_radio) sendFloodScoped path.
+// (examples/companion_radio) sendFloodScoped path; examples/simple_repeater
+// MyMesh::allowPacketForward (region check is flood-only).
 static void apply_region_scope(meshcore_message_t* msg) {
-    if (!region_scope[0]) return;  // no scope: stay on plain FLOOD
+    if (!region_scope[0]) return;                          // no scope: stay on plain FLOOD / DIRECT
+    if (msg->type == MESHCORE_PAYLOAD_TYPE_TRACE) return;  // trace stays plain DIRECT, unscoped (upstream)
     msg->route = MESHCORE_ROUTE_TYPE_TRANSPORT_FLOOD;
     msg->transport_codes[0] =
         mc_crypto_region_transport_code(region_scope, (uint8_t)msg->type, msg->payload, msg->payload_length);
@@ -238,7 +250,12 @@ bool radio_tx_message(meshcore_message_t* msg) {
         return false;
     }
     bool ok = (lora_send_packet(&lora_handle, &pkt) == ESP_OK);
-    if (ok) dc_record_tx(airtime_ms);
+    if (ok) {
+        dc_record_tx(airtime_ms);
+        // Toolbox packet log: record the frame we actually put on air. RSSI/SNR
+        // are receiver-side measurements, so both are the "absent" sentinel here.
+        diag_capture(DIAG_DIR_TX, pkt_data, pkt_len, DIAG_RSSI_NONE, DIAG_RSSI_NONE);
+    }
     return ok;
 }
 
@@ -274,9 +291,17 @@ static void lora_rx_task(void* arg) {
             xSemaphoreGive(rx_mutex);
         }
 
+        // Toolbox packet log: capture every received frame (before dedup, so
+        // flood retransmits are still visible to the sniffer).
+        diag_capture(DIAG_DIR_RX, pkt.data, (uint8_t)pkt.length, (int8_t)rssi_dbm, pkt.stats.snr_pkt_raw);
+
         meshcore_message_t mc_msg;
         if (meshcore_deserialize(pkt.data, pkt.length, &mc_msg) < 0) continue;
-        if (rx_is_duplicate(mc_msg.payload, mc_msg.payload_length)) {
+        // TRACE is exempt from dedup: its payload (tag + hop hashes) is constant
+        // as it travels while only the per-hop SNR path field changes, so the
+        // payload-fingerprint dedup would drop the returning probe. Upstream
+        // folds path_len into the packet hash for the same reason.
+        if (mc_msg.type != MESHCORE_PAYLOAD_TYPE_TRACE && rx_is_duplicate(mc_msg.payload, mc_msg.payload_length)) {
             ESP_LOGI(TAG, "Dedup: drop flood retransmit (type=%d)", mc_msg.type);
             continue;
         }

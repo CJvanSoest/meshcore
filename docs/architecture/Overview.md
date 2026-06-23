@@ -74,6 +74,7 @@ ones:
 | `nodes_save` | `nodes_start_save_task` | Saves the node table to SD when dirty (~30 s) |
 | `map_loader` | `map_loader_init` | Background SD → PNG → RGB565 tile decode |
 | `sound_play` | `sounds_play_*` | One-shot tone/WAV playback |
+| `cov_ping` | `coverage_ping_start` | Transient: pings a repeater 3x for the Toolbox coverage test, then exits |
 | `wifi-ka-sup` | `wifi_keepalive_supervisor_start` | ICMP keepalive on link up/down |
 | NimBLE host | `ble_companion_init` | NimBLE GATT stack (when BLE is enabled) |
 

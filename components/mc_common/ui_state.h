@@ -131,6 +131,16 @@ extern bool settings_category_list_mode;
 extern int  settings_category_cursor;
 extern int  settings_category_active;
 
+// Toolbox launcher + packet-log view state. cursor selects a sub-tool on the
+// launcher; the log view scrolls a frozen-or-live window of captured frames.
+extern int  toolbox_cursor;           // selected sub-tool on the Toolbox launcher
+extern int  toolbox_log_scroll;       // rows scrolled back from the newest frame
+extern bool toolbox_log_paused;       // freeze the displayed window (capture continues)
+extern bool toolbox_log_dissect;      // false = hex dump, true = field dissector
+extern int  toolbox_log_cursor;       // selected entry in the packet log (newest-first index)
+extern bool toolbox_log_detail;       // showing the full breakdown of the selected entry
+extern int  toolbox_coverage_cursor;  // selected repeater in the coverage test
+
 // Short on-screen status toast (e.g. "Flood advert sent"). The string is empty
 // when no toast is active. toast_start_ms is the tick-time the toast became
 // visible; render_home auto-clears the text after ~2 seconds.

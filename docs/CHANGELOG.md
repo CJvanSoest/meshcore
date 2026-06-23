@@ -21,6 +21,27 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+### Added
+- **Toolbox** — a new tile under Settings opening a launcher for LoRa
+  diagnostic tools. First tool: **Packet Log**, a live hex-dump / dissector
+  view of received and transmitted radio frames, with pause, scroll and clear
+  (#3).
+- **Toolbox → Coverage Test** — probe discovered repeaters 3x with an upstream
+  MeshCore TRACE and colour-code reachability (green/orange/red), logging every
+  GPS-stamped attempt plus uplink/downlink SNR to one CSV per session on the SD
+  card (#3).
+- **Toolbox → Packet Log → export to SD** — the `E` key dumps the capture ring
+  to a plaintext CSV `/sd/meshcore/log/pkt_<unix>.csv`
+  (`ts_ms,dir,type,route,rssi_dbm,snr_db,len,raw_hex`), newest frame first, for
+  off-badge analysis. Row formatting is the host-tested pure `diag_csv_row()`.
+
+### Changed
+- **Map styles default to Carto-only.** The Settings "Style" picker now cycles
+  only the styles listed in `MAP_PROFILES_ENABLED[]` (Carto by default), and the
+  NVS loader clamps a stored-but-disabled style to that default. Enable CyclOSM /
+  OpenTopoMap / Ripple by editing the one-line list (see Maps.md "Enabled
+  styles"); no other code change needed.
+
 ## [2.6.0] - 2026-06-19
 
 ### Changed

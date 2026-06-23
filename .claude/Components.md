@@ -29,7 +29,7 @@ pure parts, which is what keeps them host-testable.
 
 | Component | REQUIRES (public) | PRIV_REQUIRES (private) |
 |---|---|---|
-| `mc_common` | (none) | (none) |
+| `mc_common` | (none) | freertos, esp_hw_support |
 | `mc_proto` | (none) | (none) |
 | `vendor` | (none) | mbedtls, esp_hw_support |
 | `mc_io` | (none) | mc_proto, nvs_flash, esp_driver_i2c, esp_timer, esp_hw_support, mbedtls |
@@ -66,7 +66,11 @@ region scope and config persistence, but it never builds a MeshCore payload.
 ### `mc_common` (L0)
 Foundation defs shared everywhere: `app_config.h` (version labels, board
 config), colour palette, small shared types. No logic worth a bug. If you add a
-constant used by two or more layers, it may belong here.
+constant used by two or more layers, it may belong here. Also holds `diag.c`,
+the diagnostics capture ring (Toolbox packet log): pure transport-log storage
+with its own mutex, kept at L0 so the radio tap (`mc_radio`) and the UI both
+reach it downward instead of through `mc_domain`. Its display decoder is the
+pure `mc_proto/diag_decode`.
 
 ### `mc_proto` (L2, pure)
 Two parts in one component:
@@ -75,8 +79,10 @@ Two parts in one component:
   free of ESP-IDF / pax / BSP / L1 headers.
 - Root holds **first-party pure helpers**: `region_limits.c` (regulatory
   sub-bands, ERP/EIRP power, duty-cycle budget), `gps_parser.c` (NMEA),
-  `advert_sign.c` (the signable-byte range), `companion-radio-protocol/` (the
-  P4<->C6 command parser).
+  `advert_sign.c` (the signable-byte range), `diag_decode.c` (the Toolbox
+  packet-log frame dissector, kept here so the UI never includes `meshcore/`),
+  `trace.c` (the TRACE reachability-probe payload layout used by the coverage
+  test), `companion-radio-protocol/` (the P4<->C6 command parser).
 All of it is host-tested. Do not pull a platform header in here.
 
 ### `vendor` (leaf)
@@ -95,7 +101,9 @@ failed load.
 Persisted state and app data: `settings_nvs.c` (all settings + LoRa config),
 `nodes.c` (node_list + the dirty-flag save task), `contacts.c`, `chat.c`
 (message history + ACK matching), `channels.c`, `identity.c` (keypair, the boot
-crypto self-test, time sync flags), `sounds.c`. **`node_mutex` protects both
+crypto self-test, time sync flags), `sounds.c`, `coverage.c` (the Toolbox
+coverage-test result table, repeater collector, SD CSV log and a chat-ring-free
+ACK matcher; the ping task itself lives in `mc_rx`). **`node_mutex` protects both
 `node_list` and `contacts`.** Bounds on the fixed arrays matter here.
 
 ### `mc_crypto` (L2)
@@ -121,14 +129,18 @@ prone parts.
 the `save_*` handlers into a field-dispatch table by address (this is why
 cppcheck thinks they are unused, see [Pitfalls.md](Pitfalls.md)). Selection
 cursors versus shrinking lists are the classic bug here. Must not include
-`meshcore/`.
+`meshcore/` — the Toolbox views (`render_toolbox.c` launcher,
+`render_toolbox_log.c` packet log) read the `mc_common/diag` ring and the pure
+`mc_proto/diag_decode` for display rather than speaking the wire protocol.
 
 ### `mc_rx` (L5)
 The MeshCore application brain. RX handlers (`rx_handle_advert/grp_txt/dm/path`)
 decrypt, write domain state, notify, and ACK. TX composers (`send_advert*`,
 `send_dm_message`, `send_chat_message`, the advert task) build payloads and call
-`radio_tx_message`. The RX sink is registered with `radio_set_rx_sink` in
-`mc_rx_init`. This is where most protocol logic and most of the real bugs live.
+`radio_tx_message`. `coverage_ping_start` runs a transient `cov_ping` task on
+the same DM primitive for the Toolbox coverage test, feeding `mc_domain/coverage`.
+The RX sink is registered with `radio_set_rx_sink` in `mc_rx_init`. This is where
+most protocol logic and most of the real bugs live.
 
 ### `main`
 `main.c` only: the cold-start sequence and the event loop. No first-party logic

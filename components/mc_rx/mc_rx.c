@@ -10,6 +10,7 @@
 
 #include "mc_rx.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include "advert_sign.h"
@@ -17,8 +18,10 @@
 #include "channels.h"
 #include "chat.h"
 #include "contacts.h"
+#include "coverage.h"
 #include "ed25519.h"
 #include "esp_log.h"
+#include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -34,6 +37,7 @@
 #include "radio.h"
 #include "settings_nvs.h"
 #include "sounds.h"
+#include "trace.h"
 #include "ui_state.h"
 
 static const char* TAG = "mc_rx";
@@ -397,6 +401,18 @@ static void rx_handle_path(const meshcore_message_t* msg) {
     }
 }
 
+// Incoming TRACE. As the originator of a coverage ping we recognise our trace by
+// its tag: a TRACE carrying our armed tag means it traversed the repeater and
+// came back. The first path byte is the SNR the repeater measured receiving from
+// us (uplink); meta->snr_db_x4 is our SNR of the returning frame (downlink).
+static void rx_handle_trace(const meshcore_message_t* msg, const radio_rx_meta_t* meta) {
+    uint32_t tag = 0;
+    if (!meshcore_trace_parse(msg->payload, msg->payload_length, &tag, NULL, NULL, NULL, NULL)) return;
+    int8_t uplink   = (msg->path_length >= 1) ? (int8_t)msg->path[0] : COVERAGE_SNR_NONE;
+    int8_t downlink = meta->snr_db_x4;
+    coverage_note_tag(tag, uplink, downlink);
+}
+
 static void mc_rx_dispatch(const meshcore_message_t* msg, const radio_rx_meta_t* meta) {
     switch (msg->type) {
         case MESHCORE_PAYLOAD_TYPE_ADVERT:
@@ -410,6 +426,9 @@ static void mc_rx_dispatch(const meshcore_message_t* msg, const radio_rx_meta_t*
             break;
         case MESHCORE_PAYLOAD_TYPE_PATH:
             rx_handle_path(msg);
+            break;
+        case MESHCORE_PAYLOAD_TYPE_TRACE:
+            rx_handle_trace(msg, meta);
             break;
         default:
             break;
@@ -620,6 +639,107 @@ bool send_dm_message(const char* text, const uint8_t* target_pub, uint8_t ack_cr
     memcpy(&msg.payload[4], cipher, padded);
     msg.payload_length = (uint8_t)(4 + padded);
     return radio_tx_message(&msg);
+}
+
+// ── Coverage test: ping a repeater N times and record reachability ───────────
+// The "ping" is an upstream MeshCore TRACE (PAYLOAD_TYPE_TRACE) sent DIRECT with
+// the repeater hash as its one-hop path. The repeater stamps its RX SNR and
+// rebroadcasts; the returning frame carries our random tag, so we recognise it
+// in rx_handle_trace and record reachability + per-direction SNR — all without
+// an admin login, which a plain DM would need (see issue #25). Runs on its own
+// task so the UI never blocks across the 3x10 s schedule.
+
+// Send a TRACE to target_pub's hash with the given tag. DIRECT-routed, path
+// empty on the wire (the hop hash rides inside the payload, per the upstream
+// TRACE layout); the per-hop SNR path accumulates as it travels.
+bool send_trace(const uint8_t* target_pub, uint32_t tag) {
+    if (!c6_available || target_pub == NULL) return false;
+
+    uint8_t hs      = path_hash_size ? path_hash_size : 1;
+    uint8_t path_sz = meshcore_trace_path_sz(hs);
+    uint8_t hb      = (uint8_t)(1 << path_sz);  // hop-hash bytes (1/2/4)
+
+    uint8_t payload[MESHCORE_TRACE_HDR_LEN + 4];
+    uint8_t plen = meshcore_trace_build_payload(tag, 0, path_sz, target_pub, hb, payload);
+    if (plen == 0) return false;
+
+    meshcore_message_t msg = {0};
+    msg.type               = MESHCORE_PAYLOAD_TYPE_TRACE;
+    msg.route              = MESHCORE_ROUTE_TYPE_DIRECT;
+    msg.version            = 0;
+    // The wire path field of a TRACE is the per-hop SNR accumulator: one *byte*
+    // per hop, so its path-control size must be 1 (size bits 0), independent of
+    // the hop-hash size (which rides in the payload flags as path_sz). Encoding
+    // bytes_per_hop = hs here would set the control byte's size bits (e.g. 0x40
+    // for hs=2); a repeater then reads path_len = 0x40 = 64 and computes
+    // offset = 64 << path_sz, which overshoots the hop list, so it treats the
+    // probe as already-completed (onTraceRecv) instead of forwarding it -> no
+    // echo. Upstream sends path_len = 0 (control byte 0x00); match that.
+    msg.bytes_per_hop      = 1;
+    msg.path_length        = 0;
+    memcpy(msg.payload, payload, plen);
+    msg.payload_length = plen;
+    return radio_tx_message(&msg);
+}
+
+typedef struct {
+    uint8_t pub[32];
+    char    name[MESHCORE_MAX_NAME_SIZE + 1];
+    int32_t lat_e6;
+    int32_t lon_e6;
+    bool    gps_valid;
+} coverage_ping_arg_t;
+
+static void coverage_ping_task(void* arg) {
+    coverage_ping_arg_t* a = (coverage_ping_arg_t*)arg;
+    coverage_set_testing(a->pub);
+
+    for (int i = 0; i < COVERAGE_PINGS; i++) {
+        uint32_t   tag    = esp_random();
+        TickType_t t0     = xTaskGetTickCount();
+        bool       reach  = false;
+        uint32_t   rtt_ms = 0;
+        int8_t     up = COVERAGE_SNR_NONE, down = COVERAGE_SNR_NONE;
+
+        if (send_trace(a->pub, tag)) {
+            coverage_arm_tag(tag);
+            // Poll for the returning TRACE up to ~8 s.
+            for (int waited = 0; waited < 8000; waited += 100) {
+                if (coverage_take_tag(&up, &down)) {
+                    reach  = true;
+                    rtt_ms = (uint32_t)((xTaskGetTickCount() - t0) * portTICK_PERIOD_MS);
+                    break;
+                }
+                vTaskDelay(pdMS_TO_TICKS(100));
+            }
+        }
+
+        coverage_record(a->pub, reach, down);
+        coverage_log(a->pub, a->name, a->lat_e6, a->lon_e6, a->gps_valid, i, reach, rtt_ms, up, down);
+
+        if (i < COVERAGE_PINGS - 1) vTaskDelay(pdMS_TO_TICKS(10000));
+    }
+
+    coverage_set_busy(false);
+    free(a);
+    vTaskDelete(NULL);
+}
+
+void coverage_ping_start(const uint8_t* pub, const char* name, int32_t lat_e6, int32_t lon_e6, bool gps_valid) {
+    if (pub == NULL || coverage_busy()) return;
+    coverage_ping_arg_t* a = calloc(1, sizeof(*a));
+    if (a == NULL) return;
+    memcpy(a->pub, pub, 32);
+    if (name) strncpy(a->name, name, sizeof(a->name) - 1);
+    a->lat_e6    = lat_e6;
+    a->lon_e6    = lon_e6;
+    a->gps_valid = gps_valid;
+
+    coverage_set_busy(true);  // reflect immediately so the UI can't double-start
+    if (xTaskCreate(coverage_ping_task, "cov_ping", 4096, a, 3, NULL) != pdPASS) {
+        coverage_set_busy(false);
+        free(a);
+    }
 }
 
 // ── Public-channel TX (GRP_TXT) ──────────────────────────────────────────────

@@ -39,6 +39,10 @@ typedef struct {
     bool        hidden_from_grid;  // true = drilldown reachable, but tile not on the Settings grid
 } settings_category_t;
 
+// An "external" category opens a top-level view (the Toolbox launcher) instead
+// of a field-list drilldown. It is marked by first == FIELD_COUNT so the
+// bounds/lookup math never maps a real field to it; see settings_category_is_external.
+
 static const settings_category_t s_categories[] = {
     {FIELD_RADIO_FW, "Identity", "Owner name, advert name, radio firmware", false},
     {FIELD_COUNTRY, "Regulatory", "Country, antenna gain, duty cycle", false},
@@ -50,6 +54,8 @@ static const settings_category_t s_categories[] = {
     {FIELD_REGION_SCOPE, "Region &\nLocation", "Region scope, GPS coordinates", false},
     {FIELD_DISPLAY_BL, "Brightness", "Display, keyboard, RGB LED, auto-blank", false},
     {FIELD_SOUND_VOLUME, "Sounds", "Volume + per-event toggles + previews", false},
+    // External tile: opens the Toolbox launcher rather than a field drilldown.
+    {FIELD_COUNT, "Toolbox", "Packet log + coverage test", false},
 };
 #define S_CATEGORY_COUNT ((int)(sizeof(s_categories) / sizeof(s_categories[0])))
 
@@ -97,6 +103,13 @@ void settings_category_bounds(int cat, int* first_field, int* last_field) {
 const char* settings_category_title(int cat) {
     if (cat < 0 || cat >= S_CATEGORY_COUNT) return "Settings";
     return s_categories[cat].title;
+}
+
+bool settings_category_is_external(int cat, app_view_t* out_view) {
+    if (cat < 0 || cat >= S_CATEGORY_COUNT) return false;
+    if (s_categories[cat].first != FIELD_COUNT) return false;  // sentinel: no field range
+    if (out_view) *out_view = VIEW_TOOLBOX;
+    return true;
 }
 
 int settings_category_for_field(int f) {

@@ -13,10 +13,13 @@
 #include "channels.h"
 #include "chat.h"
 #include "contacts.h"
+#include "coverage.h"
+#include "diag.h"
 #include "emoji.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "gps.h"
+#include "gps_task.h"
 #include "history.h"
 #include "http_server.h"
 #include "identity.h"
@@ -343,13 +346,11 @@ void field_adjust(int field, int delta) {
             gps_custom_distance_m = stops[idx];
             break;
         }
-        case FIELD_MAP_PROFILE: {
-            int       idx = (int)map_profile;
-            const int n   = (int)MAP_PROFILE_COUNT;
-            idx           = ((idx + delta) % n + n) % n;
-            map_profile_set((map_profile_t)idx);
+        case FIELD_MAP_PROFILE:
+            // Cycle only the enabled styles (Carto-only on shipping SD, so this
+            // is a no-op until more are turned on in map.c).
+            map_profile_set(map_profile_cycle(map_profile, delta));
             break;
-        }
         default:
             break;
     }
@@ -680,6 +681,13 @@ static void nav_settings(uint32_t key) {
             // first field of the target category.
             int real = settings_visible_category_real_idx(settings_category_cursor);
             if (real < 0) real = 0;
+            // External tiles (Toolbox) switch straight to a top-level view
+            // instead of drilling into a field list.
+            app_view_t ext_view;
+            if (settings_category_is_external(real, &ext_view)) {
+                current_view = ext_view;
+                return;
+            }
             settings_category_active    = real;
             settings_category_list_mode = false;
             int first, last;
@@ -752,6 +760,111 @@ static void nav_settings(uint32_t key) {
             edit_mode = false;
             dirty     = false;
         }
+    }
+}
+
+// ── Toolbox launcher + packet-log input ─────────────────────────────────────
+static void open_toolbox_tile(void) {
+    if (!toolbox_tile_enabled(toolbox_cursor)) return;
+    app_view_t t = toolbox_tile_target(toolbox_cursor);
+    if (t == VIEW_TOOLBOX_LOG) {
+        toolbox_log_scroll = 0;
+        toolbox_log_cursor = 0;
+        toolbox_log_detail = false;
+        toolbox_log_paused = false;
+    } else if (t == VIEW_TOOLBOX_COVERAGE) {
+        toolbox_coverage_cursor = 0;
+        coverage_session_reset();  // fresh SD log + cleared results for this area test
+    }
+    current_view = t;
+}
+
+// Ping the repeater under the coverage cursor (3x, GPS-stamped). Re-collects so
+// it indexes the same list the view rendered; no-op while a run is in flight.
+static void coverage_ping_selected(void) {
+    if (coverage_busy()) return;
+    coverage_repeater_t reps[COVERAGE_MAX_RESULTS];
+    int                 n = coverage_collect_repeaters(reps, COVERAGE_MAX_RESULTS);
+    if (toolbox_coverage_cursor < 0 || toolbox_coverage_cursor >= n) return;
+    coverage_repeater_t* r = &reps[toolbox_coverage_cursor];
+    coverage_ping_start(r->pub, r->name, gps_live_lat_e6, gps_live_lon_e6, gps_live_valid);
+}
+
+static void nav_toolbox_coverage(uint32_t key) {
+    if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
+        if (toolbox_coverage_cursor > 0) toolbox_coverage_cursor--;
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
+        toolbox_coverage_cursor++;  // render clamps to the repeater count
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
+        coverage_ping_selected();
+    }
+}
+
+static void key_toolbox_coverage(char c) {
+    if (c == 'w' || c == 'W') {
+        if (toolbox_coverage_cursor > 0) toolbox_coverage_cursor--;
+    } else if (c == 's' || c == 'S') {
+        toolbox_coverage_cursor++;
+    } else if (c == '\r' || c == '\n') {
+        coverage_ping_selected();
+    } else if (c == 'r' || c == 'R') {
+        coverage_session_reset();
+        toolbox_coverage_cursor = 0;
+    }
+}
+
+static void nav_toolbox(uint32_t key) {
+    int n = toolbox_tile_count();
+    if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
+        if (toolbox_cursor > 0) toolbox_cursor--;
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
+        if (toolbox_cursor < n - 1) toolbox_cursor++;
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
+        open_toolbox_tile();
+    }
+}
+
+static void nav_toolbox_log(uint32_t key) {
+    if (toolbox_log_detail) return;  // detail view is read-only; ESC closes it
+    if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
+        if (toolbox_log_cursor > 0) toolbox_log_cursor--;
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
+        toolbox_log_cursor++;  // render clamps to the available range
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
+        toolbox_log_detail = true;  // open the full breakdown of the selected entry
+    }
+}
+
+static void key_toolbox(char c) {
+    if (c == 'w' || c == 'W') {
+        if (toolbox_cursor > 0) toolbox_cursor--;
+    } else if (c == 's' || c == 'S') {
+        if (toolbox_cursor < toolbox_tile_count() - 1) toolbox_cursor++;
+    } else if (c == '\r' || c == '\n') {
+        open_toolbox_tile();
+    }
+}
+
+static void key_toolbox_log(char c) {
+    if (toolbox_log_detail) return;  // read-only; ESC closes it
+    if (c == 'w' || c == 'W') {
+        if (toolbox_log_cursor > 0) toolbox_log_cursor--;
+    } else if (c == 's' || c == 'S') {
+        toolbox_log_cursor++;
+    } else if (c == '\r' || c == '\n') {
+        toolbox_log_detail = true;
+    } else if (c == 'h' || c == 'H') {
+        toolbox_log_dissect = !toolbox_log_dissect;
+    } else if (c == 'p' || c == 'P') {
+        toolbox_log_paused = !toolbox_log_paused;
+    } else if (c == 'c' || c == 'C') {
+        diag_clear();
+        toolbox_log_cursor = 0;
+        toolbox_log_scroll = 0;
+    } else if (c == 'e' || c == 'E') {
+        // Export the ring to /sd/meshcore/log/pkt_<unix>.csv (S is the scroll
+        // key in this view, so the SD dump lives on E for "Export").
+        toolbox_log_export_sd();
     }
 }
 
@@ -851,6 +964,14 @@ void handle_nav(uint32_t key) {
             // category list; second ESC then falls through to HOME.
             settings_category_list_mode = true;
             settings_scroll             = 0;
+        } else if (current_view == VIEW_TOOLBOX_LOG && toolbox_log_detail) {
+            toolbox_log_detail = false;  // first ESC closes the detail breakdown
+        } else if (current_view == VIEW_TOOLBOX_LOG || current_view == VIEW_TOOLBOX_COVERAGE) {
+            current_view = VIEW_TOOLBOX;  // back to the launcher
+        } else if (current_view == VIEW_TOOLBOX) {
+            // Toolbox was reached from the Settings grid — return there.
+            current_view                = VIEW_SETTINGS;
+            settings_category_list_mode = true;
         } else if (current_view != VIEW_HOME) {
             // ESC from any non-modal view returns to the home tile-grid before
             // bouncing back to the launcher (so home becomes the safe "back").
@@ -888,6 +1009,15 @@ void handle_nav(uint32_t key) {
                     map_state_pan(-1, 0);
                 else if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT)
                     map_state_pan(1, 0);
+                break;
+            case VIEW_TOOLBOX:
+                nav_toolbox(key);
+                break;
+            case VIEW_TOOLBOX_LOG:
+                nav_toolbox_log(key);
+                break;
+            case VIEW_TOOLBOX_COVERAGE:
+                nav_toolbox_coverage(key);
                 break;
             default:
                 break;
@@ -1025,6 +1155,12 @@ static void key_settings(char c) {
             // the wrong category for every slot at or after a hidden one.
             int real = settings_visible_category_real_idx(settings_category_cursor);
             if (real < 0) real = 0;
+            // External tiles (Toolbox) switch straight to a top-level view.
+            app_view_t ext_view;
+            if (settings_category_is_external(real, &ext_view)) {
+                current_view = ext_view;
+                return;
+            }
             settings_category_active    = real;
             settings_category_list_mode = false;
             int first, last;
@@ -1470,6 +1606,13 @@ void handle_key(char c) {
         } else if (current_view == VIEW_SETTINGS && !settings_category_list_mode) {
             settings_category_list_mode = true;
             settings_scroll             = 0;
+        } else if (current_view == VIEW_TOOLBOX_LOG && toolbox_log_detail) {
+            toolbox_log_detail = false;
+        } else if (current_view == VIEW_TOOLBOX_LOG || current_view == VIEW_TOOLBOX_COVERAGE) {
+            current_view = VIEW_TOOLBOX;
+        } else if (current_view == VIEW_TOOLBOX) {
+            current_view                = VIEW_SETTINGS;
+            settings_category_list_mode = true;
         } else if (current_view != VIEW_HOME) {
             current_view = VIEW_HOME;
         } else {
@@ -1498,6 +1641,15 @@ void handle_key(char c) {
             break;
         case VIEW_MAP:
             key_map(c);
+            break;
+        case VIEW_TOOLBOX:
+            key_toolbox(c);
+            break;
+        case VIEW_TOOLBOX_LOG:
+            key_toolbox_log(c);
+            break;
+        case VIEW_TOOLBOX_COVERAGE:
+            key_toolbox_coverage(c);
             break;
         default:
             break;
