@@ -1,10 +1,10 @@
-# Toolbox: Coverage Test (design + 2a implementation)
+# Toolbox: Coverage Test
 
 Iteration 2 of the Geeky LoRa Toolbox (#3). **Sub-phase 2a (list + auto-ping +
-SD log) is implemented on this branch**, stacked on Iteration 1
-(`feature/toolbox-packet-log`); sub-phase 2b (the coverage map) is still design
-only. Everything is **compile-verified, not yet hardware-tested** — the ping
-must be confirmed against a real repeater on the badge.
+SD log) shipped in v2.7.0** and is hardware-verified against real repeaters
+(own repeater 3/3 reachable with correct uplink/downlink SNR + RTT; out-of-range
+repeaters correctly report unreachable). Sub-phase 2b (the coverage map) is
+still design only.
 
 Implemented in 2a: `mc_domain/coverage.{c,h}` (result model + TRACE-tag matcher +
 SD CSV + repeater collector), the ping controller `coverage_ping_start` +
@@ -48,6 +48,36 @@ the return. Repeaters are taken from `node_list[]` filtered on
 The wire payload layout is the pure, host-tested `mc_proto/trace.{c,h}`
 (`test_trace`); the TRACE envelope reuses the normal `meshcore_serialize`.
 
+### Wire gotchas (why the probe got no echo, fixed in v2.7.0)
+
+Three sequential bugs each silently killed the round-trip. They are non-obvious
+and cost real debugging, so they are recorded here. The fixed behaviour is the
+*only* thing that round-trips against an upstream repeater:
+
+1. **A TRACE must stay direct-routed.** `apply_region_scope` (`radio.c`) used to
+   rewrite every scoped TX to `TRANSPORT_FLOOD`, including the TRACE. Upstream
+   only processes a TRACE on a direct route (`Mesh::onRecvPacket` gates on
+   `isRouteDirect()`) and explicitly refuses to flood one (`Mesh::sendFlood`:
+   "TRACE type not supported"), so a flooded TRACE is dropped by every repeater.
+2. **A TRACE is sent plain `DIRECT`, unscoped — no transport codes.** Upstream's
+   companion sends it via `CMD_SEND_TRACE_PATH → Mesh::sendDirect` with no
+   transport codes; repeaters region-gate *flood* packets only
+   (`simple_repeater::allowPacketForward` checks the region solely under
+   `isRouteFlood()`), so a direct trace is forwarded regardless of scope.
+   `apply_region_scope` therefore skips TRACE entirely.
+3. **The path-control byte's size must be 1, not the hop-hash size.** A TRACE's
+   wire path field is the per-hop SNR accumulator — one *byte* per hop — so its
+   path-control size bits must be 0 (control byte `0x00`). The hop-hash size
+   (2 bytes for NL) rides in the payload `flags` (`path_sz`), not here. Encoding
+   `bytes_per_hop = hash_size` produced control byte `0x40`; a repeater then read
+   `path_len = 0x40 = 64`, computed `offset = 64 << path_sz` past the hop list,
+   and hit the "trace reached end of path" branch (`onTraceRecv`) instead of
+   appending its SNR and retransmitting → no echo. `send_trace` sets
+   `bytes_per_hop = 1`.
+
+Net: the probe is `ROUTE_TYPE_DIRECT`, no transport codes, path-control `0x00`,
+hop hash = the repeater's 2-byte pubkey prefix in the payload. See issue #25.
+
 ## Flow (sub-phase 2a — list + auto-ping + SD log)
 
 1. New view `VIEW_TOOLBOX_COVERAGE`: scrollable list of discovered repeaters,
@@ -85,6 +115,7 @@ so the coverage map stays clean:
 ## Out of scope
 
 - Noise-floor scan (#3c) — needs C6 radio firmware (RSSI sweep).
-- True RTT timing beyond the DM/ACK round-trip estimate.
+- Precise RTT: the logged `rtt_ms` is the measured TRACE round-trip (send →
+  matched return), not a calibrated link metric.
 
 Refs #3.

@@ -11,16 +11,20 @@ here see [`Blueprint.md`](Blueprint.md); this page is the descriptive tour.
 ### `mc_common` — foundation (L0)
 App-wide constants, the view enum and global UI-state externs, the shared
 `gps_/map_` config enums, and the pax-free emoji table (codepoint lookup +
-UTF-8 decode). A leaf with no first-party dependencies, so every higher layer
-can rely on it.
+UTF-8 decode). Also the Toolbox **`diag`** ring — a small mutex-protected PSRAM
+ring of the most-recent radio frames (both directions), captured straight off
+the transport in `radio.c` and read by the packet-log UI. A leaf with no
+first-party dependencies, so every higher layer can rely on it.
 
 ### `mc_proto` — wire protocol + parsers (L2, pure)
 The MeshCore packet/payload codecs (`meshcore/packet.*`, `payload/advert.*`,
 `payload/grp_txt.*`), the regulatory tables (`region_limits`), the GPS NMEA
-parser, and the upstream companion-radio protocol. No ESP-IDF, FreeRTOS, pax or
-BSP includes — C stdlib and POSIX only — which is what keeps every file here
-host-buildable and unit-tested in `tests/`. This is the upstream protocol
-mirror: fixes go upstream first, never as local struct growth.
+parser, the upstream companion-radio protocol, the Toolbox **`diag_decode`**
+packet dissector (+ the `diag_csv_row` CSV formatter for the SD export), and the
+**`trace`** reachability-probe codec. No ESP-IDF, FreeRTOS, pax or BSP includes
+— C stdlib and POSIX only — which is what keeps every file here host-buildable
+and unit-tested in `tests/` (`test_diag_decode`, `test_trace`). This is the
+upstream protocol mirror: fixes go upstream first, never as local struct growth.
 
 ### `mc_crypto` — symmetric crypto (L2)
 The channel (GRP_TXT) decrypt/encrypt and the ACK-binding CRC, lifted out of
@@ -40,8 +44,10 @@ exposes only small, behaviour-neutral helpers.
 
 ### `mc_domain` — application domain (L1/L2)
 The stateful core: `identity`, `contacts`, `channels`, `chat`, `nodes`,
-`history`, the NVS-backed `settings_nvs`, and the settings-driven `sounds`
-player. Mutex-protected in-memory tables plus persisted config. `sounds` lives
+`history`, the NVS-backed `settings_nvs`, the settings-driven `sounds` player,
+and the Toolbox **`coverage`** test (repeater-reachability result model + TRACE
+tag matcher + per-session SD CSV). Mutex-protected in-memory tables plus
+persisted config. `sounds` lives
 here (not in `mc_net`) so radio and the UI can share it without depending on a
 higher layer. Publicly `REQUIRES tanmatsu-lora` because `nodes.h` and
 `settings_nvs.h` expose `lora_*` types.
@@ -60,8 +66,11 @@ keepalive, the GPS task, and the map renderer. These read settings and feed the
 domain, so they sit above it.
 
 ### `mc_ui` — presentation (L4)
-The pax-based renderers (`render*.c`), input handling, and the emoji picker. Top
-of the stack: it draws domain state and radio status, and pulls in `pax-gfx`.
+The pax-based renderers (`render*.c`), input handling, and the emoji picker —
+including the Toolbox launcher and its tools (`render_toolbox.c`,
+`render_toolbox_log.c` for the packet log, `render_toolbox_coverage.c` for the
+coverage test). Top of the stack: it draws domain state and radio status, and
+pulls in `pax-gfx`.
 
 ### `mc_rx` — RX application layer (L5)
 The MeshCore receive handlers, lifted out of `radio.c` so the radio transport

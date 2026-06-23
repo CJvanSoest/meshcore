@@ -92,6 +92,20 @@ restored on exit — BadgeVMS PIE ELF apps have no clean exit hook, so the
 MeshCore value persists until the launcher writes its own value next
 time the launcher's brightness UI runs.
 
+### `map` keys (VIEW_MAP state, in `system` namespace)
+
+Dotted `map.*` keys persisting the map view's centre, zoom, lock toggle and
+style. Loaded on boot by `map_state_init` / `load_map_profile`; centre + zoom are
+debounce-saved while panning. All in the single `system` namespace.
+
+| Key | Type | Default | Range / values |
+|---|---|---|---|
+| `map.lat_e6` | i32 | Den Haag fallback | Centre latitude × 1e6 |
+| `map.lon_e6` | i32 | Den Haag fallback | Centre longitude × 1e6 |
+| `map.zoom` | u8 | 8 | 6..17 |
+| `map.lock` | u8 | 1 (on) | Lock-to-GPS toggle |
+| `map.profile` | u8 | `MAP_PROFILE_CARTO` | `map_profile_t`; the loader clamps a stored-but-disabled style to the first entry of `MAP_PROFILES_ENABLED[]` (Carto-only by default — see [Maps](../features/Maps.md)) |
+
 ### `mc` namespace (MeshCore-specific identity)
 
 | Key | Type | Purpose |

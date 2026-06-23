@@ -126,14 +126,17 @@ emoji-picker overlay; each view lives in its own file:
 
 | File | Owns |
 |---|---|
-| `render.c` | Dispatcher (`render()`), shared `render_tab_bar` (the Pager strip), `render_emoji_picker_overlay`, `blit()`, global framebuffer `fb` |
-| `render_home.c` | `VIEW_HOME` tile grid, 8 home tiles + icons, status toast |
+| `render.c` | Dispatcher (`render()`), shared `render_tab_bar` (the Pager strip), `render_emoji_picker_overlay`, the shared `render_toast` overlay, `blit()`, global framebuffer `fb` |
+| `render_home.c` | `VIEW_HOME` tile grid, 8 home tiles + icons |
 | `render_settings.c` | Category tile grid + drilldown row list, 6 category icons, the field rows table |
 | `render_nodes.c` | `VIEW_NODES` table + `render_qr_overlay` (only triggered from this view or the QR home tile) |
 | `render_chat.c` | `VIEW_CHAT` (DM inbox + conversation) + shared `render_msg_list` + word-wrap |
 | `render_channel.c` | `VIEW_CHANNEL` (list mode + conversation) |
 | `render_about.c` | `VIEW_ABOUT` (version, author, credits, license, source) |
 | `render_map.c` | `VIEW_MAP` (slippy-map tiles, node markers, GPS centre) |
+| `render_toolbox.c` | `VIEW_TOOLBOX` launcher (sub-tool menu) |
+| `render_toolbox_log.c` | `VIEW_TOOLBOX_LOG` packet log (hex/dissector + SD export) |
+| `render_toolbox_coverage.c` | `VIEW_TOOLBOX_COVERAGE` repeater coverage test |
 | `render_settings_icons.c` | The Settings category glyphs, kept out of `render_settings.c` |
 
 Cross-file declarations (the per-view entry points + a few shared helpers

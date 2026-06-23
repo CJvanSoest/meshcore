@@ -13,10 +13,30 @@ interoperable with the iOS/Android client.
 | `0x04` ADVERT | TX & RX | Node identity broadcast |
 | `0x05` GRP_TXT | TX & RX | Public channel chat (AES-128-ECB, shared key) |
 | `0x08` PATH | RX | Returned by the recipient; carries the ACK |
+| `0x09` TRACE | TX & RX | Repeater reachability probe; accumulates a per-hop SNR path (Toolbox coverage test) |
 
 These are payload types (`meshcore_payload_type_t` in `meshcore/packet.h`).
 `DIRECT` is a **route** type (`MESHCORE_ROUTE_TYPE_DIRECT = 0x2`), not a payload
 type: a DM is a `TXT_MSG` payload sent on the `DIRECT` route.
+
+## TRACE (reachability probe)
+
+`mc_proto/trace.{c,h}` (pure, host-tested). Payload =
+`tag[4] | auth[4] | flags[1] | hop_hashes[...]`; `flags & 0x03` is `path_sz`
+(hop-hash size: `1 << path_sz` bytes). The Toolbox coverage test sends one to a
+repeater's pubkey-prefix hash and matches the return by `tag`.
+
+Wire gotchas that are easy to get wrong (see
+[Toolbox-Coverage-Test.md](../features/Toolbox-Coverage-Test.md)):
+
+- **Route is plain `DIRECT`, unscoped** (no transport codes). Upstream only
+  handles a TRACE on a direct route and refuses to flood it; repeaters
+  region-gate flood packets only, so a direct trace is forwarded regardless of
+  scope. Never wrap a TRACE in `TRANSPORT_FLOOD`/`TRANSPORT_DIRECT`.
+- **Path-control size is 1** (control byte `0x00`). The wire path field is the
+  per-hop SNR accumulator (one byte per hop); the hop-hash size lives in the
+  payload `flags`, not the path-control byte. Encoding the hash size there
+  (`0x40`) makes a repeater read `path_len = 64` and abandon the probe.
 
 ## ADVERT
 
