@@ -667,7 +667,15 @@ bool send_trace(const uint8_t* target_pub, uint32_t tag) {
     msg.type               = MESHCORE_PAYLOAD_TYPE_TRACE;
     msg.route              = MESHCORE_ROUTE_TYPE_DIRECT;
     msg.version            = 0;
-    msg.bytes_per_hop      = hs;
+    // The wire path field of a TRACE is the per-hop SNR accumulator: one *byte*
+    // per hop, so its path-control size must be 1 (size bits 0), independent of
+    // the hop-hash size (which rides in the payload flags as path_sz). Encoding
+    // bytes_per_hop = hs here would set the control byte's size bits (e.g. 0x40
+    // for hs=2); a repeater then reads path_len = 0x40 = 64 and computes
+    // offset = 64 << path_sz, which overshoots the hop list, so it treats the
+    // probe as already-completed (onTraceRecv) instead of forwarding it -> no
+    // echo. Upstream sends path_len = 0 (control byte 0x00); match that.
+    msg.bytes_per_hop      = 1;
     msg.path_length        = 0;
     memcpy(msg.payload, payload, plen);
     msg.payload_length = plen;
