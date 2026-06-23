@@ -185,6 +185,20 @@ static uint8_t rx_dedup_fp[RX_DEDUP_SIZE][16];
 static int     rx_dedup_head  = 0;
 static int     rx_dedup_count = 0;
 
+// Insert a payload fingerprint into the ring (no membership test). Used by the
+// TX path so our own flood, when echoed back by a repeater, is recognised as a
+// duplicate on RX and dropped. Channel (GRP_TXT) broadcasts have no destination
+// to filter on — unlike DMs, which rx_handle_dm drops via the dest hash — so
+// without this our own channel message would be decrypted and shown twice.
+static void rx_dedup_remember(const uint8_t* payload, uint16_t payload_len) {
+    uint8_t fp[16] = {0};
+    int     fp_len = payload_len < 16 ? payload_len : 16;
+    memcpy(fp, payload, fp_len);
+    memcpy(rx_dedup_fp[rx_dedup_head], fp, 16);
+    rx_dedup_head = (rx_dedup_head + 1) % RX_DEDUP_SIZE;
+    if (rx_dedup_count < RX_DEDUP_SIZE) rx_dedup_count++;
+}
+
 static bool rx_is_duplicate(const uint8_t* payload, uint16_t payload_len) {
     uint8_t fp[16] = {0};
     int     fp_len = payload_len < 16 ? payload_len : 16;
@@ -192,9 +206,7 @@ static bool rx_is_duplicate(const uint8_t* payload, uint16_t payload_len) {
     for (int i = 0; i < rx_dedup_count; i++) {
         if (memcmp(rx_dedup_fp[i], fp, 16) == 0) return true;
     }
-    memcpy(rx_dedup_fp[rx_dedup_head], fp, 16);
-    rx_dedup_head = (rx_dedup_head + 1) % RX_DEDUP_SIZE;
-    if (rx_dedup_count < RX_DEDUP_SIZE) rx_dedup_count++;
+    rx_dedup_remember(payload, payload_len);
     return false;
 }
 
@@ -255,6 +267,12 @@ bool radio_tx_message(meshcore_message_t* msg) {
         // Toolbox packet log: record the frame we actually put on air. RSSI/SNR
         // are receiver-side measurements, so both are the "absent" sentinel here.
         diag_capture(DIAG_DIR_TX, pkt_data, pkt_len, DIAG_RSSI_NONE, DIAG_RSSI_NONE);
+        // Remember our own flood so the repeater echo of it is dropped on RX.
+        // TRACE is exempt, mirroring the RX dedup exemption (its payload is the
+        // returning probe and must not be cancelled by a self-fingerprint).
+        if (msg->type != MESHCORE_PAYLOAD_TYPE_TRACE) {
+            rx_dedup_remember(msg->payload, msg->payload_length);
+        }
     }
     return ok;
 }
