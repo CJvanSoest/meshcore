@@ -21,6 +21,8 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-06-23
+
 ### Added
 - **Toolbox** — a new tile under Settings opening a launcher for LoRa
   diagnostic tools. First tool: **Packet Log**, a live hex-dump / dissector
