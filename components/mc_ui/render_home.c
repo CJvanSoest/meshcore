@@ -361,23 +361,7 @@ void render_home(void) {
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, w - (int)rsz.x - 10, hint_y, rf);
     }
 
-    // 2-second status toast (e.g. "Flood advert sent"). Centered, Pager-style
-    // panel with an accent stripe so it reads as a confirmation, not an error.
-    if (toast_text[0]) {
-        uint32_t now_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        if (now_ms - toast_start_ms < toast_duration_ms) {
-            pax_vec2f tsz   = pax_text_size(FONT, TXT_TITLE, toast_text);
-            int       box_w = (int)tsz.x + 60;
-            int       box_h = TXT_TITLE + 40;
-            int       box_x = (w - box_w) / 2;
-            int       box_y = (h - box_h) / 2;
-            pax_simple_rect(&fb, COL_PAGER_BG, box_x, box_y, box_w, box_h);
-            pax_simple_rect(&fb, COL_PAGER_ACCENT, box_x, box_y, box_w, 3);
-            pax_simple_rect(&fb, COL_PAGER_ACCENT, box_x, box_y + box_h - 3, box_w, 3);
-            pax_draw_text(&fb, COL_PAGER_ACCENT, FONT, TXT_TITLE, box_x + 30, box_y + 20, toast_text);
-        } else {
-            toast_text[0]     = 0;
-            toast_duration_ms = 2000;  // restore default for the next toast
-        }
-    }
+    // Centred status toast (e.g. "Flood advert sent"). Shared overlay, drawn
+    // last so it sits on top.
+    render_toast(w, h);
 }
