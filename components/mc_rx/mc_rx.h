@@ -27,8 +27,11 @@ void send_advert_direct(void);
 // caller can track the ACK.
 bool send_dm_message(const char* text, const uint8_t* target_pub, uint8_t ack_crc_out[4]);
 
-// Send an encrypted public-channel message (GRP_TXT, FLOOD).
-bool send_chat_message(const char* text);
+// Send an encrypted channel message (GRP_TXT, FLOOD) on the active channel.
+// When out_fp is non-NULL and the send succeeds, it receives the first 4 bytes
+// of the GRP_TXT payload — the fingerprint ch_arm_relay/ch_mark_relayed_by_fp
+// use to confirm the flood was relayed when it echoes back.
+bool send_chat_message(const char* text, uint8_t out_fp[4]);
 
 // Send a MeshCore TRACE (reachability probe) to target_pub's hash with the given
 // 32-bit tag, DIRECT-routed with the repeater as its one-hop path. The returning

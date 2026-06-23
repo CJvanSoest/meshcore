@@ -71,15 +71,20 @@ extern volatile bool     dc_last_tx_blocked;
 void radio_start_tasks(void);
 
 // ── RX sink (radio decodes + dedups; the app layer handles delivery) ─────────
-// lora_rx_task deserializes each packet, drops flood duplicates, and hands the
+// lora_rx_task deserializes each packet, flags flood duplicates, and hands the
 // raw typed message to the registered sink. The sink (mc_rx) owns decrypt,
 // domain writes and notifications, so the radio layer stays domain-free on RX.
+// Duplicates are passed through (not dropped at the radio layer) so the domain
+// can use the echo of our own channel flood as a relay confirmation; the sink
+// drops every other duplicate.
 typedef struct {
     int8_t              rssi_dbm;
     int8_t              snr_db_x4;
     int8_t              signal_rssi_dbm;
     uint32_t            now_ms;
-    lora_packet_stats_t stats;  // raw C6 stats (the advert handler stores them)
+    lora_packet_stats_t stats;         // raw C6 stats (the advert handler stores them)
+    bool                is_duplicate;  // flood retransmit: sink drops it, except the
+                                       // echo of our own channel message (relay confirm)
 } radio_rx_meta_t;
 
 typedef void (*radio_rx_sink_fn)(const meshcore_message_t* msg, const radio_rx_meta_t* meta);

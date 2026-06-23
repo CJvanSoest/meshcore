@@ -20,8 +20,11 @@ typedef struct {
     uint32_t timestamp_ms;    // device-tick — for relative timing, lost on reboot
     uint32_t timestamp_unix;  // epoch seconds; 0 = unknown (history reload / no SNTP)
     uint8_t  hops;            // 0 = own / direct; 0xFF = unknown (e.g. SD reload)
-    uint8_t  ack_state;       // 0 = N/A (theirs / channel), 1 = waiting, 2 = acked
-    uint8_t  ack_crc[4];      // for own DMs: matches incoming PATH_RETURN ACK
+    uint8_t  ack_state;       // 0 = N/A (theirs), 1 = sent/waiting, 2 = acked/relayed,
+                              // 3 = not sent (duty-cycle blocked)
+    uint8_t  ack_crc[4];      // own DM: incoming PATH_RETURN ACK crc.
+                              // own channel msg: first 4 bytes of the GRP_TXT payload,
+                              // matched against the flood echo to confirm a relay.
 } chat_msg_t;
 
 // ── DM ring (per-peer; cleared + reloaded by dm_select_target) ───────────────
@@ -97,6 +100,20 @@ bool ch_add_message_for(int ch_idx, const char* text, bool is_mine);
 
 // Convenience for own outgoing messages — targets the active channel.
 void ch_add_message(const char* text, bool is_mine);
+
+// Arm relay tracking on the just-added own channel message: ack_state = 1 (sent)
+// and store the 4-byte payload fingerprint. fp = first 4 bytes of the GRP_TXT
+// payload returned by send_chat_message. Mirrors chat_arm_ack_dm.
+void ch_arm_relay(const uint8_t fp[4]);
+
+// Look up an own outgoing channel message by its payload fingerprint and mark it
+// relayed (ack_state = 2) — called when our own flood echoes back. Returns true
+// on hit. Mirrors chat_mark_ack_by_crc.
+bool ch_mark_relayed_by_fp(const uint8_t fp[4]);
+
+// Mark the just-added own channel message as not sent (ack_state = 3), e.g. when
+// the duty-cycle budget blocked the transmit.
+void ch_mark_not_sent(void);
 
 // Switch active channel + reload its history into the visible ring.
 void ch_select_channel(int idx);
