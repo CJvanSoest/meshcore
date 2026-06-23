@@ -17,29 +17,30 @@
   <rect x="0" y="21" width="400" height="1" fill="#FAA61A"/>
   <text x="8" y="15" fill="#FFFFFF" font-size="11" font-weight="600">Coverage Test</text>
 
-  <!-- Repeater rows: panel card, name + pubkey prefix, status right -->
+  <!-- Repeater rows: panel card, name + pubkey prefix, status right.
+       Names + key prefixes are fictional examples. -->
   <!-- Row 1 (focused) — 3/3 green -->
   <rect x="8" y="30" width="384" height="42" fill="#1A1F26" rx="2"/>
   <rect x="8" y="30" width="3" height="42" fill="#FAA61A"/>
-  <text x="20" y="48" fill="#FFFFFF" font-size="12">NL-MET-PLANTAGE-RPT</text>
-  <text x="20" y="64" class="mono" fill="#565F89" font-size="9">BDB4F6   uplink 12.2  downlink 12.0  rtt 420ms</text>
+  <text x="20" y="48" fill="#FFFFFF" font-size="12">EU-Repeater-NL01</text>
+  <text x="20" y="64" class="mono" fill="#565F89" font-size="9">A1B2C3   uplink 12.2  downlink 12.0  rtt 420ms</text>
   <text x="380" y="56" text-anchor="end" fill="#9ECE6A" font-size="14" font-weight="600">3/3</text>
 
   <!-- Row 2 — 3/3 green -->
   <rect x="8" y="78" width="384" height="42" fill="#16161E" rx="2"/>
-  <text x="20" y="96" fill="#C0C8D0" font-size="12">NL-MET-4194-RPT</text>
-  <text x="20" y="112" class="mono" fill="#565F89" font-size="9">23C7E9   uplink 5.5  downlink 2.8  rtt 320ms  (backyard)</text>
+  <text x="20" y="96" fill="#C0C8D0" font-size="12">EU-Repeater-NL02</text>
+  <text x="20" y="112" class="mono" fill="#565F89" font-size="9">D4E5F6   uplink 5.5  downlink 2.8  rtt 320ms  (backyard)</text>
   <text x="380" y="104" text-anchor="end" fill="#9ECE6A" font-size="14" font-weight="600">3/3</text>
 
   <!-- Row 3 — 0/3 red (too far) -->
   <rect x="8" y="126" width="384" height="42" fill="#16161E" rx="2"/>
-  <text x="20" y="144" fill="#C0C8D0" font-size="12">NL-GLD-HeesseltObserver</text>
-  <text x="20" y="160" class="mono" fill="#565F89" font-size="9">8E06AE   no echo — out of range</text>
+  <text x="20" y="144" fill="#C0C8D0" font-size="12">EU-Repeater-DL09</text>
+  <text x="20" y="160" class="mono" fill="#565F89" font-size="9">778899   no echo — out of range</text>
   <text x="380" y="152" text-anchor="end" fill="#F7768E" font-size="14" font-weight="600">0/3</text>
 
   <!-- Row 4 — untested -->
   <rect x="8" y="174" width="384" height="22" fill="#16161E" rx="2"/>
-  <text x="20" y="189" fill="#C0C8D0" font-size="12">EU-Repeater-NL01</text>
+  <text x="20" y="189" fill="#C0C8D0" font-size="12">TestRepeater-X1</text>
   <text x="380" y="189" text-anchor="end" fill="#565F89" font-size="13">-</text>
 
   <!-- Footer -->
