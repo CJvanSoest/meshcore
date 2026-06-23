@@ -124,7 +124,7 @@ void render_channel(void) {
     int list_y0 = CHAT_Y0 + hdr_h + 4;
     int list_h  = input_y - list_y0;
     if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        render_msg_list(w, list_y0, list_h, ch_msgs, ch_head, ch_count, &ch_scroll);
+        render_msg_list(w, list_y0, list_h, ch_msgs, ch_head, ch_count, &ch_scroll, true);
         xSemaphoreGive(ch_mutex);
     }
 

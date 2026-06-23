@@ -321,3 +321,45 @@ bool chat_mark_ack_by_crc(const uint8_t ack_crc[4]) {
     xSemaphoreGive(chat_mutex);
     return hit;
 }
+
+// ── Channel relay confirmation (mirrors the DM ACK helpers above) ─────────────
+// A channel (GRP_TXT) broadcast has no recipient to ACK, but hearing our own
+// flood echoed back by a neighbour proves it was relayed into the mesh. We track
+// that as ack_state on the visible-ring entry: 1 = sent, 2 = relayed, 3 = not
+// sent. Best-effort and RAM-only — switching channels rebuilds the ring.
+void ch_arm_relay(const uint8_t fp[4]) {
+    if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+    if (ch_count > 0) {
+        chat_msg_t* m = &ch_msgs[last_idx(ch_head)];
+        if (m->is_mine) {
+            m->ack_state = 1;
+            memcpy(m->ack_crc, fp, 4);
+        }
+    }
+    xSemaphoreGive(ch_mutex);
+}
+
+bool ch_mark_relayed_by_fp(const uint8_t fp[4]) {
+    if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return false;
+    bool hit = false;
+    for (int i = 0; i < ch_count; i++) {
+        int         idx = (ch_head - 1 - i + MAX_CHAT_MSGS * 2) % MAX_CHAT_MSGS;
+        chat_msg_t* m   = &ch_msgs[idx];
+        if (m->is_mine && m->ack_state == 1 && memcmp(m->ack_crc, fp, 4) == 0) {
+            m->ack_state = 2;
+            hit          = true;
+            break;
+        }
+    }
+    xSemaphoreGive(ch_mutex);
+    return hit;
+}
+
+void ch_mark_not_sent(void) {
+    if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+    if (ch_count > 0) {
+        chat_msg_t* m = &ch_msgs[last_idx(ch_head)];
+        if (m->is_mine) m->ack_state = 3;
+    }
+    xSemaphoreGive(ch_mutex);
+}

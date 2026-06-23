@@ -14,8 +14,10 @@
 void render_tab_bar(void);
 
 // Shared chat-message ring renderer used by both DM and channel views.
-// Caller must hold the ring's mutex.
-void render_msg_list(int w, int list_y0, int list_h, chat_msg_t* msgs, int head, int count, int* scroll_p);
+// Caller must hold the ring's mutex. is_channel switches the own-message status
+// wording (channel: sent/relayed; DM: .../ack).
+void render_msg_list(int w, int list_y0, int list_h, chat_msg_t* msgs, int head, int count, int* scroll_p,
+                     bool is_channel);
 
 // Per-view entry points dispatched by render() in render.c.
 void render_settings(void);

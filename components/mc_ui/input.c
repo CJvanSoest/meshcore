@@ -628,8 +628,13 @@ static void nav_channel(uint32_t key) {
             return;
         }
         if ((current_view == VIEW_CHANNEL) && chat_typing && chat_input_len > 0) {
-            send_chat_message(chat_input);
+            uint8_t fp[4];
+            bool    sent = send_chat_message(chat_input, fp);
             ch_add_message(chat_input, true);
+            if (sent)
+                ch_arm_relay(fp);
+            else
+                ch_mark_not_sent();
             chat_input_len = 0;
             chat_input[0]  = '\0';
             chat_typing    = false;
@@ -1514,15 +1519,20 @@ void handle_key(char c) {
             } else if (c == '\r' || c == '\n') {
                 if (chat_input_len > 0) {
                     if (current_view == VIEW_CHANNEL) {
-                        send_chat_message(chat_input);
+                        uint8_t fp[4];
+                        bool    sent = send_chat_message(chat_input, fp);
                         ch_add_message(chat_input, true);
+                        if (sent)
+                            ch_arm_relay(fp);
+                        else
+                            ch_mark_not_sent();
                     } else if (dm_target_set) {
                         uint8_t ack_crc[4] = {0};
                         send_dm_message(chat_input, dm_target_pub, ack_crc);
                         chat_add_dm(chat_input, true, dm_target_pub);
                         chat_arm_ack_dm(ack_crc);
                     } else {
-                        send_chat_message(chat_input);
+                        send_chat_message(chat_input, NULL);
                         chat_add_message(chat_input, true);
                     }
                     chat_input_len = 0;

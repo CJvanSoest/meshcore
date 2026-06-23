@@ -414,6 +414,15 @@ static void rx_handle_trace(const meshcore_message_t* msg, const radio_rx_meta_t
 }
 
 static void mc_rx_dispatch(const meshcore_message_t* msg, const radio_rx_meta_t* meta) {
+    // Flood retransmits are dropped here, with one exception: the echo of our own
+    // channel message confirms a neighbour relayed it into the mesh, so use it to
+    // mark that message relayed. Every other duplicate is ignored.
+    if (meta->is_duplicate) {
+        if (msg->type == MESHCORE_PAYLOAD_TYPE_GRP_TXT && msg->payload_length >= 4) {
+            ch_mark_relayed_by_fp(msg->payload);
+        }
+        return;
+    }
     switch (msg->type) {
         case MESHCORE_PAYLOAD_TYPE_ADVERT:
             rx_handle_advert(msg, meta->now_ms, &meta->stats);
@@ -743,7 +752,7 @@ void coverage_ping_start(const uint8_t* pub, const char* name, int32_t lat_e6, i
 }
 
 // ── Public-channel TX (GRP_TXT) ──────────────────────────────────────────────
-bool send_chat_message(const char* text) {
+bool send_chat_message(const char* text, uint8_t out_fp[4]) {
     if (!c6_available) return false;
 
     uint32_t ts                               = (uint32_t)time(NULL);
@@ -800,7 +809,14 @@ bool send_chat_message(const char* text) {
     msg.payload_length     = payload_len;
     memcpy(msg.payload, payload, payload_len);
     bool ok = radio_tx_message(&msg);
-    if (ok) ESP_LOGI(TAG, "Chat sent: %s", prefixed);
+    if (ok) {
+        ESP_LOGI(TAG, "Chat sent: %s", prefixed);
+        if (out_fp) {
+            int n = payload_len < 4 ? payload_len : 4;
+            memset(out_fp, 0, 4);
+            memcpy(out_fp, payload, n);
+        }
+    }
     return ok;
 }
 

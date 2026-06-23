@@ -77,7 +77,8 @@ static int msg_wrap(const char* text, int max_w, char out[][MAX_MSG_TEXT], int m
     return nl;
 }
 
-void render_msg_list(int w, int list_y0, int list_h, chat_msg_t* msgs, int head, int count, int* scroll_p) {
+void render_msg_list(int w, int list_y0, int list_h, chat_msg_t* msgs, int head, int count, int* scroll_p,
+                     bool is_channel) {
     if (count == 0) {
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_BODY, 14, list_y0 + 10, "No messages yet. Press T to type.");
         return;
@@ -117,10 +118,14 @@ void render_msg_list(int w, int list_y0, int list_h, chat_msg_t* msgs, int head,
             char hbuf[16] = {0};
             if (!m->is_mine && m->hops != 0xFF) snprintf(hbuf, sizeof(hbuf), "%uh", (unsigned)m->hops);
             const char* ack = NULL;
-            if (m->is_mine && m->ack_state == 1)
-                ack = "...";
-            else if (m->is_mine && m->ack_state == 2)
-                ack = "ack";
+            if (m->is_mine) {
+                if (m->ack_state == 1)
+                    ack = is_channel ? "sent" : "...";
+                else if (m->ack_state == 2)
+                    ack = is_channel ? "relayed" : "ack";
+                else if (m->ack_state == 3)
+                    ack = "not sent";
+            }
             int o = 0;
             if (tbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s", tbuf);
             if (hbuf[0]) o += snprintf(meta + o, sizeof(meta) - o, "%s%s", o ? " - " : "", hbuf);
@@ -160,7 +165,7 @@ void render_msg_list(int w, int list_y0, int list_h, chat_msg_t* msgs, int head,
                 emoji_draw_text(&fb, COL_BLUE, FONT, TXT_BODY, bx + bubble_w - pad_x - lw,
                                 bubble_y + pad_y + k * line_h, lines[k]);
             }
-            pax_col_t   mc  = (m->ack_state == 2) ? COL_GREEN : COL_GRAY;
+            pax_col_t   mc  = (m->ack_state == 2) ? COL_GREEN : (m->ack_state == 3) ? COL_RED : COL_GRAY;
             const char* ml  = meta[0] ? meta : "You";
             pax_vec2f   msz = pax_text_size(FONT, TXT_TINY, ml);
             pax_draw_text(&fb, mc, FONT, TXT_TINY, bx + bubble_w - pad_x - (int)msz.x, bubble_y + pad_y + nl * line_h,
@@ -323,7 +328,7 @@ void render_chat(void) {
     }
 
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        render_msg_list(w, list_y0, list_h, chat_msgs, chat_head, chat_count, &chat_scroll);
+        render_msg_list(w, list_y0, list_h, chat_msgs, chat_head, chat_count, &chat_scroll, false);
         xSemaphoreGive(chat_mutex);
     }
 
