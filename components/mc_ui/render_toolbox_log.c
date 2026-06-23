@@ -205,7 +205,11 @@ static void render_log_detail(int w, int h, const diag_entry_t* e, const diag_de
         for (int half = 0; half < 2; half++) {
             char hex[40];
             int  p = 0;
-            for (int b = 0; b < 16; b++) p += snprintf(hex + p, sizeof(hex) - p, "%02X", d->pubkey[half * 16 + b]);
+            for (int b = 0; b < 16 && p < (int)sizeof(hex); b++) {
+                int n = snprintf(hex + p, sizeof(hex) - p, "%02X", d->pubkey[half * 16 + b]);
+                if (n < 0 || n >= (int)sizeof(hex) - p) break;  // truncated/full: stop before size_t underflows
+                p += n;
+            }
             pax_draw_text(&fb, COL_GREEN, MONO, TXT_SMALL, x + 8, y, hex);
             y += TXT_SMALL + 2;
         }
@@ -224,8 +228,11 @@ static void render_log_detail(int w, int h, const diag_entry_t* e, const diag_de
     for (int off = 0; off < e->raw_len && y < fy - TXT_SMALL; off += 16) {
         char hex[56];
         int  p = 0;
-        for (int b = off; b < off + 16 && b < e->raw_len; b++)
-            p += snprintf(hex + p, sizeof(hex) - p, "%02X ", e->raw[b]);
+        for (int b = off; b < off + 16 && b < e->raw_len && p < (int)sizeof(hex); b++) {
+            int n = snprintf(hex + p, sizeof(hex) - p, "%02X ", e->raw[b]);
+            if (n < 0 || n >= (int)sizeof(hex) - p) break;  // truncated/full: stop before size_t underflows
+            p += n;
+        }
         pax_draw_text(&fb, COL_PAGER_TEXT, MONO, TXT_SMALL, x + 8, y, hex);
         y += TXT_SMALL + 2;
     }
