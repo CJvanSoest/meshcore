@@ -115,7 +115,36 @@ int32_t       map_center_lat_e6 = 52080000;  // Den Haag fallback
 int32_t       map_center_lon_e6 = 4310000;
 uint8_t       map_zoom          = 8;
 bool          map_lock_on       = true;  // default per plan §8 decision 4
-map_profile_t map_profile       = MAP_PROFILE_RIPPLE;
+// Must be a member of MAP_PROFILES_ENABLED below (the NVS loader clamps it to
+// map_profile_default() otherwise).
+map_profile_t map_profile       = MAP_PROFILE_CARTO;
+
+// The styles the Settings picker cycles through. Carto-only on shipping SD;
+// see the map.h note (and the "Map styles" wiki page) to enable more.
+static const map_profile_t MAP_PROFILES_ENABLED[] = {MAP_PROFILE_CARTO};
+#define MAP_PROFILES_ENABLED_COUNT ((int)(sizeof(MAP_PROFILES_ENABLED) / sizeof(MAP_PROFILES_ENABLED[0])))
+
+bool map_profile_enabled(map_profile_t p) {
+    for (int i = 0; i < MAP_PROFILES_ENABLED_COUNT; i++)
+        if (MAP_PROFILES_ENABLED[i] == p) return true;
+    return false;
+}
+
+map_profile_t map_profile_default(void) {
+    return MAP_PROFILES_ENABLED[0];
+}
+
+map_profile_t map_profile_cycle(map_profile_t cur, int delta) {
+    const int n   = MAP_PROFILES_ENABLED_COUNT;
+    int       idx = 0;
+    for (int i = 0; i < n; i++)
+        if (MAP_PROFILES_ENABLED[i] == cur) {
+            idx = i;
+            break;
+        }
+    idx = ((idx + delta) % n + n) % n;
+    return MAP_PROFILES_ENABLED[idx];
+}
 
 static bool     s_dirty          = false;
 static uint32_t s_last_change_ms = 0;

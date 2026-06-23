@@ -346,13 +346,11 @@ void field_adjust(int field, int delta) {
             gps_custom_distance_m = stops[idx];
             break;
         }
-        case FIELD_MAP_PROFILE: {
-            int       idx = (int)map_profile;
-            const int n   = (int)MAP_PROFILE_COUNT;
-            idx           = ((idx + delta) % n + n) % n;
-            map_profile_set((map_profile_t)idx);
+        case FIELD_MAP_PROFILE:
+            // Cycle only the enabled styles (Carto-only on shipping SD, so this
+            // is a no-op until more are turned on in map.c).
+            map_profile_set(map_profile_cycle(map_profile, delta));
             break;
-        }
         default:
             break;
     }

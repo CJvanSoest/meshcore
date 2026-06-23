@@ -35,6 +35,13 @@ of merged PR titles since the previous tag.
   (`ts_ms,dir,type,route,rssi_dbm,snr_db,len,raw_hex`), newest frame first, for
   off-badge analysis. Row formatting is the host-tested pure `diag_csv_row()`.
 
+### Changed
+- **Map styles default to Carto-only.** The Settings "Style" picker now cycles
+  only the styles listed in `MAP_PROFILES_ENABLED[]` (Carto by default), and the
+  NVS loader clamps a stored-but-disabled style to that default. Enable CyclOSM /
+  OpenTopoMap / Ripple by editing the one-line list (see Maps.md "Enabled
+  styles"); no other code change needed.
+
 ## [2.6.0] - 2026-06-19
 
 ### Changed
