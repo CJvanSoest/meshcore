@@ -30,7 +30,8 @@
 
 // Switch the active profile. Clears the tile cache so old-style PNGs don't
 // linger across the change, marks state dirty so the debounced NVS save
-// catches it.
+// catches it. The enabled-style set + cycle/default helpers are declared in
+// config_types.h (neutral header) and defined in map.c.
 void map_profile_set(map_profile_t p);
 
 // Zoom bounds. MIN matches the Ripple Europe tileset's lower edge; MAX is

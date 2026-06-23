@@ -694,7 +694,9 @@ void load_map_profile(void) {
     if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
     uint8_t p = (uint8_t)map_profile;
     if (nvs_get_u8(handle, NVS_MAP_PROFILE, &p) == ESP_OK && p < MAP_PROFILE_COUNT) {
-        map_profile = (map_profile_t)p;
+        // Clamp a stored-but-no-longer-enabled style (e.g. a prior Ripple/Cycle
+        // selection after the picker was narrowed to Carto) to the default.
+        map_profile = map_profile_enabled((map_profile_t)p) ? (map_profile_t)p : map_profile_default();
     }
     nvs_close(handle);
 }

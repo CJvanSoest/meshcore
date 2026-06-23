@@ -43,3 +43,12 @@ extern map_profile_t map_profile;
 extern bool          map_lock_on;
 
 const char* map_profile_label(map_profile_t p);
+
+// Enabled-style set for the Settings "Style" picker (owner: map.c). Declared
+// here in the neutral header so the L1 settings store can clamp a stored value
+// to the enabled set on load without depending on the map module. The badge
+// ships Carto-only; see map.c's MAP_PROFILES_ENABLED[] (and the "Map styles"
+// wiki page) to enable CyclOSM / OpenTopoMap / Ripple.
+bool          map_profile_enabled(map_profile_t p);             // is p in the enabled set?
+map_profile_t map_profile_default(void);                        // first enabled style (power-on / fallback)
+map_profile_t map_profile_cycle(map_profile_t cur, int delta);  // step ±1 within the enabled set
