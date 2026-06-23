@@ -342,8 +342,12 @@ void render_home(void) {
     pax_simple_rect(&fb, COL_YELLOW, icon_x, icon_y, icon_sz, icon_sz);
     pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, icon_x + icon_sz + 4, hint_y_top, hint_top_post);
 
-    // Bottom line: keyboard navigation hints (RX/SNR appended on the right).
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_y, "WSAD: nav   Enter: open   Tab: tabs");
+    // Bottom line: keyboard navigation hints, then the back/exit key legend
+    // (red X returns to home, ESC leaves the app). RX/SNR floats on the right.
+    const char* nav_hint = "WSAD: nav   Enter: open   Tab: tabs   ";
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_y, nav_hint);
+    int x_x = 10 + (int)pax_text_size(FONT, TXT_SMALL, nav_hint).x;
+    render_back_hint(x_x, hint_y, ": home   ESC: exit", TXT_SMALL);
 
     // Mirror the bottom-row stats from the Settings tab so the home screen
     // doubles as a quick-glance radio dashboard.

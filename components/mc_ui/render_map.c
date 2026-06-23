@@ -4,7 +4,7 @@
 // VIEW_MAP — OSM-tile based map view with live GPS overlay. The tile pipeline
 // (slippy-map math + PNG decode + LRU cache) lives in map.c; this file is the
 // per-frame paint of the view + the on-screen overlays (status strip,
-// crosshair, scale bar, node pins). ESC returns to home.
+// crosshair, scale bar, node pins). The red X returns to home.
 
 #include <math.h>
 #include <stdio.h>

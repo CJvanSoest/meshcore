@@ -3,7 +3,7 @@
 //
 // VIEW_TOOLBOX — the Toolbox launcher: a short menu of LoRa diagnostic
 // sub-tools, reached from the Settings "Toolbox" tile. Sub-tools that are not
-// built yet render dimmed with a "soon" tag. ESC returns to Settings.
+// built yet render dimmed with a "soon" tag. The red X returns to Settings.
 
 #include <string.h>
 #include "app_config.h"
@@ -87,6 +87,8 @@ void render_toolbox(void) {
     int fy = h - TB_FOOTER_H;
     pax_simple_rect(&fb, COL_HEADER, 0, fy, w, TB_FOOTER_H);
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (TB_FOOTER_H - TXT_SMALL) / 2,
-                  "WS: nav   Enter: open   ESC: settings");
+    const char* tb_hint = "WS: nav   Enter: open   ";
+    int         tb_ty   = fy + (TB_FOOTER_H - TXT_SMALL) / 2;
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, tb_ty, tb_hint);
+    render_back_hint(10 + (int)pax_text_size(FONT, TXT_SMALL, tb_hint).x, tb_ty, ": settings", TXT_SMALL);
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 //
 // VIEW_ABOUT — version, authors, credits, license. Reached via the About
-// tile on the home screen; ESC returns to home.
+// tile on the home screen; the red X returns to home.
 
 #include <stdio.h>
 #include <string.h>
@@ -89,5 +89,5 @@ void render_about(void) {
     int fy = h - ABOUT_FOOTER_H;
     pax_simple_rect(&fb, COL_HEADER, 0, fy, w, ABOUT_FOOTER_H);
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (ABOUT_FOOTER_H - TXT_SMALL) / 2, "ESC: home");
+    render_back_hint(10, fy + (ABOUT_FOOTER_H - TXT_SMALL) / 2, ": home", TXT_SMALL);
 }

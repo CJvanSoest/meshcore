@@ -7,8 +7,8 @@ with a "soon" tag.
 
 <p><img src="../../assets/screenshots/screen-toolbox.svg" width="480" alt="Toolbox launcher"></p>
 
-`W`/`S` move between tools, `Enter` opens the focused one, `ESC` returns to
-Settings. The launcher lives in `render_toolbox.c`; each tool is its own view.
+`W`/`S` move between tools, `Enter` opens the focused one, the red X (F1) returns
+to Settings. The launcher lives in `render_toolbox.c`; each tool is its own view.
 
 ---
 
@@ -46,7 +46,7 @@ Two detail modes toggle with **`H`**:
 
 Press **`Enter`** on a row for the full-screen detail view: every decoded field
 plus the complete 32-byte public key and the raw bytes, in a monospace face so
-the hex lines up. `ESC` closes it.
+the hex lines up. The red X closes it.
 
 ### How it works
 
@@ -83,7 +83,7 @@ off with `badgelink fs download /sd/meshcore/log/pkt_<unix>.csv`.
 
 > Export lives on **`E`** because **`S`** is the scroll-down key in this view.
 > Full key row: `WS` select · `Enter` detail · `H` hex/dissect · `P` pause ·
-> `E` export · `C` clear · `ESC` back.
+> `E` export · `C` clear · red X back.
 
 ---
 
@@ -112,7 +112,7 @@ with a `rx_handle_trace` hook, and `VIEW_TOOLBOX_COVERAGE`
 One card per discovered repeater (`role == REPEATER`), showing the name, the
 3-byte pubkey prefix, and a right-aligned **acks/attempts** counter coloured by
 result. `W`/`S` move the cursor, `Enter` pings the selected repeater 3x, `R`
-starts a new session, `ESC` returns to the launcher. The header shows
+starts a new session, the red X returns to the launcher. The header shows
 `testing…` while a ping run is in flight.
 
 ### Reachability primitive: TRACE

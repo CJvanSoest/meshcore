@@ -13,6 +13,11 @@
 // Top header strip; called at the start of every full-view render.
 void render_tab_bar(void);
 
+// Draws the red X back-button glyph + label at (x, baseline y) in text size ts;
+// returns the x just past the label. The submenu footers use it to show the red
+// X is the back/cancel key (ESC only exits, from home).
+int render_back_hint(int x, int y, const char* label, float ts);
+
 // Shared chat-message ring renderer used by both DM and channel views.
 // Caller must hold the ring's mutex. is_channel switches the own-message status
 // wording (channel: sent/relayed; DM: .../ack).
