@@ -336,4 +336,9 @@ void render_toolbox_log(void) {
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
     pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (LOG_FOOTER_H - TXT_SMALL) / 2,
                   "WS: select  Enter: detail  H: hex/dissect  P: pause  E: export  C: clear  ESC: back");
+
+    // Draw the export-result toast ("Saved N pkts -> ...") on top. Without this
+    // the toast set by toolbox_log_export_sd() was invisible — only render_home
+    // painted the shared overlay before.
+    render_toast(w, h);
 }

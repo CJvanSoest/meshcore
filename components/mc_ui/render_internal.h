@@ -34,6 +34,11 @@ void render_toolbox_coverage(void);  // repeater coverage test
 // call from the UI task; takes a fresh ring snapshot internally.
 void toolbox_log_export_sd(void);
 
+// Draw the centred status-toast overlay (set via toast_text / toast_start_ms /
+// toast_duration_ms) if one is active, and clear it once expired. Call last in
+// a view's render so it paints on top. (w, h) is the framebuffer size.
+void render_toast(int w, int h);
+
 // VIEW_HOME tile-grid API used by input.c to translate tile-Enter into a
 // view switch + optional side-effect. home_tile_target() returns VIEW_HOME
 // for placeholder ("soon") tiles so input can no-op on them.
