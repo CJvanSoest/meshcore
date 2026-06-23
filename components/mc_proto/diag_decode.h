@@ -45,3 +45,24 @@ bool diag_decode(const uint8_t* frame, uint8_t len, diag_decoded_t* out);
 const char* diag_type_name(uint8_t ptype);
 const char* diag_route_name(uint8_t route);
 const char* diag_role_name(uint8_t role);
+
+// CSV header line (no trailing newline) for the packet-log SD export. Matches
+// the column order produced by diag_csv_row().
+#define DIAG_CSV_HEADER "ts_ms,dir,type,route,rssi_dbm,snr_db,len,raw_hex"
+
+// Sentinel meaning "no signal metric" for rssi_dbm / snr_x4 (TX rows, or RX
+// frames the radio reported no measurement for). Mirrors DIAG_RSSI_NONE in
+// diag.h; duplicated here so this pure unit stays free of the mc_common ring.
+#define DIAG_CSV_NO_SIGNAL 127
+
+// Format one captured frame as a single CSV row (no trailing newline) into
+// `out`, matching DIAG_CSV_HEADER. Pure: the UI packet-log SD export calls
+// this per frame. Parameters are the raw diag_entry_t fields (passed by value
+// so this stays free of the mc_common diag ring) plus the already-decoded
+// view. `dir_is_tx` selects the "RX"/"TX" label and blanks the signal columns
+// when set. rssi_dbm / snr_x4 equal to DIAG_CSV_NO_SIGNAL also blank their
+// column. snr is emitted in dB (snr_x4 / 4, two decimals). raw[0..raw_len) is
+// lower-case hex. Returns the byte count written (excl. NUL), or 0 if `cap` is
+// too small to hold even the fixed columns.
+int diag_csv_row(uint32_t ts_ms, bool dir_is_tx, int8_t rssi_dbm, int8_t snr_x4, uint8_t full_len, const uint8_t* raw,
+                 uint8_t raw_len, const diag_decoded_t* d, char* out, int cap);

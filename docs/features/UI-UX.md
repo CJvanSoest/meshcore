@@ -198,10 +198,14 @@ capture ring (`mc_common/diag`) tapped in `mc_radio` (the RX task and
   Public channel (GRP_TXT) senders are anonymous by protocol design.
 
 `P` pauses (freezes the displayed window while capture keeps running), `WS` /
-D-pad scroll, `C` clears, ESC returns to the launcher. Each captured frame is
-dissected once at snapshot time, so the render loop never re-decodes a visible
-row. The dissect runs on the captured prefix (`DIAG_RAW_MAX` = 176 B), so a
-longer frame shows a display-only truncation; header fields stay complete.
+D-pad scroll, `C` clears, `E` exports the ring to a CSV on SD
+(`/sd/meshcore/log/pkt_<unix>.csv`, see
+[SD-Card-Layout.md](../reference/SD-Card-Layout.md); a toast reports the path +
+count), ESC returns to the launcher. Export lives on `E` rather than `S`
+because `S` is the scroll-down key here. Each captured frame is dissected once
+at snapshot time, so the render loop never re-decodes a visible row. The dissect
+runs on the captured prefix (`DIAG_RAW_MAX` = 176 B), so a longer frame shows a
+display-only truncation; header fields stay complete.
 
 ### Coverage Test (`VIEW_TOOLBOX_COVERAGE`)
 

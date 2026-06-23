@@ -863,6 +863,10 @@ static void key_toolbox_log(char c) {
         diag_clear();
         toolbox_log_cursor = 0;
         toolbox_log_scroll = 0;
+    } else if (c == 'e' || c == 'E') {
+        // Export the ring to /sd/meshcore/log/pkt_<unix>.csv (S is the scroll
+        // key in this view, so the SD dump lives on E for "Export").
+        toolbox_log_export_sd();
     }
 }
 

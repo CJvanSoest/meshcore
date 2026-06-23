@@ -139,12 +139,47 @@ static void test_names_and_guards(void) {
     CHECK(!diag_decode((const uint8_t*)"\x00", 0, &d), "decode rejects zero length");
 }
 
+// The SD packet-log export formats each frame with diag_csv_row(). Assert the
+// column order, RX vs TX signal blanking, the quarter-dB SNR fixed point, and
+// the lower-case hex tail.
+static void test_csv_row(void) {
+    diag_decoded_t d = {0};
+    d.valid          = true;
+    d.ptype          = MESHCORE_PAYLOAD_TYPE_ADVERT;
+    d.route          = MESHCORE_ROUTE_TYPE_FLOOD;
+
+    uint8_t raw[3] = {0x0f, 0xa0, 0x01};
+    char    out[128];
+
+    // RX row: rssi + snr present. snr_x4 = -9 → -2.25 dB.
+    int n = diag_csv_row(1234u, false, -42, -9, 3, raw, 3, &d, out, sizeof(out));
+    CHECK(n == (int)strlen(out), "csv row returns written length");
+    CHECK(strcmp(out, "1234,RX,ADVERT,FLOOD,-42,-2.25,3,0fa001") == 0, "csv RX row exact");
+
+    // Positive quarter-dB: snr_x4 = 7 → 1.75 dB.
+    diag_csv_row(0u, false, -100, 7, 1, raw, 1, &d, out, sizeof(out));
+    CHECK(strcmp(out, "0,RX,ADVERT,FLOOD,-100,1.75,1,0f") == 0, "csv positive snr fixed point");
+
+    // TX row: signal columns blank regardless of the passed metrics.
+    diag_csv_row(50u, true, -42, -9, 2, raw, 2, &d, out, sizeof(out));
+    CHECK(strcmp(out, "50,TX,ADVERT,FLOOD,,,2,0fa0") == 0, "csv TX row blanks signal");
+
+    // No-signal sentinel on an RX row blanks just that column.
+    diag_csv_row(7u, false, DIAG_CSV_NO_SIGNAL, DIAG_CSV_NO_SIGNAL, 0, raw, 0, &d, out, sizeof(out));
+    CHECK(strcmp(out, "7,RX,ADVERT,FLOOD,,,0,") == 0, "csv no-signal sentinel + empty hex");
+
+    // Undecoded frame → "?" type/route, hex still emitted.
+    diag_csv_row(9u, false, -10, 0, 1, raw, 1, NULL, out, sizeof(out));
+    CHECK(strcmp(out, "9,RX,?,?,-10,0.00,1,0f") == 0, "csv undecoded row");
+}
+
 int main(void) {
     test_advert_frame();
     test_dm_frame();
     test_truncated_dm();
     test_overlong_advert_name();
     test_names_and_guards();
+    test_csv_row();
     if (failures == 0) {
         printf("test_diag_decode: OK\n");
         return 0;
