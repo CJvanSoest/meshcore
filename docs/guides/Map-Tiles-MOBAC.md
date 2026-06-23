@@ -35,12 +35,16 @@ profile.
 
 1. Pan/zoom the MOBAC map to your region and drag a **selection rectangle** over
    the area you want offline.
-2. In **Zoom Levels**, tick **6, 7, 8, 9, 10, 11, 12, 13, 14**.
-   - The badge caps zoom at **14** (`MAP_ZOOM_MAX`), so don't download higher —
+2. In **Zoom Levels**, tick the range you want, from **6** up to at most **17**.
+   - The badge supports zoom **6 → 17** (`MAP_ZOOM_MAX`); don't download higher —
      those tiles will never be shown.
-   - Lower zooms (6–10) are tiny; the bulk of the size is z13–14.
+   - Lower zooms (6–10) are tiny; size grows ~4× per level, so the high zooms
+     dominate. z13–14 is plenty for street navigation; only add z15–17 for the
+     specific small areas where you need pedestrian/indoor detail.
 3. Rough size guide for a whole country (e.g. Netherlands), one style:
-   z6–13 ≈ 350 MB, adding z14 ≈ 1.3 GB total. A single city is a few MB.
+   z6–13 ≈ 350 MB, +z14 ≈ 1.3 GB, +z15 ≈ 4 GB, +z16 ≈ 15 GB, +z17 ≈ 50 GB.
+   A single city is a few MB even at high zoom — prefer a tight selection over a
+   wide area when grabbing z15+.
 
 ## 4. Create the atlas in the right format
 
@@ -71,7 +75,7 @@ The badge expects this **exact path** (note the `tiles` sub-folder):
 ```
 
 Create `maps/carto/tiles/` on the card and copy the **contents** of the
-unzipped atlas (the `6/`, `7/`, … `14/` folders) into it:
+unzipped atlas (the per-zoom `6/`, `7/`, … folders) into it:
 
 ```
 SD root
@@ -80,7 +84,7 @@ SD root
         └── tiles
             ├── 6/32/21.png
             ├── 7/...
-            └── 14/...
+            └── 17/...
 ```
 
 Other styles use the same shape: `maps/cycle/tiles/...`,
