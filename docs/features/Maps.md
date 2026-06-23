@@ -174,6 +174,11 @@ laid out at `/sd/maps/<profile>/tiles/<z>/<x>/<y>.png`. Anything that
 produces that layout works — pre-baked tile dumps from a vendor,
 home-rendered with OpenStreetMap data, or anything in between.
 
+> **No Docker?** If you just want tiles on the card without standing up the
+> render pipeline below, follow the
+> [MOBAC tile guide](../guides/Map-Tiles-MOBAC.md) — download ready-made tiles
+> with a free desktop tool and copy them across.
+
 This section describes the local Docker pipeline used to render the
 default **Carto** profile.
 
@@ -316,6 +321,7 @@ externally; it's the fallback when no rendered tiles exist for the
 requested area.
 
 ## Related
+- [Map tiles via MOBAC](../guides/Map-Tiles-MOBAC.md) — get tiles onto the SD card without Docker
 - [GPS sources](GPS-Sources.md) — how the badge knows where it is
 - [SD card layout](../reference/SD-Card-Layout.md) — the `/sd/meshcore` side of SD usage
 - [Settings / NVS](../reference/Settings-NVS.md) — `map.lat_e6` / `map.lon_e6` / `map.zoom` / `map.lock` / `map.profile` keys
