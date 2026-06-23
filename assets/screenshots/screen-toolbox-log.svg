@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- VIEW_TOOLBOX_LOG — landscape 800×480 at half-scale. Live packet log:
+     header + newest-first rows (RX green / TX amber) + key-hint footer. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240">
+  <defs>
+    <style type="text/css"><![CDATA[
+      text { font-family: 'Saira', 'Helvetica Neue', sans-serif; }
+      .mono { font-family: 'DejaVu Sans Mono', monospace; }
+    ]]></style>
+  </defs>
+
+  <rect width="400" height="240" fill="#0E141B" rx="4"/>
+  <rect x="0.5" y="0.5" width="399" height="239" fill="none" stroke="#16161E" stroke-width="1" rx="4"/>
+
+  <!-- Header -->
+  <rect x="0" y="0" width="400" height="22" fill="#16161E"/>
+  <rect x="0" y="21" width="400" height="1" fill="#FAA61A"/>
+  <text x="8" y="15" fill="#FFFFFF" font-size="11" font-weight="600">Packet Log</text>
+  <text x="394" y="15" text-anchor="end" fill="#565F89" font-size="9">DISSECT   64 pkts</text>
+
+  <!-- Rows: TS  DIR  TYPE  RSSI  DETAIL (newest first) -->
+  <g font-size="9">
+    <!-- Focused row -->
+    <rect x="0" y="26" width="400" height="14" fill="#1A1F26"/>
+    <rect x="0" y="26" width="3" height="14" fill="#FAA61A"/>
+    <text x="8"   y="36" fill="#565F89">1966s</text>
+    <text x="62"  y="36" fill="#9ECE6A">RX</text>
+    <text x="96"  y="36" fill="#FFFFFF">ADVERT</text>
+    <text x="166" y="36" fill="#565F89">-48</text>
+    <text x="210" y="36" class="mono" fill="#C0C8D0">T-FLOOD h5 131B key:7EC0.. Rep</text>
+
+    <text x="8"   y="50" fill="#565F89">1902s</text>
+    <text x="62"  y="50" fill="#9ECE6A">RX</text>
+    <text x="96"  y="50" fill="#FFFFFF">CHAN</text>
+    <text x="166" y="50" fill="#565F89">-50</text>
+    <text x="210" y="50" class="mono" fill="#C0C8D0">T-FLOOD h5 115B</text>
+
+    <text x="8"   y="64" fill="#565F89">1892s</text>
+    <text x="62"  y="64" fill="#9ECE6A">RX</text>
+    <text x="96"  y="64" fill="#FFFFFF">REQ</text>
+    <text x="166" y="64" fill="#565F89">-48</text>
+    <text x="210" y="64" class="mono" fill="#C0C8D0">T-FLOOD h4 40B dst:CA src:2F</text>
+
+    <text x="8"   y="78" fill="#565F89">1770s</text>
+    <text x="62"  y="78" fill="#9ECE6A">RX</text>
+    <text x="96"  y="78" fill="#FFFFFF">PATH</text>
+    <text x="166" y="78" fill="#565F89">-47</text>
+    <text x="210" y="78" class="mono" fill="#C0C8D0">T-FLOOD h2 42B</text>
+
+    <text x="8"   y="92" fill="#565F89">1526s</text>
+    <text x="62"  y="92" fill="#9ECE6A">RX</text>
+    <text x="96"  y="92" fill="#FFFFFF">RESP</text>
+    <text x="166" y="92" fill="#565F89">-54</text>
+    <text x="210" y="92" class="mono" fill="#C0C8D0">T-FLOOD h1 36B</text>
+
+    <!-- TX rows: amber, no RSSI -->
+    <text x="8"   y="106" fill="#565F89">452s</text>
+    <text x="62"  y="106" fill="#FAA61A">TX</text>
+    <text x="96"  y="106" fill="#FFFFFF">TRACE</text>
+    <text x="166" y="106" fill="#565F89">--</text>
+    <text x="210" y="106" class="mono" fill="#C0C8D0">DIRECT h0 13B hop:BDB4</text>
+
+    <text x="8"   y="120" fill="#565F89">434s</text>
+    <text x="62"  y="120" fill="#FAA61A">TX</text>
+    <text x="96"  y="120" fill="#FFFFFF">TRACE</text>
+    <text x="166" y="120" fill="#565F89">--</text>
+    <text x="210" y="120" class="mono" fill="#C0C8D0">DIRECT h0 13B hop:23C7</text>
+
+    <text x="8"   y="134" fill="#565F89">544s</text>
+    <text x="62"  y="134" fill="#9ECE6A">RX</text>
+    <text x="96"  y="134" fill="#FFFFFF">REQ</text>
+    <text x="166" y="134" fill="#565F89">-42</text>
+    <text x="210" y="134" class="mono" fill="#C0C8D0">T-FLOOD h3 32B dst:1D src:31</text>
+
+    <text x="8"   y="148" fill="#565F89">340s</text>
+    <text x="62"  y="148" fill="#9ECE6A">RX</text>
+    <text x="96"  y="148" fill="#FFFFFF">CHAN</text>
+    <text x="166" y="148" fill="#565F89">-40</text>
+    <text x="210" y="148" class="mono" fill="#C0C8D0">T-FLOOD h6 153B</text>
+  </g>
+
+  <!-- Footer -->
+  <rect x="0" y="202" width="400" height="38" fill="#16161E"/>
+  <rect x="0" y="202" width="400" height="1" fill="#FAA61A"/>
+  <text x="8" y="224" fill="#565F89" font-size="8">WS: select   Enter: detail   H: hex/dissect   P: pause   E: export   C: clear   ESC: back</text>
+</svg>

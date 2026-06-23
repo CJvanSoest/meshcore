@@ -63,3 +63,22 @@ The cold start splash with per step diagnostic output (BSP, display, the P4 to
 C6 link, the time source and the Ed25519 self-test) so a failed boot is visible
 on screen.
 <p><img src="../../assets/screenshots/screen-boot.svg" width="480" alt="Boot diagnostics"></p>
+
+### Toolbox — launcher
+The diagnostic tool menu, reached from the Settings "Toolbox" tile. Each tool is
+a card with a one line description; tools not built yet render dimmed with a
+"soon" tag. ESC returns to Settings.
+<p><img src="../../assets/screenshots/screen-toolbox.svg" width="480" alt="Toolbox launcher"></p>
+
+### Toolbox — Packet Log
+A live, terminal style log of every radio frame in both directions (RX green,
+TX amber), newest first. Toggle HEX vs the per field dissector with H; P freezes
+the window while capture keeps running; E exports the ring to a CSV on SD.
+<p><img src="../../assets/screenshots/screen-toolbox-log.svg" width="480" alt="Toolbox packet log"></p>
+
+### Toolbox — Coverage Test
+Field test repeater reachability: pick a discovered repeater, ping it 3x with an
+upstream TRACE, and read a colour coded acks/attempts counter (green = all OK,
+orange = partial, red = none) plus the uplink/downlink SNR and round trip. Every
+attempt is logged GPS stamped to one CSV per session on SD.
+<p><img src="../../assets/screenshots/screen-toolbox-coverage.svg" width="480" alt="Toolbox coverage test"></p>

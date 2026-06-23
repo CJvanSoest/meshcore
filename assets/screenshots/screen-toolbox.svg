@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- VIEW_TOOLBOX — landscape 800×480 at half-scale. The Toolbox launcher: a
+     short menu of LoRa diagnostic sub-tools, reached from the Settings tile. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240">
+  <defs>
+    <style type="text/css"><![CDATA[
+      text { font-family: 'Saira', 'Helvetica Neue', sans-serif; }
+      .mono { font-family: 'DejaVu Sans Mono', monospace; }
+    ]]></style>
+  </defs>
+
+  <rect width="400" height="240" fill="#0E141B" rx="4"/>
+  <rect x="0.5" y="0.5" width="399" height="239" fill="none" stroke="#16161E" stroke-width="1" rx="4"/>
+
+  <!-- Title bar -->
+  <rect x="0" y="0" width="400" height="22" fill="#16161E"/>
+  <rect x="0" y="21" width="400" height="1" fill="#FAA61A"/>
+  <text x="8" y="15" fill="#C0C8D0" font-size="11" font-weight="600">Toolbox</text>
+  <text x="394" y="15" text-anchor="end" fill="#565F89" font-size="9">LoRa diagnostics</text>
+
+  <!-- Tile 1 — Packet Log (focused: brighter card) -->
+  <rect x="12" y="34" width="376" height="52" fill="#1A1F26" rx="3"/>
+  <rect x="12" y="34" width="3" height="52" fill="#FAA61A"/>
+  <text x="28" y="58" fill="#FFFFFF" font-size="15">Packet Log</text>
+  <text x="28" y="76" class="mono" fill="#C0C8D0" font-size="9">Live RX/TX frames, hex dump + dissector</text>
+
+  <!-- Tile 2 — Coverage Test -->
+  <rect x="12" y="94" width="376" height="52" fill="#16161E" rx="3"/>
+  <text x="28" y="118" fill="#C0C8D0" font-size="15">Coverage Test</text>
+  <text x="28" y="136" class="mono" fill="#565F89" font-size="9">Ping repeaters, log reachability to SD</text>
+
+  <!-- Tile 3 — placeholder (dimmed, "soon") -->
+  <rect x="12" y="154" width="376" height="40" fill="#11161D" rx="3"/>
+  <text x="28" y="178" fill="#565F89" font-size="14">Noise-floor scan</text>
+  <text x="372" y="178" text-anchor="end" fill="#FAA61A" font-size="10">soon</text>
+
+  <!-- Footer -->
+  <rect x="0" y="202" width="400" height="38" fill="#16161E"/>
+  <rect x="0" y="202" width="400" height="1" fill="#FAA61A"/>
+  <text x="8" y="224" fill="#565F89" font-size="8">WS: nav   Enter: open   ESC: settings</text>
+</svg>
