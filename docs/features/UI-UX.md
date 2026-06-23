@@ -221,7 +221,7 @@ to one CSV per session on SD (`/sd/meshcore/coverage/`, see
 cursor, Enter pings, `R` starts a new session, ESC returns to the launcher.
 Results and the SD log live in `mc_domain/coverage`; the TRACE payload layout is
 the pure `mc_proto/trace`. The coverage map (z15/16 markers + PNG export) is a
-later sub-phase; see [Toolbox-Coverage-Test.md](Toolbox-Coverage-Test.md).
+later sub-phase; see [Toolbox.md](Toolbox.md).
 
 ## Edit-mode state machine (Settings drilldown)
 

@@ -12,7 +12,7 @@ For end-user setup see the [README](../README.md).
   to `/sd/meshcore/log/pkt_<unix>.csv`. **Coverage Test**: ping discovered
   repeaters 3x with an upstream MeshCore TRACE, colour-code reachability, and
   log every GPS-stamped attempt (+ uplink/downlink SNR) to one CSV per session.
-  See [Toolbox: Coverage Test](features/Toolbox-Coverage-Test.md) and
+  See [Toolbox](features/Toolbox.md) and
   [UI / UX](features/UI-UX.md).
 - **Carto-only map styles (v2.7.0)** — the Settings "Style" picker now cycles
   only the styles in a one-line `MAP_PROFILES_ENABLED[]` list (Carto by default,
@@ -73,7 +73,7 @@ The docs are grouped into four folders.
 ### `features/` — what the app does
 - **[UI / UX](features/UI-UX.md)** — views, key bindings, the edit-mode state machine, the QR overlay, the Toolbox
 - **[Maps](features/Maps.md)** — the slippy map: tile cache, the Carto-only style picker, the rendering pipeline
-- **[Toolbox: Coverage Test](features/Toolbox-Coverage-Test.md)** — TRACE-based repeater reachability + the wire gotchas
+- **[Toolbox](features/Toolbox.md)** — the Packet Log and Coverage Test (TRACE-based reachability + the wire gotchas)
 - **[GPS sources](features/GPS-Sources.md)** — the five input paths and how to wire OwnTracks / iOS Shortcuts / MeshMapper
 - **[Sounds](features/Sounds.md)** — WAV format, recommended free sources, the upload recipe
 - **[Screenshots](features/Screenshots.md)** — every view, full set

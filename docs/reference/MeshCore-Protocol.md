@@ -27,7 +27,7 @@ type: a DM is a `TXT_MSG` payload sent on the `DIRECT` route.
 repeater's pubkey-prefix hash and matches the return by `tag`.
 
 Wire gotchas that are easy to get wrong (see
-[Toolbox-Coverage-Test.md](../features/Toolbox-Coverage-Test.md)):
+[Toolbox.md](../features/Toolbox.md)):
 
 - **Route is plain `DIRECT`, unscoped** (no transport codes). Upstream only
   handles a TRACE on a direct route and refuses to flood it; repeaters
