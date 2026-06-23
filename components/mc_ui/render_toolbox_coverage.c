@@ -110,6 +110,8 @@ void render_toolbox_coverage(void) {
     int fy = h - COV_FOOTER_H;
     pax_simple_rect(&fb, COL_HEADER, 0, fy, w, COV_FOOTER_H);
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (COV_FOOTER_H - TXT_SMALL) / 2,
-                  "WS: nav   Enter: ping 3x   R: new session   ESC: back");
+    const char* cov_hint = "WS: nav   Enter: ping 3x   R: new session   ";
+    int         cov_ty   = fy + (COV_FOOTER_H - TXT_SMALL) / 2;
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, cov_ty, cov_hint);
+    render_back_hint(10 + (int)pax_text_size(FONT, TXT_SMALL, cov_hint).x, cov_ty, ": back", TXT_SMALL);
 }

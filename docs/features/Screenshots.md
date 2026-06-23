@@ -6,8 +6,8 @@ on what you are looking at.
 
 ### Home — tile grid
 The landing screen. A grid of tiles in LilyGo Pager style, one per view (Nodes,
-DM, Channel, Map, Advert, Settings, About, QR). ESC steps back to home, ESC on
-home returns to the launcher. Tiles carry their own unread badges.
+DM, Channel, Map, Advert, Settings, About, QR). The red X steps back to home and
+stops there; ESC on home returns to the launcher. Tiles carry their own unread badges.
 <p><img src="../../assets/screenshots/screen-home.svg" width="480" alt="Home tile grid"></p>
 
 ### Nodes
@@ -67,7 +67,7 @@ on screen.
 ### Toolbox — launcher
 The diagnostic tool menu, reached from the Settings "Toolbox" tile. Each tool is
 a card with a one line description; tools not built yet render dimmed with a
-"soon" tag. ESC returns to Settings.
+"soon" tag. The red X returns to Settings.
 <p><img src="../../assets/screenshots/screen-toolbox.svg" width="480" alt="Toolbox launcher"></p>
 
 ### Toolbox — Packet Log

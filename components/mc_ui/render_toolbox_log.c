@@ -171,7 +171,7 @@ static int snap_ri(int newest_idx) {
 
 // Full-screen breakdown of one captured frame: every field plus the complete
 // 32-byte public key and the raw bytes, in mono so the hex lines up and i/l/1
-// stay distinct. Reached with Enter on a selected row; ESC returns to the list.
+// stay distinct. Reached with Enter on a selected row; the red X returns to the list.
 static void render_log_detail(int w, int h, const diag_entry_t* e, const diag_decoded_t* d) {
     pax_simple_rect(&fb, COL_HEADER, 0, 0, w, LOG_HEADER_H);
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, LOG_HEADER_H - 1, w, 1);
@@ -239,7 +239,7 @@ static void render_log_detail(int w, int h, const diag_entry_t* e, const diag_de
 
     pax_simple_rect(&fb, COL_HEADER, 0, fy, w, LOG_FOOTER_H);
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (LOG_FOOTER_H - TXT_SMALL) / 2, "ESC: back to list");
+    render_back_hint(10, fy + (LOG_FOOTER_H - TXT_SMALL) / 2, ": back to list", TXT_SMALL);
 }
 
 void render_toolbox_log(void) {
@@ -341,8 +341,10 @@ void render_toolbox_log(void) {
     int fy = h - LOG_FOOTER_H;
     pax_simple_rect(&fb, COL_HEADER, 0, fy, w, LOG_FOOTER_H);
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (LOG_FOOTER_H - TXT_SMALL) / 2,
-                  "WS: select  Enter: detail  H: hex/dissect  P: pause  E: export  C: clear  ESC: back");
+    const char* log_hint = "WS: select  Enter: detail  H: hex/dissect  P: pause  E: export  C: clear  ";
+    int         log_ty   = fy + (LOG_FOOTER_H - TXT_SMALL) / 2;
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, log_ty, log_hint);
+    render_back_hint(10 + (int)pax_text_size(FONT, TXT_SMALL, log_hint).x, log_ty, ": back", TXT_SMALL);
 
     // Draw the export-result toast ("Saved N pkts -> ...") on top. Without this
     // the toast set by toolbox_log_export_sd() was invisible — only render_home

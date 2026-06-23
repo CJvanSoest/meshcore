@@ -262,9 +262,11 @@ void render_nodes(void) {
         fx += (int)psz.x + 22;
     }
 
-    const char* ctrl = (node_filter == MESHCORE_DEVICE_ROLE_UNKNOWN) ? "W/S nav   A:advert   F:fav   L:filter   Q:QR"
-                                                                     : "L:next   F:fav   A:advert";
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, fx, fy_text + (TXT_BODY - TXT_SMALL) / 2, ctrl);
+    const char* ctrl   = (node_filter == MESHCORE_DEVICE_ROLE_UNKNOWN) ? "W/S nav   A:advert   F:fav   L:filter   Q:QR"
+                                                                       : "L:next   F:fav   A:advert";
+    int         ctrl_y = fy_text + (TXT_BODY - TXT_SMALL) / 2;
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, fx, ctrl_y, ctrl);
+    render_back_hint(fx + (int)pax_text_size(FONT, TXT_SMALL, ctrl).x + 16, ctrl_y, ": home", TXT_SMALL);
 
     if (identity_is_ready()) {
         uint32_t now_ms2 = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
@@ -381,9 +383,9 @@ void render_qr_overlay(void) {
         next_y += TXT_SMALL + 6;
     }
 
-    // Explicit close hints, so the user knows which keys (and the red X on the
-    // Tanmatsu chassis) dismiss the overlay.
-    const char* close_hint = "[ESC]   [X]   [Enter]   to close";
+    // Close hint: the red X on the Tanmatsu chassis dismisses the overlay (ESC
+    // is no longer a back key in submenus).
+    const char* close_hint = "Press the red X to close";
     pax_vec2f   csz        = pax_text_size(FONT, TXT_SMALL, close_hint);
     pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL, (w - (int)csz.x) / 2, next_y, close_hint);
 }

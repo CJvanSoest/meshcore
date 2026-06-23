@@ -346,13 +346,8 @@ void render_home(void) {
     // (red X returns to home, ESC leaves the app). RX/SNR floats on the right.
     const char* nav_hint = "WSAD: nav   Enter: open   Tab: tabs   ";
     pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_y, nav_hint);
-    pax_vec2f nav_sz = pax_text_size(FONT, TXT_SMALL, nav_hint);
-    int       xg     = TXT_SMALL / 2 - 1;
-    int       x_x    = 10 + (int)nav_sz.x;
-    int       x_cy   = hint_y + TXT_SMALL / 2;
-    pax_simple_line(&fb, COL_RED, x_x, x_cy - xg, x_x + 2 * xg, x_cy + xg);
-    pax_simple_line(&fb, COL_RED, x_x, x_cy + xg, x_x + 2 * xg, x_cy - xg);
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, x_x + 2 * xg + 4, hint_y, ": home   ESC: exit");
+    int x_x = 10 + (int)pax_text_size(FONT, TXT_SMALL, nav_hint).x;
+    render_back_hint(x_x, hint_y, ": home   ESC: exit", TXT_SMALL);
 
     // Mirror the bottom-row stats from the Settings tab so the home screen
     // doubles as a quick-glance radio dashboard.

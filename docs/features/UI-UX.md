@@ -68,10 +68,13 @@ status strip is rendered in Pager colours and overlays every view.
 About and the Toolbox views sit outside the tab carousel. `current_view` is
 `app_view_t` defined in `app_config.h`; boot default is `VIEW_HOME`.
 
-ESC falls through a back-stack: drilldown → category list → home →
-launcher. This makes home the safe "I am here" anchor across the app. The
-Toolbox views add their own leg: packet-log / coverage → Toolbox launcher →
-Settings.
+The **red X (F1)** is the single back/cancel key. It falls through a back-stack:
+drilldown → category list → home, and **stops at home** — mashing it can never
+exit the app. The Toolbox views add their own leg: packet-log / coverage →
+Toolbox launcher → Settings. **ESC** is inert in every submenu and exits to the
+launcher *only* from home, so back-navigation can't quit by accident. Each
+submenu footer signposts the red X with a small ✗ glyph (`render_back_hint`);
+home shows `✗ home   ESC: exit`.
 
 ## Home tile grid (`render_home.c`)
 
@@ -84,7 +87,7 @@ Settings.
   red pill in the top-right corner of the tile)
 - An optional `home_action_t` (Advert tile = `HOME_ACTION_SEND_ADVERT`
   fires `send_advert()` inline + 2-second toast; QR tile =
-  `HOME_ACTION_OPEN_QR` flips on the QR overlay and tracks origin so ESC
+  `HOME_ACTION_OPEN_QR` flips on the QR overlay and tracks origin so the red X
   returns to home)
 
 A tile is rendered as a "soon" placeholder (dim foreground + small
@@ -173,7 +176,7 @@ Version + build date are pulled live from `esp_app_get_description()` so
 a clean tag (e.g. `v2.4.0`) produces a clean string with no `-dirty` /
 post-tag suffix. The rest is static: author (CJ van Soest), credits
 (MeshCore by Ripple Radios; Tanmatsu by Nicolai Electronics), MIT
-license, source URL, issue tracker. Footer: `ESC: home`.
+license, source URL, issue tracker. Footer: `✗ home` (the red X returns to home).
 
 When more items get added (commit hash, region preset, map license credits
 once maps land) prefer inline `Label: value` per line over the current
@@ -184,7 +187,7 @@ label-stacked-above-value layout, per CJ's feedback on the v2.2.0 design.
 A diagnostics launcher reached from the Settings **Toolbox** tile (an external
 category, so it switches to `VIEW_TOOLBOX` instead of drilling into a field
 list). The launcher lists sub-tools; `WS` / D-pad move the cursor, Enter opens,
-ESC returns to Settings. A not-yet-built tool renders dimmed with a "soon" tag.
+the red X returns to Settings. A not-yet-built tool renders dimmed with a "soon" tag.
 
 ### Packet Log (`VIEW_TOOLBOX_LOG`)
 
@@ -201,7 +204,7 @@ capture ring (`mc_common/diag`) tapped in `mc_radio` (the RX task and
 D-pad scroll, `C` clears, `E` exports the ring to a CSV on SD
 (`/sd/meshcore/log/pkt_<unix>.csv`, see
 [SD-Card-Layout.md](../reference/SD-Card-Layout.md); a toast reports the path +
-count), ESC returns to the launcher. Export lives on `E` rather than `S`
+count), the red X returns to the Toolbox launcher. Export lives on `E` rather than `S`
 because `S` is the scroll-down key here. Each captured frame is dissected once
 at snapshot time, so the render loop never re-decodes a visible row. The dissect
 runs on the captured prefix (`DIAG_RAW_MAX` = 176 B), so a longer frame shows a
@@ -218,7 +221,7 @@ answers without an admin login) and matches the returning frame by tag in
 the result (3/3 green, 1-2 orange, 0 red), and appends every GPS-stamped attempt
 to one CSV per session on SD (`/sd/meshcore/coverage/`, see
 [SD-Card-Layout.md](../reference/SD-Card-Layout.md)). `WS` / D-pad move the
-cursor, Enter pings, `R` starts a new session, ESC returns to the launcher.
+cursor, Enter pings, `R` starts a new session, the red X returns to the Toolbox launcher.
 Results and the SD log live in `mc_domain/coverage`; the TRACE payload layout is
 the pure `mc_proto/trace`. The coverage map (z15/16 markers + PNG export) is a
 later sub-phase; see [Toolbox.md](Toolbox.md).
@@ -226,7 +229,7 @@ later sub-phase; see [Toolbox.md](Toolbox.md).
 ## Edit-mode state machine (Settings drilldown)
 
 ```
-   ─── drilldown ───►  ENTER  ───► editing ───► ESC ───►  drilldown
+   ─── drilldown ───►  ENTER  ───► editing ─── red X ───►  drilldown
                                        │
                                        │  Backspace / Up / Down
                                        ▼
@@ -254,7 +257,7 @@ The DM view has two states:
 2. **Conversation** — picked by pressing Enter on an inbox row, or by
    pressing Enter on a node in the Nodes view.
 
-Press ESC inside a conversation to return to inbox; ESC on the inbox
+Press the red X inside a conversation to return to inbox; the red X on the inbox
 falls through to home.
 
 ## QR overlay (`qr_overlay_active`)
@@ -265,8 +268,8 @@ on close). Renders a full-screen QR encoding
 `meshcore://contact/add?name=<adv>&public_key=<hex>&type=1` using
 `qrcodegen` (ECC_MEDIUM, version 1..10).
 
-Close hint at the bottom: `[ESC] [X] [Enter] to close` in amber, so the
-keys + the Tanmatsu's physical red X button are all signposted.
+Close hint at the bottom: `Press the red X to close` in amber. Only the red X
+(F1) dismisses the overlay — ESC is no longer a back key in submenus.
 
 The QR buffers are `static uint8_t qr_data[qrcodegen_BUFFER_LEN_MAX]` etc.
 to avoid stack overflow (~3.9 KB each).
@@ -316,7 +319,7 @@ channels (Public is always slot 0, hardcoded `PUBLIC_GROUP_PSK`).
 | Enter / RETURN | Select the channel (switches `active_channel_idx`) + flip to chat view |
 | `A` | Begin add-channel text input (auto-prefix `#`) |
 | `D` | Delete the cursor's channel (Public protected) |
-| `ESC` from chat | Back to list |
+| Red X (F1) from chat | Back to list |
 
 The chat-view header shows the active channel name on the first line and
 `Region: <scope>` on the second (amber `(set in Settings)` placeholder if
@@ -334,7 +337,7 @@ top of the chat input.
 |---|---|
 | D-pad LEFT/RIGHT/UP/DOWN, `A`/`D`/`W`/`S` | Cursor across the grid |
 | Enter / RETURN | Insert the UTF-8 bytes into `chat_input`; close picker |
-| `ESC` / `F1` | Close without inserting |
+| Red X (F1) / `F4` | Close without inserting |
 
 The MVP set is 8 codepoints in U+1F60x (`grin`, `smile`, `wink`, `blush`,
 `cool`, `tongue`, `cry`, `angry`). Bitmaps are 32×32 ARGB embedded as

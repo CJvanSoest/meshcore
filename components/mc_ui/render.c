@@ -35,6 +35,21 @@ void blit(void) {
     }
 }
 
+// Draws the red X "back" glyph (the Tanmatsu's physical back button) at x,
+// vertically centred on a TXT_SMALL line whose text baseline is at y, then the
+// label after it. Returns the x just past the label so a footer can keep going.
+// Signposts that the red X is the back/cancel key in every submenu (ESC only
+// exits, and only from home).
+int render_back_hint(int x, int y, const char* label, float ts) {
+    int xg = (int)ts / 2 - 1;
+    int cy = y + (int)ts / 2;
+    pax_simple_line(&fb, COL_RED, x, cy - xg, x + 2 * xg, cy + xg);
+    pax_simple_line(&fb, COL_RED, x, cy + xg, x + 2 * xg, cy - xg);
+    int lx = x + 2 * xg + 4;
+    pax_draw_text(&fb, COL_GRAY, FONT, ts, lx, y, label);
+    return lx + (int)pax_text_size(FONT, ts, label).x;
+}
+
 // Shared Pager-style header for the four classic views: view name (+ DM /
 // channel unread badges) on the left, RX | TX (duty cycle %) | battery on
 // the right. Replaces the original coloured tab-bar so the home screen and

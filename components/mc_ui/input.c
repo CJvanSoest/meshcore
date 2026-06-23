@@ -875,13 +875,17 @@ static void key_toolbox_log(char c) {
 
 void handle_nav(uint32_t key) {
     if (qr_overlay_active) {
-        qr_overlay_active = false;
-        qr_overlay_mode   = QR_MODE_CONTACT;
-        if (qr_from_home) {
-            qr_from_home = false;
-            current_view = VIEW_HOME;
-        } else if (qr_from_settings) {
-            qr_from_settings = false;
+        // Overlay swallows all nav keys; the red X (F1) dismisses it. ESC is no
+        // longer a back key in submenus.
+        if (key == BSP_INPUT_NAVIGATION_KEY_F1) {
+            qr_overlay_active = false;
+            qr_overlay_mode   = QR_MODE_CONTACT;
+            if (qr_from_home) {
+                qr_from_home = false;
+                current_view = VIEW_HOME;
+            } else if (qr_from_settings) {
+                qr_from_settings = false;
+            }
         }
         return;
     }
@@ -900,10 +904,10 @@ void handle_nav(uint32_t key) {
     // for the next chat-typing session.
     if (emoji_picker_active && chat_typing && (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL)) {
         const int cols = 4;
-        // ESC/F1 close; F4 (the green circle) toggles — pressing it again closes
-        // the picker instead of leaving it stuck open (which blocked leaving chat).
-        if (key == BSP_INPUT_NAVIGATION_KEY_ESC || key == BSP_INPUT_NAVIGATION_KEY_F1 ||
-            key == BSP_INPUT_NAVIGATION_KEY_F4) {
+        // Red X (F1) closes; F4 (the green circle) toggles — pressing it again
+        // closes the picker instead of leaving it stuck open (which blocked
+        // leaving chat). ESC is no longer a back key in submenus.
+        if (key == BSP_INPUT_NAVIGATION_KEY_F1 || key == BSP_INPUT_NAVIGATION_KEY_F4) {
             emoji_picker_active = false;
             return;
         }
@@ -938,7 +942,15 @@ void handle_nav(uint32_t key) {
         }
     }
 
-    if (key == BSP_INPUT_NAVIGATION_KEY_F1 || key == BSP_INPUT_NAVIGATION_KEY_ESC) {
+    if (key == BSP_INPUT_NAVIGATION_KEY_ESC) {
+        // ESC exits the app, but only from the home tile-grid. In every submenu
+        // it does nothing — the red X (F1) is the single back/cancel key, so
+        // back-navigation can never quit the app by accident.
+        if (current_view == VIEW_HOME) {
+            bsp_led_set_mode(true);
+            bsp_device_restart_to_launcher();
+        }
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_F1) {
         if (edit_mode) {
             edit_mode          = false;
             field_editing_text = false;
@@ -949,9 +961,9 @@ void handle_nav(uint32_t key) {
             load_gps_coords();
             load_lora_config();
         } else if (chat_typing) {
-            // Tanmatsu's ESC button only fires a nav-event (no keyboard char
-            // duplicate), so we can't defer this to handle_key — exit typing
-            // mode here and clear the buffer to mirror handle_key's behavior.
+            // The red X cancels typing and clears the buffer (the Tanmatsu's
+            // red X only fires a nav-event, so this can't be deferred to
+            // handle_key).
             chat_typing    = false;
             chat_input_len = 0;
             chat_input[0]  = '\0';
@@ -978,14 +990,11 @@ void handle_nav(uint32_t key) {
             current_view                = VIEW_SETTINGS;
             settings_category_list_mode = true;
         } else if (current_view != VIEW_HOME) {
-            // From any non-modal view both keys return to the home tile-grid.
+            // The red X returns to the home tile-grid and stops there; mashing
+            // it can never exit the app. ESC (handled above) is the only exit.
             current_view = VIEW_HOME;
-        } else if (key == BSP_INPUT_NAVIGATION_KEY_ESC) {
-            // Only ESC leaves the app, and only from home. The red X (F1) stops
-            // at home so mashing back can never exit by accident.
-            bsp_led_set_mode(true);
-            bsp_device_restart_to_launcher();
         }
+        // At home the red X does nothing — ESC is the exit key.
     } else {
         // Direction / RETURN: dispatch to the active view's handler.
         switch (current_view) {
@@ -1324,31 +1333,25 @@ static void key_channel(char c) {
 }
 
 void handle_key(char c) {
-    if (qr_overlay_active) {
-        if (c == 27) {
-            qr_overlay_active = false;
-            qr_overlay_mode   = QR_MODE_CONTACT;
-            if (qr_from_home) {
-                qr_from_home = false;
-                current_view = VIEW_HOME;
-            } else if (qr_from_settings) {
-                qr_from_settings = false;
-            }
+    if (c == 27) {
+        // Keyboard ESC exits only from the home tile-grid. In every submenu /
+        // modal it does nothing — the physical red X (F1) is the single back
+        // and cancel key, matching handle_nav so the two input paths agree.
+        if (current_view == VIEW_HOME && !qr_overlay_active) {
+            bsp_led_set_mode(true);
+            bsp_device_restart_to_launcher();
         }
         return;
+    }
+
+    if (qr_overlay_active) {
+        return;  // overlay swallows keyboard keys; the red X (F1) dismisses it
     }
 
     // Settings text-edit intercepts all printables so the global W/S/T/F/L/Q/R
     // shortcuts don't fire while typing.
     if (current_view == VIEW_SETTINGS && edit_mode && field_editing_text) {
-        if (c == 27) {  // ESC: cancel
-            edit_mode          = false;
-            field_editing_text = false;
-            dirty              = false;
-            load_owner_name();
-            load_lora_advert_name();
-            load_region_scope();
-        } else if (c == '\r' || c == '\n') {  // Enter: save
+        if (c == '\r' || c == '\n') {  // Enter: save (red X cancels, via handle_nav)
             settings_commit_text_edit(selected);
             edit_mode = false;
             dirty     = false;
@@ -1381,7 +1384,7 @@ void handle_key(char c) {
         }
         // T to type only works inside the chat view; here we ignore it.
         if (c == 't' || c == 'T') return;
-        // Tab and ESC fall through.
+        // Tab falls through (ESC is handled at the top of handle_key).
     }
 
     // Channel list-mode: own keymap (W/S nav, Enter open, A add, D delete) plus
@@ -1389,13 +1392,7 @@ void handle_key(char c) {
     // chat-typing branch so chat_typing keys don't fire here.
     if (current_view == VIEW_CHANNEL && channel_list_mode) {
         if (channel_adding) {
-            if (c == 27) {
-                channel_adding     = false;
-                field_editing_text = false;
-                field_edit_len     = 0;
-                field_edit_buf[0]  = '\0';
-                return;
-            }
+            // Red X cancels channel-add (handle_nav); keyboard ESC no longer does.
             if (c == '\r' || c == '\n') {
                 if (field_edit_len > 0) {
                     // Auto-prefix with '#' if user typed plain text — non-Public
@@ -1469,7 +1466,7 @@ void handle_key(char c) {
             }
             return;
         }
-        // Tab and ESC fall through.
+        // Tab falls through (ESC is handled at the top of handle_key).
     }
 
     // Chat / Channel view input — intercept everything when typing.
@@ -1477,10 +1474,7 @@ void handle_key(char c) {
         // Emoji picker overlay swallows all keys when active.
         if (chat_typing && emoji_picker_active) {
             const int cols = 4;
-            if (c == 27) {
-                emoji_picker_active = false;
-                return;
-            }
+            // Red X / F4 close the picker (handle_nav); keyboard ESC no longer does.
             if (c == '\r' || c == '\n') {
                 int idx = emoji_picker_cursor;
                 if (idx >= 0 && idx < EMOJI_COUNT) {
@@ -1513,11 +1507,8 @@ void handle_key(char c) {
             return;  // swallow the rest
         }
         if (chat_typing) {
-            if (c == 27) {
-                chat_typing    = false;
-                chat_input_len = 0;
-                chat_input[0]  = '\0';
-            } else if (c == '\r' || c == '\n') {
+            // Red X cancels typing (handle_nav); keyboard ESC no longer does.
+            if (c == '\r' || c == '\n') {
                 if (chat_input_len > 0) {
                     if (current_view == VIEW_CHANNEL) {
                         uint8_t fp[4];
@@ -1571,7 +1562,7 @@ void handle_key(char c) {
                     chat_scroll++;
                 return;
             }
-            // Tab and ESC fall through.
+            // Tab falls through (ESC is handled at the top of handle_key).
         }
     }
 
@@ -1600,40 +1591,7 @@ void handle_key(char c) {
         return;
     }
 
-    if (c == 27) {
-        // Keyboard ESC. The physical red X (F1) only fires a nav-event, so its
-        // "stop at home" variant lives in handle_nav; here ESC is the exit key.
-        if (edit_mode) {
-            edit_mode          = false;
-            field_editing_text = false;
-            dirty              = false;
-            load_owner_name();
-            load_lora_advert_name();
-            load_region_scope();
-            load_gps_coords();
-            load_lora_config();
-        } else if (current_view == VIEW_CHAT && !dm_inbox_mode) {
-            dm_inbox_mode = true;
-        } else if (current_view == VIEW_CHANNEL && !channel_list_mode) {
-            channel_list_mode = true;
-        } else if (current_view == VIEW_SETTINGS && !settings_category_list_mode) {
-            settings_category_list_mode = true;
-            settings_scroll             = 0;
-        } else if (current_view == VIEW_TOOLBOX_LOG && toolbox_log_detail) {
-            toolbox_log_detail = false;
-        } else if (current_view == VIEW_TOOLBOX_LOG || current_view == VIEW_TOOLBOX_COVERAGE) {
-            current_view = VIEW_TOOLBOX;
-        } else if (current_view == VIEW_TOOLBOX) {
-            current_view                = VIEW_SETTINGS;
-            settings_category_list_mode = true;
-        } else if (current_view != VIEW_HOME) {
-            current_view = VIEW_HOME;
-        } else {
-            bsp_led_set_mode(true);
-            bsp_device_restart_to_launcher();
-        }
-        return;
-    }
+    // Keyboard ESC was handled at the top of handle_key (exit only from home).
 
     // All remaining keys (W/S/A/D/F/L/Q/Enter/R/`<>,.`/D) are view-specific.
     switch (current_view) {

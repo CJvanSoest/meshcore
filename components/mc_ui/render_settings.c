@@ -305,8 +305,12 @@ static void render_settings_category_list(int w, int h) {
     int fy = h - S_GRID_FOOTER;
     pax_simple_rect(&fb, COL_HEADER, 0, fy, w, S_GRID_FOOTER);
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (S_GRID_FOOTER - TXT_SMALL) / 2,
-                  "WSAD: nav   Enter: open   ESC: home   Tab: next view");
+    {
+        const char* hint    = "WSAD: nav   Enter: open   Tab: next view   ";
+        int         hint_ty = fy + (S_GRID_FOOTER - TXT_SMALL) / 2;
+        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_ty, hint);
+        render_back_hint(10 + (int)pax_text_size(FONT, TXT_SMALL, hint).x, hint_ty, ": home", TXT_SMALL);
+    }
 }
 
 // Optional inline section header drawn above a specific field's row. The
@@ -484,12 +488,17 @@ static void render_settings_drilldown(int w, int h) {
     pax_simple_rect(&fb, COL_PANEL, 0, fy, w, 1);
 
     const char* hint = NULL;
+    // Red X back/cancel label, drawn after hint. Default = leave the drilled-in
+    // category; the edit-mode branches switch it to cancel.
+    const char* back = ": back to categories";
     char        hintbuf[128];
     pax_col_t   hint_col = COL_GRAY;
     if (edit_mode && field_editing_text) {
-        hint = "Type to edit   Backspace: del   Enter: save   ESC: cancel";
+        hint = "Type to edit   Backspace: del   Enter: save   ";
+        back = ": cancel";
     } else if (edit_mode) {
-        hint = "Up/Down or W/S: adjust   Enter: save   ESC: cancel";
+        hint = "Up/Down or W/S: adjust   Enter: save   ";
+        back = ": cancel";
     } else if (!c6_available) {
         hint     = "NVS only — update radio via Launcher: Tools > Firmware update";
         hint_col = COL_AMBER;
@@ -552,12 +561,19 @@ static void render_settings_drilldown(int w, int h) {
         int       icon_y  = top_y + (TXT_BODY - icon_sz) / 2;
         pax_simple_rect(&fb, COL_YELLOW, icon_x, icon_y, icon_sz, icon_sz);
         pax_draw_text(&fb, hint_col, FONT, TXT_BODY, icon_x + icon_sz + 4, top_y, post);
-        pax_draw_text(&fb, hint_col, FONT, TXT_SMALL, 10, bot_y, "W/S: navigate   Enter: edit   ESC: back   R: reload");
+        const char* nav = "W/S: navigate   Enter: edit   R: reload   ";
+        pax_draw_text(&fb, hint_col, FONT, TXT_SMALL, 10, bot_y, nav);
+        render_back_hint(10 + (int)pax_text_size(FONT, TXT_SMALL, nav).x, bot_y, ": back", TXT_SMALL);
     } else {
-        hint = "W/S: navigate   Enter: edit   ESC: back to categories   R: reload";
+        hint = "W/S: navigate   Enter: edit   R: reload   ";
     }
     if (hint) {
         pax_draw_text(&fb, hint_col, FONT, TXT_BODY, 10, fy + 6, hint);
+        // Back hint on a second line so a long field hint can't overflow into it
+        // or the "* unsaved" indicator on the right.
+        if (back) {
+            render_back_hint(10, fy + 6 + TXT_BODY + 4, back, TXT_SMALL);
+        }
     }
 
     if (dirty) {
