@@ -88,7 +88,7 @@ typedef enum {
 extern int  selected;
 extern bool edit_mode;
 extern bool dirty;
-extern char field_edit_buf[33];
+extern char field_edit_buf[128];  // large enough to paste a meshcore:// channel link
 extern int  field_edit_len;
 extern bool field_editing_text;
 extern int  settings_scroll;
@@ -105,8 +105,13 @@ extern bool lora_ready;
 typedef enum {
     QR_MODE_CONTACT = 0,
     QR_MODE_OWNTRACKS,
+    QR_MODE_CHANNEL,  // meshcore://channel/add?name=..&secret=.. for channels[qr_channel_idx]
 } qr_mode_t;
 extern qr_mode_t qr_overlay_mode;
+
+// Channel index whose share link the QR overlay encodes when qr_overlay_mode ==
+// QR_MODE_CHANNEL. Set before opening the overlay; -1 when unused.
+extern int qr_channel_idx;
 
 // ── Home tile-grid cursor (VIEW_HOME) ────────────────────────────────────────
 // Index into the home tile array (0..HOME_TILE_COUNT-1). Owned + updated by
@@ -122,6 +127,10 @@ extern bool qr_from_home;
 // QR action). When true, closing the overlay leaves the user in VIEW_SETTINGS
 // on the same drilldown row instead of bouncing to nodes/home.
 extern bool qr_from_settings;
+
+// QR overlay was opened from the Channel list (share / create-private flow).
+// When true, closing the overlay returns to VIEW_CHANNEL's channel list.
+extern bool qr_from_channel;
 
 // Settings drilldown state. When category_list_mode is true, render_settings
 // draws the list of categories; when false, it drills into category_active

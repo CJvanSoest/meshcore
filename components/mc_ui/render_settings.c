@@ -472,7 +472,9 @@ static void render_settings_drilldown(int w, int h) {
         bool is_text_field = (f == FIELD_OWNER || f == FIELD_ADV_NAME || f == FIELD_REGION_SCOPE ||
                               f == FIELD_GPS_LAT || f == FIELD_GPS_LON);
         if (is_sel && edit_mode && field_editing_text && is_text_field) {
-            snprintf(val_disp, sizeof(val_disp), "%s_", field_edit_buf);
+            // Settings text fields are short; bound the slice so the shared
+            // 128-byte field_edit_buf can't provoke a format-truncation warning.
+            snprintf(val_disp, sizeof(val_disp), "%.76s_", field_edit_buf);
         } else if (is_sel && edit_mode && !is_text_field) {
             snprintf(val_disp, sizeof(val_disp), "< %s >", rows[f].value);
         } else {

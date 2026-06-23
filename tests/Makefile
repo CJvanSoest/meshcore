@@ -48,7 +48,7 @@ SRC_TRACE       = ../components/mc_proto/trace.c
 
 .PHONY: all test clean
 
-all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace
+all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share
 
 test_ed25519: test_ed25519.c $(SRC_ED25519)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
@@ -136,7 +136,12 @@ test_diag_decode: test_diag_decode.c $(SRC_DIAG_DECODE)
 test_trace: test_trace.c $(SRC_TRACE)
 	$(CC) $(CFLAGS) -I../components/mc_proto -o $@ $^
 
-test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace
+# Channel share-link / bare-hex parser. Pure-C, no libs. Guards the meshcore://
+# channel/add link parse, the %23 ('#') round-trip, and rejection of plain names.
+test_channel_share: test_channel_share.c ../components/mc_domain/channel_share.c
+	$(CC) $(CFLAGS) -I../components/mc_domain -o $@ $^
+
+test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share
 	./test_ed25519
 	./test_gps_nmea
 	./test_companion_protocol
@@ -151,6 +156,7 @@ test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test
 	./test_advert_sign
 	./test_diag_decode
 	./test_trace
+	./test_channel_share
 
 clean:
-	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share

@@ -75,19 +75,31 @@ static void render_channel_list(int w, int h) {
         int iy = h - CHAT_INPUT_H - footer_h;
         pax_simple_rect(&fb, COL_PANEL, 0, iy, w, CHAT_INPUT_H);
         pax_simple_rect(&fb, COL_ACCENT, 0, iy, w, 2);
-        char disp[40];
-        snprintf(disp, sizeof(disp), "add: %s_", field_edit_buf);
+        // Show the tail of a long entry (e.g. a pasted meshcore:// link) so the
+        // cursor stays visible. disp is sized for the full 128-byte field so the
+        // shared buffer can't provoke a format-truncation warning.
+        const char* prefix = channel_creating ? "create: " : "add: ";
+        const char* shown  = field_edit_buf;
+        const int   window = 36;
+        if (field_edit_len > window) shown = field_edit_buf + (field_edit_len - window);
+        char disp[160];
+        snprintf(disp, sizeof(disp), "%s%s_", prefix, shown);
         pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, 10, iy + (CHAT_INPUT_H - TXT_BODY) / 2, disp);
     }
 
     int fy = h - footer_h;
     pax_simple_rect(&fb, COL_HEADER, 0, fy, w, footer_h);
     pax_simple_rect(&fb, COL_PANEL, 0, fy, w, 1);
-    const char* hint    = channel_adding
-                              ? "Type name (e.g. #nl)   Enter: save   "
-                              : (channel_list_cursor == 0 ? "W/S: nav   Enter: open   A: add   Tab: next   "
-                                                          : "W/S: nav   Enter: open   A: add   D: delete   Tab: next   ");
-    int         hint_ty = fy + (footer_h - TXT_SMALL) / 2;
+    const char* hint;
+    if (channel_adding) {
+        hint = channel_creating ? "Type channel name   Enter: create   "
+                                : "Name or paste meshcore:// link   Enter: save   ";
+    } else if (channel_list_cursor == 0) {
+        hint = "W/S: nav  Enter: open  A: add  C: create  Q: share  Tab: next  ";  // Public: no delete
+    } else {
+        hint = "W/S: nav  Enter: open  A: add  C: create  Q: share  D: del  Tab: next  ";
+    }
+    int hint_ty = fy + (footer_h - TXT_SMALL) / 2;
     pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, 10, hint_ty, hint);
     render_back_hint(10 + (int)pax_text_size(FONT, TXT_SMALL, hint).x, hint_ty, channel_adding ? ": cancel" : ": home",
                      TXT_SMALL);

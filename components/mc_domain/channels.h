@@ -42,9 +42,14 @@ void channels_derive_secret_from_name(const char* name, uint8_t out_secret[CHANN
 // the table is full or a slot with the same name/secret already exists.
 int channels_add_by_name(const char* name);
 
-// Add a channel with an explicit 16-byte secret + optional display name.
-// Used by future QR / share-link import paths. Returns slot idx or -1.
+// Add a channel with an explicit 16-byte secret + display name. Used by the
+// share-link / hex import paths. Returns slot idx or -1.
 int channels_add_with_secret(const char* name, const uint8_t secret[CHANNEL_SECRET_LEN]);
+
+// Create a private channel with a fresh random 16-byte secret (HW RNG) under the
+// given name. The key is NOT name-derived, so the channel stays private until its
+// secret is shared out-of-band (QR / link). Returns slot idx or -1.
+int channels_create_private(const char* name);
 
 // Remove the channel at idx. idx=0 (Public) cannot be removed; returns false.
 bool channels_remove(int idx);
@@ -65,3 +70,6 @@ void channels_save_nvs(void);
 extern bool channel_list_mode;
 extern int  channel_list_cursor;
 extern bool channel_adding;
+// While channel_adding, true = "create private" (generate a random key on save
+// and open its share QR); false = "add" (name → community, or pasted link/hex).
+extern bool channel_creating;

@@ -317,9 +317,18 @@ channels (Public is always slot 0, hardcoded `PUBLIC_GROUP_PSK`).
 |---|---|
 | `W` / `S` / D-pad UP/DOWN | Cursor up / down |
 | Enter / RETURN | Select the channel (switches `active_channel_idx`) + flip to chat view |
-| `A` | Begin add-channel text input (auto-prefix `#`) |
+| `A` | Add a channel: type a name for a **community** channel (key = `SHA256(name)`), or paste a `meshcore://channel/add?…` link / 32-hex secret for a **private** channel |
+| `C` | Create a **private** channel: type a name → a random key is minted and its share QR opens |
+| `Q` | Show the share QR (`meshcore://channel/add` link + the secret as text) for the selected channel |
 | `D` | Delete the cursor's channel (Public protected) |
 | Red X (F1) from chat | Back to list |
+
+A **private channel**'s key is random, not name-derived, so it stays private
+until the secret is shared out-of-band. The share link / QR carries `name`
+(percent-encoded; `#` → `%23`) + `secret` (32 hex), the upstream
+`meshcore://channel/add` format, so it interops with the official apps.
+Importing onto the badge is paste/type (the stock badge has no camera, and
+`qrcodegen` is encode-only); the parser is `channel_parse_share`.
 
 The chat-view header shows the active channel name on the first line and
 `Region: <scope>` on the second (amber `(set in Settings)` placeholder if

@@ -10,6 +10,7 @@
 #include "bsp/device.h"
 #include "bsp/input.h"
 #include "bsp/led.h"
+#include "channel_share.h"
 #include "channels.h"
 #include "chat.h"
 #include "contacts.h"
@@ -592,6 +593,9 @@ static void nav_chat(uint32_t key) {
     }
 }
 
+// Defined below (near handle_nav); used here by the channel-list D-pad path.
+static void channel_commit_add(void);
+
 static void nav_channel(uint32_t key) {
     if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
         if (channel_list_mode && !channel_adding) {
@@ -607,23 +611,7 @@ static void nav_channel(uint32_t key) {
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
         if (channel_adding) {
-            if (field_edit_len > 0) {
-                char name[CHANNEL_NAME_MAX_LEN + 1];
-                name[0]         = '\0';
-                bool needs_hash = (field_edit_buf[0] != '#');
-                int  cap        = CHANNEL_NAME_MAX_LEN - (needs_hash ? 1 : 0);
-                if (needs_hash) {
-                    name[0] = '#';
-                    name[1] = '\0';
-                }
-                strncat(name, field_edit_buf, cap);
-                int slot = channels_add_by_name(name);
-                if (slot > 0) channel_list_cursor = slot;
-            }
-            channel_adding     = false;
-            field_editing_text = false;
-            field_edit_len     = 0;
-            field_edit_buf[0]  = '\0';
+            channel_commit_add();
             return;
         }
         if (channel_list_mode && !channel_adding) {
@@ -880,6 +868,57 @@ static void key_toolbox_log(char c) {
     }
 }
 
+// Build a channel name from a typed slice, auto-prefixing '#' (the MeshCore
+// convention for non-Public channels) and clamping to CHANNEL_NAME_MAX_LEN.
+static void build_channel_name(char* out, const char* in) {
+    out[0]          = '\0';
+    bool needs_hash = (in[0] != '#');
+    int  cap        = CHANNEL_NAME_MAX_LEN - (needs_hash ? 1 : 0);
+    if (needs_hash) {
+        out[0] = '#';
+        out[1] = '\0';
+    }
+    strncat(out, in, cap);
+}
+
+// Commit the channel-add text field (shared by the D-pad and keyboard paths):
+//  - create-mode  → generate a random private key, add it, open its share QR;
+//  - a pasted meshcore:// link or 32-hex secret → add a private channel;
+//  - plain text   → add a community channel by name (key derived from the name).
+static void channel_commit_add(void) {
+    int slot = -1;
+    if (field_edit_len > 0) {
+        if (channel_creating) {
+            char nm[CHANNEL_NAME_MAX_LEN + 1];
+            build_channel_name(nm, field_edit_buf);
+            slot = channels_create_private(nm);
+        } else {
+            char    pname[CHANNEL_NAME_MAX_LEN + 1];
+            uint8_t psecret[CHANNEL_SECRET_LEN];
+            if (channel_parse_share(field_edit_buf, pname, sizeof(pname), psecret)) {
+                slot = channels_add_with_secret(pname[0] ? pname : "#private", psecret);
+            } else {
+                char nm[CHANNEL_NAME_MAX_LEN + 1];
+                build_channel_name(nm, field_edit_buf);
+                slot = channels_add_by_name(nm);
+            }
+        }
+    }
+    if (slot > 0) channel_list_cursor = slot;
+    // Created channels jump straight to their share QR so the key can be handed out.
+    if (channel_creating && slot > 0) {
+        qr_channel_idx    = slot;
+        qr_overlay_mode   = QR_MODE_CHANNEL;
+        qr_from_channel   = true;
+        qr_overlay_active = true;
+    }
+    channel_adding     = false;
+    channel_creating   = false;
+    field_editing_text = false;
+    field_edit_len     = 0;
+    field_edit_buf[0]  = '\0';
+}
+
 void handle_nav(uint32_t key) {
     if (qr_overlay_active) {
         // Overlay swallows all nav keys; the red X (F1) dismisses it. ESC is no
@@ -887,11 +926,16 @@ void handle_nav(uint32_t key) {
         if (key == BSP_INPUT_NAVIGATION_KEY_F1) {
             qr_overlay_active = false;
             qr_overlay_mode   = QR_MODE_CONTACT;
+            qr_channel_idx    = -1;
             if (qr_from_home) {
                 qr_from_home = false;
                 current_view = VIEW_HOME;
             } else if (qr_from_settings) {
                 qr_from_settings = false;
+            } else if (qr_from_channel) {
+                qr_from_channel   = false;
+                current_view      = VIEW_CHANNEL;
+                channel_list_mode = true;  // land back on the channel list
             }
         }
         return;
@@ -1401,29 +1445,7 @@ void handle_key(char c) {
         if (channel_adding) {
             // Red X cancels channel-add (handle_nav); keyboard ESC no longer does.
             if (c == '\r' || c == '\n') {
-                if (field_edit_len > 0) {
-                    // Auto-prefix with '#' if user typed plain text — non-Public
-                    // channels always start with '#' in MeshCore name convention.
-                    // Buf is sizeof(field_edit_buf)=33; cap input slice at
-                    // CHANNEL_NAME_MAX_LEN-1 so even after prefix we fit.
-                    char name[CHANNEL_NAME_MAX_LEN + 1];
-                    name[0]         = '\0';
-                    bool needs_hash = (field_edit_buf[0] != '#');
-                    int  cap        = CHANNEL_NAME_MAX_LEN - (needs_hash ? 1 : 0);
-                    if (needs_hash) {
-                        name[0] = '#';
-                        name[1] = '\0';
-                    }
-                    strncat(name, field_edit_buf, cap);
-                    int slot = channels_add_by_name(name);
-                    if (slot > 0) {
-                        channel_list_cursor = slot;
-                    }
-                }
-                channel_adding     = false;
-                field_editing_text = false;
-                field_edit_len     = 0;
-                field_edit_buf[0]  = '\0';
+                channel_commit_add();
                 return;
             }
             if (c == 127 || c == 8) {
@@ -1450,9 +1472,31 @@ void handle_key(char c) {
         }
         if (c == 'a' || c == 'A') {
             channel_adding     = true;
+            channel_creating   = false;
             field_editing_text = true;
             field_edit_len     = 0;
             field_edit_buf[0]  = '\0';
+            return;
+        }
+        if (c == 'c' || c == 'C') {
+            // Create a private channel: type a name, then a random key is
+            // generated and its share QR is shown on save (channel_commit_add).
+            channel_adding     = true;
+            channel_creating   = true;
+            field_editing_text = true;
+            field_edit_len     = 0;
+            field_edit_buf[0]  = '\0';
+            return;
+        }
+        if (c == 'q' || c == 'Q') {
+            // Show the share QR (meshcore:// link) for the selected channel.
+            if (channel_list_cursor >= 0 && channel_list_cursor < channel_count &&
+                channels[channel_list_cursor].active) {
+                qr_channel_idx    = channel_list_cursor;
+                qr_overlay_mode   = QR_MODE_CHANNEL;
+                qr_from_channel   = true;
+                qr_overlay_active = true;
+            }
             return;
         }
         if (c == 'd' || c == 'D') {
