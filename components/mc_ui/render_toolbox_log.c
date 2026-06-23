@@ -10,10 +10,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <time.h>
 #include "app_config.h"
 #include "diag.h"
 #include "diag_decode.h"
 #include "esp_heap_caps.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "pax_gfx.h"
 #include "pax_text.h"
 #include "render.h"
@@ -51,6 +55,63 @@ static void ensure_snap(void) {
     size_t dbytes = sizeof(diag_decoded_t) * DIAG_LOG_SIZE;
     s_decoded     = heap_caps_malloc(dbytes, MALLOC_CAP_SPIRAM);
     if (s_decoded == NULL) s_decoded = malloc(dbytes);
+}
+
+// Raise a 2.5 s status toast from the export path. Centralised so every exit
+// branch reports its outcome the same way.
+static void log_export_toast(const char* msg) {
+    snprintf(toast_text, sizeof(toast_text), "%s", msg);
+    toast_duration_ms = 2500;
+    toast_start_ms    = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+}
+
+void toolbox_log_export_sd(void) {
+    // Fresh snapshot independent of the render-time freeze, so an export grabs
+    // the live ring even while the on-screen window is paused. ~12 KB on PSRAM
+    // for the duration of the write, then freed.
+    diag_entry_t* snap = heap_caps_malloc(sizeof(diag_entry_t) * DIAG_LOG_SIZE, MALLOC_CAP_SPIRAM);
+    if (snap == NULL) snap = malloc(sizeof(diag_entry_t) * DIAG_LOG_SIZE);
+    if (snap == NULL) {
+        log_export_toast("Export failed: low memory");
+        return;
+    }
+    int head  = 0;
+    int count = diag_snapshot(snap, &head);
+
+    // time(NULL) comes from the C6 RTC; unsynced it is still unique-enough to
+    // not collide within a session (same basis as the coverage CSV name).
+    mkdir("/sd/meshcore", 0775);
+    mkdir("/sd/meshcore/log", 0775);
+    char path[64];
+    snprintf(path, sizeof(path), "/sd/meshcore/log/pkt_%lu.csv", (unsigned long)time(NULL));
+    FILE* f = fopen(path, "w");
+    if (f == NULL) {
+        free(snap);
+        log_export_toast("Export failed: no SD card?");
+        return;
+    }
+
+    fputs(DIAG_CSV_HEADER "\n", f);
+    char row[2 * DIAG_RAW_MAX + 96];  // 2 hex chars/byte + the fixed columns
+    for (int i = 0; i < count; i++) {
+        int                 ri = (head - 1 - i + 2 * DIAG_LOG_SIZE) % DIAG_LOG_SIZE;  // newest-first
+        const diag_entry_t* e  = &snap[ri];
+        diag_decoded_t      d;
+        diag_decode(e->raw, e->raw_len, &d);
+        diag_csv_row(e->now_ms, e->dir == DIAG_DIR_TX, e->rssi_dbm, e->snr_db_x4, e->full_len, e->raw, e->raw_len, &d,
+                     row, sizeof(row));
+        fputs(row, f);
+        fputc('\n', f);
+    }
+    fclose(f);
+    free(snap);
+
+    // Sized past the worst-case bound the compiler infers for path[] so the
+    // snprintf can't truncate; the 64-byte toast does the final clamp at runtime
+    // (real paths are ~48 chars, so nothing is actually cut).
+    char msg[96];
+    snprintf(msg, sizeof(msg), "Saved %d pkts -> %s", count, path + 4);  // drop "/sd/"
+    log_export_toast(msg);
 }
 
 static void log_header(int w) {
@@ -274,5 +335,5 @@ void render_toolbox_log(void) {
     pax_simple_rect(&fb, COL_HEADER, 0, fy, w, LOG_FOOTER_H);
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
     pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, fy + (LOG_FOOTER_H - TXT_SMALL) / 2,
-                  "WS: select  Enter: detail  H: hex/dissect  P: pause  C: clear  ESC: back");
+                  "WS: select  Enter: detail  H: hex/dissect  P: pause  E: export  C: clear  ESC: back");
 }

@@ -29,6 +29,11 @@ void render_toolbox(void);           // Toolbox launcher (sub-tool menu)
 void render_toolbox_log(void);       // live packet log (hex / dissector)
 void render_toolbox_coverage(void);  // repeater coverage test
 
+// Dump the current diag ring to a timestamped CSV under /sd/meshcore/log/ and
+// raise a result toast. Called from the packet-log key handler ('E'). Safe to
+// call from the UI task; takes a fresh ring snapshot internally.
+void toolbox_log_export_sd(void);
+
 // VIEW_HOME tile-grid API used by input.c to translate tile-Enter into a
 // view switch + optional side-effect. home_tile_target() returns VIEW_HOME
 // for placeholder ("soon") tiles so input can no-op on them.

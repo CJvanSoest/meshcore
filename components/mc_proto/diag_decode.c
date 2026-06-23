@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "diag_decode.h"
+#include <stdio.h>
 #include <string.h>
 #include "meshcore/packet.h"
 #include "meshcore/payload/advert.h"
@@ -123,4 +124,49 @@ const char* diag_role_name(uint8_t role) {
         default:
             return "Unknown";
     }
+}
+
+int diag_csv_row(uint32_t ts_ms, bool dir_is_tx, int8_t rssi_dbm, int8_t snr_x4, uint8_t full_len, const uint8_t* raw,
+                 uint8_t raw_len, const diag_decoded_t* d, char* out, int cap) {
+    if (!out || cap <= 0) return 0;
+
+    // Fixed columns first; raw_hex is appended byte-by-byte afterwards so a
+    // tight `cap` truncates the hex tail rather than overrunning.
+    char rssi[8];
+    char snr[12];
+    if (dir_is_tx || rssi_dbm == DIAG_CSV_NO_SIGNAL) {
+        rssi[0] = '\0';
+    } else {
+        snprintf(rssi, sizeof(rssi), "%d", rssi_dbm);
+    }
+    if (dir_is_tx || snr_x4 == DIAG_CSV_NO_SIGNAL) {
+        snr[0] = '\0';
+    } else {
+        // Quarter-dB fixed point → signed dB with two decimals, no float.
+        int q    = snr_x4;  // promote past int8 before the sign-aware split
+        int sign = q < 0 ? -1 : 1;
+        int mag  = q * sign;
+        snprintf(snr, sizeof(snr), "%s%d.%02d", sign < 0 ? "-" : "", mag / 4, (mag % 4) * 25);
+    }
+
+    const char* type  = (d && d->valid) ? diag_type_name(d->ptype) : "?";
+    const char* route = (d && d->valid) ? diag_route_name(d->route) : "?";
+
+    int n = snprintf(out, cap, "%lu,%s,%s,%s,%s,%s,%u,", (unsigned long)ts_ms, dir_is_tx ? "TX" : "RX", type, route,
+                     rssi, snr, (unsigned)full_len);
+    if (n < 0 || n >= cap) {
+        out[cap - 1] = '\0';
+        return 0;  // fixed columns alone overflowed; caller's buffer is too small
+    }
+
+    // Append raw[] as lower-case hex, stopping if the row buffer fills.
+    static const char hexd[] = "0123456789abcdef";
+    if (raw) {
+        for (uint8_t i = 0; i < raw_len && n + 2 < cap; i++) {
+            out[n++] = hexd[(raw[i] >> 4) & 0xF];
+            out[n++] = hexd[raw[i] & 0xF];
+        }
+    }
+    out[n] = '\0';
+    return n;
 }
