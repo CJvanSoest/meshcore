@@ -44,6 +44,13 @@ static void open_home_tile(int idx) {
     home_action_t action = home_tile_action(idx);
     app_view_t    target = home_tile_target(idx);
 
+    // Exit tile: return to the BadgeVMS launcher. Same proven path as the
+    // ESC-on-home shortcut; the tile just makes it discoverable.
+    if (action == HOME_ACTION_EXIT) {
+        bsp_device_restart_to_launcher();
+        return;
+    }
+
     // Advert tile: drill straight into Settings -> Advert so the user
     // tweaks intervals + triggers manual sends in one place. The
     // "Send flood now" action row inside the Advert category replaces
@@ -469,7 +476,7 @@ static void settings_commit_text_edit(field_t f) {
 // taken by the time these run, so they only see directional keys + RETURN.
 
 static void nav_home(uint32_t key) {
-    int cols = 4;  // mirrors HOME_TILE_COLS in render_home.c
+    int cols = 3;  // mirrors HOME_TILE_COLS in render_home.c
     if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
         if (home_cursor - cols >= 0) home_cursor -= cols;
     } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
@@ -1047,7 +1054,7 @@ void handle_nav(uint32_t key) {
 // `<>,.`/D, previously a long `else if (current_view == VIEW_X)` cascade.
 
 static void key_home(char c) {
-    const int cols  = 4;
+    const int cols  = 3;  // mirrors HOME_TILE_COLS in render_home.c
     const int total = home_tile_count();
     if (c == 'w' || c == 'W') {
         if (home_cursor - cols >= 0) home_cursor -= cols;

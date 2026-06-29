@@ -33,8 +33,8 @@
 #include "ui_state.h"
 
 // ── Tile-grid geometry (mirrors launcher theme: 4 cols, 30/20 margins) ───────
-#define HOME_TILE_COLS  4
-#define HOME_TILE_ROWS  2
+#define HOME_TILE_COLS  3
+#define HOME_TILE_ROWS  3
 #define HOME_TILE_COUNT (HOME_TILE_COLS * HOME_TILE_ROWS)
 #define HOME_H_MARGIN   30
 #define HOME_V_MARGIN   20
@@ -139,6 +139,13 @@ static void icon_about(int cx, int cy, int sz, pax_col_t col) {
     pax_draw_text(&fb, col, FONT, sz * 3 / 4, cx - (int)csz.x / 2, cy - sz * 3 / 8, "i");
 }
 
+static void icon_exit(int cx, int cy, int sz, pax_col_t col) {
+    // Power glyph: a ring open at the top with a vertical stem through the gap.
+    float r = sz / 2.2f;
+    pax_outline_arc(&fb, col, cx, cy, r, -1.05f, 4.19f);  // ~300 deg arc, gap at top
+    pax_simple_rect(&fb, col, cx - sz / 22, cy - (int)r - sz / 8, sz / 11, sz / 2);
+}
+
 // ── Tile definitions ─────────────────────────────────────────────────────────
 typedef void (*home_icon_fn)(int cx, int cy, int sz, pax_col_t col);
 
@@ -161,6 +168,7 @@ static const home_tile_t home_tiles[HOME_TILE_COUNT] = {
     {"Settings", VIEW_SETTINGS, icon_settings, HOME_ACTION_NONE, NULL},
     {"About", VIEW_ABOUT, icon_about, HOME_ACTION_NONE, NULL},
     {"QR", VIEW_NODES, icon_advert, HOME_ACTION_OPEN_QR, NULL},
+    {"Exit", VIEW_HOME, icon_exit, HOME_ACTION_EXIT, NULL},
 };
 
 // Expose the tile count + target/action lookup to input.c so Enter opens the
