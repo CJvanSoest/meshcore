@@ -25,6 +25,7 @@
 #include "ui_state.h"
 
 #define LOG_HEADER_H 44
+#define LOG_COLHDR_H 20
 #define LOG_FOOTER_H 38
 #define LOG_ROW_H    24
 
@@ -33,7 +34,9 @@
 #define COL_DIR    62
 #define COL_TYPE   96
 #define COL_RSSI   166
-#define COL_DETAIL 210
+#define COL_SNR    212
+#define COL_HOPS   268
+#define COL_DETAIL 312
 
 // PSRAM-resident snapshot of the ring, refreshed each live frame and frozen
 // while paused so the user can read + scroll a stable window. s_snap holds the
@@ -133,6 +136,20 @@ static void log_header(int w) {
     pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, mx, (LOG_HEADER_H - TXT_SMALL) / 2, meta);
 }
 
+// Column-name strip drawn between the title header and the data rows so each
+// row's fields read against a label. Same COL_* x-positions as the rows.
+static void log_col_headers(int w, int top) {
+    int ly = top + (LOG_COLHDR_H - TXT_TINY) / 2;
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_TS, ly, "Time");
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_DIR, ly, "Dir");
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_TYPE, ly, "Type");
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_RSSI, ly, "RSSI");
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_SNR, ly, "SNR");
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_HOPS, ly, "Hops");
+    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_DETAIL, ly, "Detail");
+    pax_simple_rect(&fb, COL_HEADER, 0, top + LOG_COLHDR_H - 1, w, 1);
+}
+
 // Build the right-hand detail string for one entry into `out`.
 static void format_detail(const diag_entry_t* e, const diag_decoded_t* d, char* out, size_t cap) {
     if (toolbox_log_dissect) {
@@ -140,7 +157,8 @@ static void format_detail(const diag_entry_t* e, const diag_decoded_t* d, char* 
             snprintf(out, cap, "(unparsed) %uB", e->full_len);
             return;
         }
-        int p = snprintf(out, cap, "%s h%u %uB ", diag_route_name(d->route), d->hops, e->full_len);
+        // Hops now has its own column, so it is dropped from this string.
+        int p = snprintf(out, cap, "%s %uB ", diag_route_name(d->route), e->full_len);
         if (p < 0 || (size_t)p >= cap) return;
         if (d->has_pubkey) {
             p += snprintf(out + p, cap - p, "key:%02X%02X%02X %s", d->pubkey[0], d->pubkey[1], d->pubkey[2],
@@ -278,7 +296,7 @@ void render_toolbox_log(void) {
         return;
     }
 
-    int rows_y0  = LOG_HEADER_H + 4;
+    int rows_y0  = LOG_HEADER_H + 4 + LOG_COLHDR_H;
     int avail_h  = h - rows_y0 - LOG_FOOTER_H;
     int rows_vis = avail_h / LOG_ROW_H;
     if (rows_vis < 1) rows_vis = 1;
@@ -292,6 +310,7 @@ void render_toolbox_log(void) {
     if (toolbox_log_scroll < 0) toolbox_log_scroll = 0;
 
     log_header(w);
+    log_col_headers(w, LOG_HEADER_H + 4);
 
     if (s_snap_count == 0) {
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 12, rows_y0 + 8, "Waiting for radio traffic...");
@@ -332,6 +351,25 @@ void render_toolbox_log(void) {
             snprintf(rssi, sizeof(rssi), "--");
         }
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_RSSI, ty, rssi);
+
+        // SNR (RX only) one-decimal dB; sign kept for the sub-1 dB negatives the
+        // detail screen drops. snr_db_x4 is SNR in quarter-dB.
+        char snr[10];
+        if (rx && e->rssi_dbm != DIAG_RSSI_NONE) {
+            int x4 = e->snr_db_x4, neg = x4 < 0, a = neg ? -x4 : x4;
+            snprintf(snr, sizeof(snr), "%s%d.%02d", neg ? "-" : "", a / 4, (a % 4) * 25);
+        } else {
+            snprintf(snr, sizeof(snr), "--");
+        }
+        pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_SNR, ty, snr);
+
+        char hop[6];
+        if (d->valid) {
+            snprintf(hop, sizeof(hop), "%u", d->hops);
+        } else {
+            snprintf(hop, sizeof(hop), "--");
+        }
+        pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_HOPS, ty, hop);
 
         char detail[160];
         format_detail(e, d, detail, sizeof(detail));
