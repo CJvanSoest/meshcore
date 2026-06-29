@@ -21,6 +21,45 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-06-30
+
+### Added
+- **Private channels** — create a channel with a random key and share it by QR
+  or secret, or join one by entering a name plus its 32 hex secret. Up to 15
+  channels (PR #34).
+- **Emoji** — the inline emoji set grows from 8 to 40, with a paged picker (PR #42).
+- **HOME Exit tile** — a tile on the 3x3 home grid returns to the launcher,
+  alongside the existing red-X / ESC shortcut (PR #38).
+- **Packet Log columns** — the live log gains column headers plus SNR and hop
+  count as their own columns (PR #37).
+- **Coverage Test, nearby repeaters** — the list now holds up to 64 repeaters
+  and filters to those within 15 km of your position, so nearby repeaters are no
+  longer hidden behind the old 32 cap (PR #45).
+- **Channel message status** — your own channel messages show a relayed / not
+  sent indicator (PR #33).
+
+### Changed
+- **UI font** — the proportional face is now Montserrat for a rounder, more
+  legible look; footer hints, column headers and tile spacing were tuned to
+  match (PR #40).
+- **Coverage Test, direct only** — a repeater counts as reachable only when the
+  ping returns within one hop (direct or a single relay), so the result reflects
+  direct coverage rather than multi-hop reachability (PR #45).
+- **Back navigation** — the red X is the sole back key; ESC exits only from the
+  home screen (PR #24, PR #26).
+
+### Fixed
+- **Companion frequency** — the phone app showed e.g. 869618.000 MHz because the
+  self-info frequency was sent in Hz; it now reports kHz, so the app shows
+  869.618 MHz (PR #44).
+- **Duplicate channel messages** — your own channel messages no longer appear
+  twice; the self-flood echo is dropped on receive (PR #32).
+
+### Removed
+- **GPS auto-fill** — the "Auto-fill from GPS" settings action is gone.
+  Coordinates are set manually or via the MeshCore phone app, and the on-device
+  GPS module feeds only the live map (PR #44).
+
 ## [2.7.0] - 2026-06-23
 
 ### Added
