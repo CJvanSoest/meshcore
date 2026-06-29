@@ -44,3 +44,23 @@ CONFIG_FATFS_ALLOC_PREFER_EXTRAM=n
 CONFIG_SPI_FLASH_SUPPORT_WINBOND_CHIP=y
 CONFIG_USB_HOST_HUBS_SUPPORTED=y
 CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE=n
+# ── LVGL 9 (UI migration) ────────────────────────────────────────────────────
+# 16-bit colour matches the ST7701S panel (565RGB, little-endian) so the LVGL
+# draw buffer blits 1:1 via bsp_display_blit (no per-pixel format conversion).
+CONFIG_LV_COLOR_DEPTH_16=y
+# Use the C library allocator (ESP heap, PSRAM-capable) rather than LVGL's
+# builtin pool — avoids sizing a fixed pool and matches the image-decode path.
+CONFIG_LV_USE_CLIB_MALLOC=y
+CONFIG_LV_USE_CLIB_STRING=y
+CONFIG_LV_USE_CLIB_SPRINTF=y
+# Montserrat sizes the UI uses (TXT_TINY 13->14, SMALL 16, BODY 20, TAB 22,
+# TITLE 24). 14 is on by default; enable the rest.
+CONFIG_LV_FONT_MONTSERRAT_16=y
+CONFIG_LV_FONT_MONTSERRAT_20=y
+CONFIG_LV_FONT_MONTSERRAT_22=y
+CONFIG_LV_FONT_MONTSERRAT_24=y
+# Keep the image bulk out of the binary: no demos, examples, or file-system
+# image decoders during the core migration.
+CONFIG_LV_BUILD_EXAMPLES=n
+CONFIG_LV_USE_DEMO_WIDGETS=n
+CONFIG_LV_USE_LOG=n

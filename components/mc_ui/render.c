@@ -15,6 +15,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "lvgl_ui.h"
 #include "pax_fonts.h"
 #include "pax_gfx.h"
 #include "pax_text.h"
@@ -222,6 +223,14 @@ void render_toast(int w, int h) {
 }
 
 void render(void) {
+    // Hybrid dispatch during the LVGL migration: migrated views paint through
+    // LVGL (its flush_cb owns the blit); the rest keep the PAX single-flush
+    // model below. Exactly one path drives the panel per frame.
+    if (lvgl_view_active(current_view)) {
+        lvgl_view_render(current_view);
+        return;
+    }
+
     // Single-flush model: each render_*() draws into fb but does NOT blit.
     // Overlays (QR, emoji picker) draw on top of the base view, and we blit
     // exactly once at the end so the user never sees the base layer briefly

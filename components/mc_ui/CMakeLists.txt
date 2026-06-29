@@ -16,6 +16,8 @@ idf_component_register(
         "render_toolbox_coverage.c"
         "input.c"
         "emoji.c"
+        "lvgl_port.c"
+        "lvgl_ui.c"
     INCLUDE_DIRS
         "."
     REQUIRES
@@ -24,8 +26,10 @@ idf_component_register(
         mc_radio
         mc_net
         robotman2412__pax-gfx
+        lvgl
         badge-bsp
         freertos
+        esp_timer
     PRIV_REQUIRES
         mc_io
         mc_proto

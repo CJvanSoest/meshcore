@@ -76,6 +76,7 @@ static char const TAG[] = "main";
 // COL_* palette, FONT/TXT_* sizes, TAB_BAR_H / FOOTER_H / CHAT_* layout
 // constants, blit(), render(), and the display_h_res / display_v_res / fb
 // globals all live in render.c/h.
+#include "lvgl_port.h"
 #include "render.h"
 
 static bsp_display_color_format_t display_color_format = 0;
@@ -245,6 +246,16 @@ void app_main(void) {
         pax_buf_init(&fb, NULL, display_h_res, display_v_res, fmt);
         pax_buf_reversed(&fb, display_data_endian == BSP_DISPLAY_ENDIAN_BIG);
         pax_buf_set_orientation(&fb, ori);
+
+        // Bring up LVGL on the same panel with the same native geometry /
+        // format / rotation, so migrated (LVGL) views land in the identical
+        // orientation as the PAX framebuffer. PAX and LVGL coexist during the
+        // migration; render() routes each frame to exactly one of them.
+        esp_err_t lv_res = lvgl_port_init(display_h_res, display_v_res, display_color_format, display_data_endian,
+                                          bsp_display_get_default_rotation());
+        if (lv_res != ESP_OK) {
+            ESP_LOGE(TAG, "LVGL init failed: %d", lv_res);
+        }
     }
 
     ESP_ERROR_CHECK(bsp_input_get_queue(&input_event_queue));
