@@ -408,9 +408,11 @@ static void rx_handle_path(const meshcore_message_t* msg) {
 static void rx_handle_trace(const meshcore_message_t* msg, const radio_rx_meta_t* meta) {
     uint32_t tag = 0;
     if (!meshcore_trace_parse(msg->payload, msg->payload_length, &tag, NULL, NULL, NULL, NULL)) return;
-    int8_t uplink   = (msg->path_length >= 1) ? (int8_t)msg->path[0] : COVERAGE_SNR_NONE;
-    int8_t downlink = meta->snr_db_x4;
-    coverage_note_tag(tag, uplink, downlink);
+    int8_t  uplink   = (msg->path_length >= 1) ? (int8_t)msg->path[0] : COVERAGE_SNR_NONE;
+    int8_t  downlink = meta->snr_db_x4;
+    uint8_t bph      = msg->bytes_per_hop ? msg->bytes_per_hop : 1;
+    uint8_t hops     = (uint8_t)(msg->path_length / bph);  // SNR accumulator: one byte per hop
+    coverage_note_tag(tag, uplink, downlink, hops);
 }
 
 static void mc_rx_dispatch(const meshcore_message_t* msg, const radio_rx_meta_t* meta) {
@@ -709,13 +711,14 @@ static void coverage_ping_task(void* arg) {
         bool       reach  = false;
         uint32_t   rtt_ms = 0;
         int8_t     up = COVERAGE_SNR_NONE, down = COVERAGE_SNR_NONE;
+        uint8_t    hops = 0;
 
         if (send_trace(a->pub, tag)) {
             coverage_arm_tag(tag);
             // Poll for the returning TRACE up to ~8 s.
             for (int waited = 0; waited < 8000; waited += 100) {
-                if (coverage_take_tag(&up, &down)) {
-                    reach  = true;
+                if (coverage_take_tag(&up, &down, &hops)) {
+                    reach  = (hops <= 1);  // count only direct (0) or single-relay (1) coverage
                     rtt_ms = (uint32_t)((xTaskGetTickCount() - t0) * portTICK_PERIOD_MS);
                     break;
                 }
