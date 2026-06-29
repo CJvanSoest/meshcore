@@ -34,8 +34,14 @@
 #define COL_PAGER_TEXT   0xFFC0C8D0  // body / label text
 #define COL_PAGER_ACCENT 0xFFFAA61A  // focused tile + highlights (orange)
 
-// ── Typography (Saira Regular: ASCII + Latin-1, variable pitch) ──────────────
-#define FONT      pax_font_saira_regular
+// ── Typography (Montserrat: ASCII + Latin-1, variable pitch) ─────────────────
+// Montserrat is a vendored PAX bitmap font (components/vendor/font_bitmap_
+// montserrat.c), generated from the OFL TTF. It reads rounder/more geometric
+// than the previous Saira face; one macro repoints the whole proportional UI.
+// Declared extern here (resolved via mc_ui's PRIV_REQUIRES vendor) rather than
+// pulling the vendor header onto every render.h consumer's include path.
+extern const pax_font_t pax_font_montserrat_raw;
+#define FONT      (&pax_font_montserrat_raw)
 // Monospace face for the packet log + hash/hex, where column alignment and a
 // clearly distinct i / l / 1 matter more than a smooth proportional look.
 #define MONO      pax_font_sky_mono
