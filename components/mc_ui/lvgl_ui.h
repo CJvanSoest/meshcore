@@ -10,7 +10,7 @@
 #pragma once
 
 #include <stdbool.h>
-#include "ui_state.h"  // app_view_t
+#include "app_config.h"  // app_view_t
 
 // True when `v` is rendered through LVGL (migrated). False -> PAX path.
 bool lvgl_view_active(app_view_t v);
