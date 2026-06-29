@@ -53,6 +53,7 @@ typedef enum {
     HOME_ACTION_NONE = 0,
     HOME_ACTION_OPEN_QR,      // QR-tile: open QR overlay, stay rooted at home
     HOME_ACTION_OPEN_ADVERT,  // Advert-tile: drill into Settings -> Advert
+    HOME_ACTION_EXIT,         // Exit-tile: return to the BadgeVMS launcher
 } home_action_t;
 
 int           home_tile_count(void);
