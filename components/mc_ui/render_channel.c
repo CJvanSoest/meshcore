@@ -67,8 +67,8 @@ static void render_channel_list(int w, int h) {
 
         char meta[24];
         snprintf(meta, sizeof(meta), "0x%02X", channels[i].hash);
-        pax_vec2f msz = pax_text_size(FONT, TXT_TINY, meta);
-        pax_draw_text(&fb, name_col, FONT, TXT_TINY, w - (int)msz.x - 14, y + (row_h - TXT_TINY) / 2, meta);
+        pax_vec2f msz = pax_text_size(FONT, TXT_BODY, meta);
+        pax_draw_text(&fb, name_col, FONT, TXT_BODY, w - (int)msz.x - 14, y + (row_h - TXT_BODY) / 2, meta);
     }
 
     if (channel_adding) {

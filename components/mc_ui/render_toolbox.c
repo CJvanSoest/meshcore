@@ -72,7 +72,7 @@ void render_toolbox(void) {
 
         pax_draw_text(&fb, title_col, FONT, TXT_BODY, x + 16, y + 12, t->label);
         // Description in the same proportional face as the title (Montserrat).
-        pax_draw_text(&fb, desc_col, FONT, TXT_SMALL, x + 16, y + 12 + TXT_BODY + 4, t->desc);
+        pax_draw_text(&fb, desc_col, FONT, TXT_BODY, x + 16, y + 12 + TXT_BODY + 4, t->desc);
 
         if (!t->enabled) {
             const char* tag = "soon";
