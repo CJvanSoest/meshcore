@@ -58,8 +58,7 @@ typedef enum {
     FIELD_REGION_SCOPE,
     FIELD_GPS_LAT,
     FIELD_GPS_LON,
-    FIELD_GPS_SOURCE,    // Read-only: shows whether coords are from PA1010D / Manual / CDC / BLE
-    FIELD_GPS_AUTOFILL,  // Action-row: press OK to scan PA1010D on QWIIC and auto-fill lat/lon
+    FIELD_GPS_SOURCE,  // Read-only: shows whether coords are from PA1010D / Manual / CDC / BLE
     // ── Live GPS tracking (background gps_task) ──
     FIELD_GPS_PROFILE,     // Walking / Cycling / Driving / Manual
     FIELD_GPS_INTERVAL_S,  // Custom poll interval seconds; 0 = use profile default

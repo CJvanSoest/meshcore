@@ -179,7 +179,6 @@ static const field_def_t s_fields[FIELD_COUNT] = {
     [FIELD_GPS_LAT]            = {"GPS latitude", save_gps_coords},
     [FIELD_GPS_LON]            = {"GPS longitude", save_gps_coords},
     [FIELD_GPS_SOURCE]         = {"GPS source", NULL},
-    [FIELD_GPS_AUTOFILL]       = {"Auto-fill from GPS", NULL},
     // ── Tracking (live GPS background task) ──
     [FIELD_GPS_PROFILE]        = {"Profile", save_gps_track_prefs},
     [FIELD_GPS_INTERVAL_S]     = {"Poll interval", save_gps_track_prefs},
@@ -833,22 +832,6 @@ static void fmt_field(field_t f, char* out, size_t cap) {
                     break;
             }
             snprintf(out, cap, "%s", src_str);
-            break;
-        }
-        case FIELD_GPS_AUTOFILL: {
-            // After the first scan this session show a compact summary of
-            // the latest fix so the result survives the toast fade-out.
-            gps_status_t last;
-            if (gps_last_status(&last)) {
-                if (last.fix_valid) {
-                    snprintf(out, cap, "Last: %d sats, HDOP %.1f", last.fix_used_sats, (double)last.hdop);
-                } else {
-                    int sats_view = last.gps_sats_view + last.glo_sats_view;
-                    snprintf(out, cap, "No fix - %d sats seen", sats_view);
-                }
-            } else {
-                snprintf(out, cap, "press OK to scan");
-            }
             break;
         }
         case FIELD_GPS_PROFILE:

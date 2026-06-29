@@ -370,39 +370,6 @@ void field_adjust(int field, int delta) {
 // paint a "Searching" toast first so the user knows we're not frozen. Reports
 // satellite count even on no-fix so the user can tell whether the chip is
 // receiving anything at all (vs disconnected) or just needs more sky-view.
-static void settings_trigger_gps_autofill(void) {
-    snprintf(toast_text, sizeof(toast_text), "Searching GPS (30s)...");
-    toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-    render();  // force-paint the search toast before we block
-
-    gps_status_t st;
-    gps_read_status(30000, &st);
-
-    if (!st.bus_ok) {
-        snprintf(toast_text, sizeof(toast_text), "GPS not detected on QWIIC");
-    } else if (st.fix_valid) {
-        gps_lat_e6         = st.lat_e6;
-        gps_lon_e6         = st.lon_e6;
-        gps_position_valid = true;
-        gps_last_source    = GPS_SRC_PA1010D;
-        save_gps_coords();
-        int total = st.fix_used_sats;
-        snprintf(toast_text, sizeof(toast_text), "GPS fix: %.5f, %.5f (%d sats)", (double)st.lat_e6 / 1e6,
-                 (double)st.lon_e6 / 1e6, total);
-    } else if (st.sentences_seen == 0) {
-        snprintf(toast_text, sizeof(toast_text), "GPS silent (chip reachable but no NMEA)");
-    } else {
-        int total_view = st.gps_sats_view + st.glo_sats_view;
-        if (total_view > 0) {
-            snprintf(toast_text, sizeof(toast_text), "No fix - %d sats visible (%dG+%dL)", total_view, st.gps_sats_view,
-                     st.glo_sats_view);
-        } else {
-            snprintf(toast_text, sizeof(toast_text), "No fix - 0 sats visible (clear sky?)");
-        }
-    }
-    toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-}
-
 // ── Settings: text-field edit helpers (shared between handle_nav & handle_key)
 static void settings_begin_text_edit(field_t f) {
     const char* src        = "";
@@ -743,8 +710,6 @@ static void nav_settings(uint32_t key) {
             sounds_play_error();
         } else if (selected == FIELD_SOUND_TEST_BOOT) {
             sounds_play_boot();
-        } else if (selected == FIELD_GPS_AUTOFILL) {
-            settings_trigger_gps_autofill();
         } else if (selected == FIELD_BLE_ENABLED) {
             // Toggle row: flip + save. Takes effect on next app start;
             // tearing NimBLE down cleanly mid-runtime is messy enough that
@@ -1317,8 +1282,6 @@ static void key_settings(char c) {
             sounds_play_error();
         } else if (selected == FIELD_SOUND_TEST_BOOT) {
             sounds_play_boot();
-        } else if (selected == FIELD_GPS_AUTOFILL) {
-            settings_trigger_gps_autofill();
         } else if (selected == FIELD_BLE_ENABLED) {
             ble_enabled = !ble_enabled;
             save_ble_enabled();
