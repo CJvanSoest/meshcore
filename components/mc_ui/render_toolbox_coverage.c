@@ -19,7 +19,7 @@
 
 #define COV_HEADER_H 50
 #define COV_FOOTER_H 38
-#define COV_ROW_H    44
+#define COV_ROW_H    52
 
 // Shared snapshot buffer; input.c re-collects independently for the Enter path.
 static coverage_repeater_t s_reps[COVERAGE_MAX_RESULTS];
@@ -112,6 +112,6 @@ void render_toolbox_coverage(void) {
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
     const char* cov_hint = "WS: nav   Enter: ping 3x   R: new session   ";
     int         cov_ty   = fy + (COV_FOOTER_H - TXT_SMALL) / 2;
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, cov_ty, cov_hint);
+    pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, 10, cov_ty, cov_hint);
     render_back_hint(10 + (int)pax_text_size(FONT, TXT_SMALL, cov_hint).x, cov_ty, ": back", TXT_SMALL);
 }

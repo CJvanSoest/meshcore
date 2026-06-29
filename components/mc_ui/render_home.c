@@ -301,7 +301,7 @@ void render_home(void) {
         if (home_tiles[i].label[0]) {
             pax_vec2f lsz = pax_text_size(FONT, TXT_BODY, home_tiles[i].label);
             int       lx  = tx + (tile_w - (int)lsz.x) / 2;
-            int       ly  = ty + tile_h * 3 / 4;
+            int       ly  = ty + tile_h * 2 / 3;
             pax_draw_text(&fb, fg, FONT, TXT_BODY, lx, ly, home_tiles[i].label);
             if (tbd) {
                 const char* sub = "soon";
@@ -342,18 +342,18 @@ void render_home(void) {
     // standing in for the physical key cap.
     const char* hint_top_pre  = "Press ";
     const char* hint_top_post = " to blank / wake display";
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_y_top, hint_top_pre);
+    pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, 10, hint_y_top, hint_top_pre);
     pax_vec2f pre_sz  = pax_text_size(FONT, TXT_SMALL, hint_top_pre);
     int       icon_sz = TXT_SMALL - 4;
     int       icon_x  = 10 + (int)pre_sz.x;
     int       icon_y  = hint_y_top + (TXT_SMALL - icon_sz) / 2;
     pax_simple_rect(&fb, COL_YELLOW, icon_x, icon_y, icon_sz, icon_sz);
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, icon_x + icon_sz + 4, hint_y_top, hint_top_post);
+    pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, icon_x + icon_sz + 4, hint_y_top, hint_top_post);
 
     // Bottom line: keyboard navigation hints, then the back/exit key legend
     // (red X returns to home, ESC leaves the app). RX/SNR floats on the right.
     const char* nav_hint = "WSAD: nav   Enter: open   Tab: tabs   ";
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_y, nav_hint);
+    pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, 10, hint_y, nav_hint);
     int x_x = 10 + (int)pax_text_size(FONT, TXT_SMALL, nav_hint).x;
     render_back_hint(x_x, hint_y, ": home   ESC: exit", TXT_SMALL);
 
@@ -370,7 +370,7 @@ void render_home(void) {
     }
     if (rf[0]) {
         pax_vec2f rsz = pax_text_size(FONT, TXT_SMALL, rf);
-        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, w - (int)rsz.x - 10, hint_y, rf);
+        pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, w - (int)rsz.x - 10, hint_y, rf);
     }
 
     // Centred status toast (e.g. "Flood advert sent"). Shared overlay, drawn

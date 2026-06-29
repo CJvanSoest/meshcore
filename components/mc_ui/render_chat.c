@@ -314,7 +314,7 @@ void render_chat(void) {
         pax_simple_rect(&fb, COL_PANEL, 0, fy_base, w, 1);
         const char* inbox_hint = "W/S: nav   Enter: open   D: delete   Tab: next   ";
         int         ih_ty      = fy_base + (footer_h - TXT_SMALL) / 2;
-        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, ih_ty, inbox_hint);
+        pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, 10, ih_ty, inbox_hint);
         render_back_hint(10 + (int)pax_text_size(FONT, TXT_SMALL, inbox_hint).x, ih_ty, ": home", TXT_SMALL);
         return;
     }
@@ -359,16 +359,16 @@ void render_chat(void) {
     int hint_ty = fy + (FOOTER_H - TXT_SMALL) / 2;
     if (chat_typing) {
         const char* hint = "Enter: send   Backspace: delete   ";
-        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_ty, hint);
+        pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, 10, hint_ty, hint);
         int hx     = 10 + (int)pax_text_size(FONT, TXT_SMALL, hint).x;
         hx         = render_back_hint(hx, hint_ty, ": cancel   ", TXT_SMALL);
         int icon_x = hx;
         int icon_y = fy + FOOTER_H / 2;
         pax_outline_circle(&fb, COL_GREEN, icon_x + 6, icon_y, 6);
-        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, icon_x + 18, hint_ty, ": emoji");
+        pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, icon_x + 18, hint_ty, ": emoji");
     } else {
         const char* hint = "T: type   W/S: scroll   Tab: next tab   ";
-        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_ty, hint);
+        pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, 10, hint_ty, hint);
         render_back_hint(10 + (int)pax_text_size(FONT, TXT_SMALL, hint).x, hint_ty, ": back to inbox", TXT_SMALL);
     }
 }

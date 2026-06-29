@@ -140,13 +140,13 @@ static void log_header(int w) {
 // row's fields read against a label. Same COL_* x-positions as the rows.
 static void log_col_headers(int w, int top) {
     int ly = top + (LOG_COLHDR_H - TXT_TINY) / 2;
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_TS, ly, "Time");
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_DIR, ly, "Dir");
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_TYPE, ly, "Type");
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_RSSI, ly, "RSSI");
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_SNR, ly, "SNR");
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_HOPS, ly, "Hops");
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_DETAIL, ly, "Detail");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_TINY, COL_TS, ly, "Time");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_TINY, COL_DIR, ly, "Dir");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_TINY, COL_TYPE, ly, "Type");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_TINY, COL_RSSI, ly, "RSSI");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_TINY, COL_SNR, ly, "SNR");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_TINY, COL_HOPS, ly, "Hops");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_TINY, COL_DETAIL, ly, "Detail");
     pax_simple_rect(&fb, COL_HEADER, 0, top + LOG_COLHDR_H - 1, w, 1);
 }
 
@@ -381,7 +381,7 @@ void render_toolbox_log(void) {
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
     const char* log_hint = "WS: select  Enter: detail  H: hex/dissect  P: pause  E: export  C: clear  ";
     int         log_ty   = fy + (LOG_FOOTER_H - TXT_SMALL) / 2;
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, log_ty, log_hint);
+    pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, 10, log_ty, log_hint);
     render_back_hint(10 + (int)pax_text_size(FONT, TXT_SMALL, log_hint).x, log_ty, ": back", TXT_SMALL);
 
     // Draw the export-result toast ("Saved N pkts -> ...") on top. Without this
