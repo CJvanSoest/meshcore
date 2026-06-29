@@ -46,13 +46,13 @@ void render_nodes(void) {
     int snr_hdr_x  = pkts_hdr_x - snr_col_w;
     int rssi_hdr_x = snr_hdr_x - rssi_col_w;
     int hdr_text_y = hdr_y + (NODES_HEADER_H - TXT_SMALL) / 2;
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 8, hdr_text_y, "Role");
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 96, hdr_text_y, "Name");
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, rssi_hdr_x, hdr_text_y, "RSSI");
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, snr_hdr_x, hdr_text_y, "SNR");
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, pkts_hdr_x, hdr_text_y, "#Pkt");
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, dist_hdr_x, hdr_text_y, "Dist");
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, age_hdr_x, hdr_text_y, "Seen");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_SMALL, 8, hdr_text_y, "Role");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_SMALL, 96, hdr_text_y, "Name");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_SMALL, rssi_hdr_x, hdr_text_y, "RSSI");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_SMALL, snr_hdr_x, hdr_text_y, "SNR");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_SMALL, pkts_hdr_x, hdr_text_y, "#Pkt");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_SMALL, dist_hdr_x, hdr_text_y, "Dist");
+    pax_draw_text(&fb, COL_WHITE, FONT, TXT_SMALL, age_hdr_x, hdr_text_y, "Seen");
 
     int      list_y0    = NODES_Y0 + NODES_HEADER_H;
     int      footer_h   = 60;
@@ -265,7 +265,7 @@ void render_nodes(void) {
     const char* ctrl   = (node_filter == MESHCORE_DEVICE_ROLE_UNKNOWN) ? "W/S nav   A:advert   F:fav   L:filter   Q:QR"
                                                                        : "L:next   F:fav   A:advert";
     int         ctrl_y = fy_text + (TXT_BODY - TXT_SMALL) / 2;
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, fx, ctrl_y, ctrl);
+    pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, fx, ctrl_y, ctrl);
     render_back_hint(fx + (int)pax_text_size(FONT, TXT_SMALL, ctrl).x + 16, ctrl_y, ": home", TXT_SMALL);
 
     if (identity_is_ready()) {

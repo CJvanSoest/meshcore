@@ -16,6 +16,7 @@
 #define COL_DARK   0xFF24283B  // PANEL    — row highlight / separators
 #define COL_WHITE  0xFFC0CAF5  // TEXT     — body text (off-white)
 #define COL_GRAY   0xFF565F89  // DIM      — secondary text
+#define COL_HINT   COL_WHITE   // HINT     — footer hint text (bright/readable)
 #define COL_ACCENT 0xFF7AA2F7  // BLUE     — selection / accent
 #define COL_GREEN  0xFF9ECE6A  // GREEN    — ok / online
 #define COL_YELLOW 0xFFE0AF68  // AMBER    — heading / warning

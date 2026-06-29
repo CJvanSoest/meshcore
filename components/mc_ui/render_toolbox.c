@@ -71,9 +71,8 @@ void render_toolbox(void) {
         pax_col_t desc_col  = focused ? COL_HEADER : COL_GRAY;
 
         pax_draw_text(&fb, title_col, FONT, TXT_BODY, x + 16, y + 12, t->label);
-        // Description in mono: on the bright focused tile a proportional face
-        // blurs thin glyphs (i / l), so the monospace face keeps them legible.
-        pax_draw_text(&fb, desc_col, MONO, TXT_SMALL, x + 16, y + 12 + TXT_BODY + 4, t->desc);
+        // Description in the same proportional face as the title (Montserrat).
+        pax_draw_text(&fb, desc_col, FONT, TXT_SMALL, x + 16, y + 12 + TXT_BODY + 4, t->desc);
 
         if (!t->enabled) {
             const char* tag = "soon";
@@ -89,6 +88,6 @@ void render_toolbox(void) {
     pax_simple_rect(&fb, COL_PAGER_ACCENT, 0, fy, w, 1);
     const char* tb_hint = "WS: nav   Enter: open   ";
     int         tb_ty   = fy + (TB_FOOTER_H - TXT_SMALL) / 2;
-    pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, tb_ty, tb_hint);
+    pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, 10, tb_ty, tb_hint);
     render_back_hint(10 + (int)pax_text_size(FONT, TXT_SMALL, tb_hint).x, tb_ty, ": settings", TXT_SMALL);
 }

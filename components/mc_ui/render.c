@@ -46,7 +46,7 @@ int render_back_hint(int x, int y, const char* label, float ts) {
     pax_simple_line(&fb, COL_RED, x, cy - xg, x + 2 * xg, cy + xg);
     pax_simple_line(&fb, COL_RED, x, cy + xg, x + 2 * xg, cy - xg);
     int lx = x + 2 * xg + 4;
-    pax_draw_text(&fb, COL_GRAY, FONT, ts, lx, y, label);
+    pax_draw_text(&fb, COL_HINT, FONT, ts, lx, y, label);
     return lx + (int)pax_text_size(FONT, ts, label).x;
 }
 

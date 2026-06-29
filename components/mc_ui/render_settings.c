@@ -308,7 +308,7 @@ static void render_settings_category_list(int w, int h) {
     {
         const char* hint    = "WSAD: nav   Enter: open   Tab: next view   ";
         int         hint_ty = fy + (S_GRID_FOOTER - TXT_SMALL) / 2;
-        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, 10, hint_ty, hint);
+        pax_draw_text(&fb, COL_HINT, FONT, TXT_SMALL, 10, hint_ty, hint);
         render_back_hint(10 + (int)pax_text_size(FONT, TXT_SMALL, hint).x, hint_ty, ": home", TXT_SMALL);
     }
 }
