@@ -595,23 +595,33 @@ static void nav_chat(uint32_t key) {
 
 // Defined below (near handle_nav); used here by the channel-list D-pad path.
 static void channel_commit_add(void);
+static void channel_wizard_reset(void);
+static void channel_wizard_menu_select(void);
 
 static void nav_channel(uint32_t key) {
     if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
-        if (channel_list_mode && !channel_adding) {
+        if (channel_adding && channel_wiz_step == 0) {
+            if (channel_wiz_cursor > 0) channel_wiz_cursor--;
+        } else if (channel_list_mode && !channel_adding) {
             if (channel_list_cursor > 0) channel_list_cursor--;
         } else if (!channel_list_mode && !channel_adding) {
             if (ch_scroll > 0) ch_scroll--;
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
-        if (channel_list_mode && !channel_adding) {
+        if (channel_adding && channel_wiz_step == 0) {
+            if (channel_wiz_cursor < 1) channel_wiz_cursor++;
+        } else if (channel_list_mode && !channel_adding) {
             if (channel_list_cursor < channel_count - 1) channel_list_cursor++;
         } else if (!channel_list_mode && !channel_adding) {
             ch_scroll++;
         }
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
         if (channel_adding) {
-            channel_commit_add();
+            if (channel_wiz_step == 0) {
+                channel_wizard_menu_select();
+            } else {
+                channel_commit_add();
+            }
             return;
         }
         if (channel_list_mode && !channel_adding) {
@@ -881,45 +891,80 @@ static void build_channel_name(char* out, const char* in) {
     strncat(out, in, cap);
 }
 
-// Commit the channel-add text field (shared by the D-pad and keyboard paths):
-//  - create-mode  → generate a random private key, add it, open its share QR;
-//  - a pasted meshcore:// link or 32-hex secret → add a private channel;
-//  - plain text   → add a community channel by name (key derived from the name).
+// Reset the add/create wizard back to the channel list (cancel or finish).
+static void channel_wizard_reset(void) {
+    channel_adding      = false;
+    channel_creating    = false;
+    channel_wiz_step    = 0;
+    channel_wiz_private = false;
+    field_editing_text  = false;
+    field_edit_len      = 0;
+    field_edit_buf[0]   = '\0';
+    channel_wiz_name[0] = '\0';
+}
+
+// Menu (step 0) -> name (step 1): record the #community/private choice.
+static void channel_wizard_menu_select(void) {
+    channel_wiz_private = (channel_wiz_cursor == 1);
+    channel_wiz_step    = 1;
+    field_editing_text  = true;
+    field_edit_len      = 0;
+    field_edit_buf[0]   = '\0';
+}
+
+// Commit the current wizard step (shared by the D-pad and keyboard paths).
+//  step 1 (name): #community -> add now; private+create -> mint key + share QR;
+//                 private+add -> stash the name, advance to the secret step.
+//  step 2 (secret): parse 32 hex -> add the private channel with that key.
 static void channel_commit_add(void) {
-    int slot = -1;
-    if (field_edit_len > 0) {
-        if (channel_creating) {
-            // Private channels keep the name as typed (no '#': that prefix is the
-            // community/Public convention, and private keys aren't name-derived).
+    if (field_edit_len == 0) return;  // empty entry: stay on this step
+
+    if (channel_wiz_step == 1) {
+        if (!channel_wiz_private) {
             char nm[CHANNEL_NAME_MAX_LEN + 1];
-            strncpy(nm, field_edit_buf, CHANNEL_NAME_MAX_LEN);
-            nm[CHANNEL_NAME_MAX_LEN] = '\0';
-            slot                     = channels_create_private(nm);
-        } else {
-            char    pname[CHANNEL_NAME_MAX_LEN + 1];
-            uint8_t psecret[CHANNEL_SECRET_LEN];
-            if (channel_parse_share(field_edit_buf, pname, sizeof(pname), psecret)) {
-                slot = channels_add_with_secret(pname[0] ? pname : "private", psecret);
-            } else {
-                char nm[CHANNEL_NAME_MAX_LEN + 1];
-                build_channel_name(nm, field_edit_buf);
-                slot = channels_add_by_name(nm);
-            }
+            build_channel_name(nm, field_edit_buf);  // '#'-prefixed, key = SHA256
+            int slot = channels_add_by_name(nm);
+            if (slot > 0) channel_list_cursor = slot;
+            channel_wizard_reset();
+            return;
         }
+        if (channel_creating) {
+            char nm[CHANNEL_NAME_MAX_LEN + 1];
+            strncpy(nm, field_edit_buf, CHANNEL_NAME_MAX_LEN);  // private: name as typed
+            nm[CHANNEL_NAME_MAX_LEN] = '\0';
+            int slot                 = channels_create_private(nm);
+            if (slot > 0) {
+                channel_list_cursor = slot;
+                qr_channel_idx      = slot;  // jump straight to its share QR
+                qr_overlay_mode     = QR_MODE_CHANNEL;
+                qr_from_channel     = true;
+                qr_overlay_active   = true;
+            }
+            channel_wizard_reset();
+            return;
+        }
+        // private "add": hold the name, ask for the secret next.
+        strncpy(channel_wiz_name, field_edit_buf, CHANNEL_NAME_MAX_LEN);
+        channel_wiz_name[CHANNEL_NAME_MAX_LEN] = '\0';
+        channel_wiz_step                       = 2;
+        field_edit_len                         = 0;
+        field_edit_buf[0]                      = '\0';
+        return;
     }
-    if (slot > 0) channel_list_cursor = slot;
-    // Created channels jump straight to their share QR so the key can be handed out.
-    if (channel_creating && slot > 0) {
-        qr_channel_idx    = slot;
-        qr_overlay_mode   = QR_MODE_CHANNEL;
-        qr_from_channel   = true;
-        qr_overlay_active = true;
+
+    if (channel_wiz_step == 2) {
+        uint8_t secret[CHANNEL_SECRET_LEN];
+        char    ignore[CHANNEL_NAME_MAX_LEN + 1];
+        if (channel_parse_share(field_edit_buf, ignore, sizeof(ignore), secret)) {
+            int slot = channels_add_with_secret(channel_wiz_name[0] ? channel_wiz_name : "private", secret);
+            if (slot > 0) channel_list_cursor = slot;
+            channel_wizard_reset();
+        } else {
+            field_edit_len    = 0;  // invalid 32-hex: clear, stay on the secret step
+            field_edit_buf[0] = '\0';
+        }
+        return;
     }
-    channel_adding     = false;
-    channel_creating   = false;
-    field_editing_text = false;
-    field_edit_len     = 0;
-    field_edit_buf[0]  = '\0';
 }
 
 void handle_nav(uint32_t key) {
@@ -1024,10 +1069,7 @@ void handle_nav(uint32_t key) {
         } else if (current_view == VIEW_CHAT && !dm_inbox_mode) {
             dm_inbox_mode = true;
         } else if (current_view == VIEW_CHANNEL && channel_adding) {
-            channel_adding     = false;
-            field_editing_text = false;
-            field_edit_len     = 0;
-            field_edit_buf[0]  = '\0';
+            channel_wizard_reset();
         } else if (current_view == VIEW_CHANNEL && !channel_list_mode) {
             channel_list_mode = true;
         } else if (current_view == VIEW_SETTINGS && !settings_category_list_mode) {
@@ -1446,7 +1488,18 @@ void handle_key(char c) {
     // chat-typing branch so chat_typing keys don't fire here.
     if (current_view == VIEW_CHANNEL && channel_list_mode) {
         if (channel_adding) {
-            // Red X cancels channel-add (handle_nav); keyboard ESC no longer does.
+            // Step 0 = pick #community/private; steps 1-2 = text entry (name, then
+            // secret for a private "add"). Red X cancels (handle_nav).
+            if (channel_wiz_step == 0) {
+                if (c == 'w' || c == 'W') {
+                    if (channel_wiz_cursor > 0) channel_wiz_cursor--;
+                } else if (c == 's' || c == 'S') {
+                    if (channel_wiz_cursor < 1) channel_wiz_cursor++;
+                } else if (c == '\r' || c == '\n') {
+                    channel_wizard_menu_select();
+                }
+                return;
+            }
             if (c == '\r' || c == '\n') {
                 channel_commit_add();
                 return;
@@ -1476,19 +1529,17 @@ void handle_key(char c) {
         if (c == 'a' || c == 'A') {
             channel_adding     = true;
             channel_creating   = false;
-            field_editing_text = true;
-            field_edit_len     = 0;
-            field_edit_buf[0]  = '\0';
+            channel_wiz_step   = 0;  // open the #community/private menu
+            channel_wiz_cursor = 0;
+            field_editing_text = false;
             return;
         }
         if (c == 'c' || c == 'C') {
-            // Create a private channel: type a name, then a random key is
-            // generated and its share QR is shown on save (channel_commit_add).
             channel_adding     = true;
             channel_creating   = true;
-            field_editing_text = true;
-            field_edit_len     = 0;
-            field_edit_buf[0]  = '\0';
+            channel_wiz_step   = 0;  // open the #community/private menu
+            channel_wiz_cursor = 0;
+            field_editing_text = false;
             return;
         }
         if (c == 'q' || c == 'Q') {

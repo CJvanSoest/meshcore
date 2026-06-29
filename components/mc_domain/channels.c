@@ -32,10 +32,14 @@ int channel_unread_total(void) {
     return sum;
 }
 
-bool channel_list_mode   = true;
-int  channel_list_cursor = 0;
-bool channel_adding      = false;
-bool channel_creating    = false;
+bool channel_list_mode                          = true;
+int  channel_list_cursor                        = 0;
+bool channel_adding                             = false;
+bool channel_creating                           = false;
+int  channel_wiz_step                           = 0;
+int  channel_wiz_cursor                         = 0;
+bool channel_wiz_private                        = false;
+char channel_wiz_name[CHANNEL_NAME_MAX_LEN + 1] = {0};
 
 static void compute_hash(channel_t* ch) {
     uint8_t digest[32];

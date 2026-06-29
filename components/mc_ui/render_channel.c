@@ -71,14 +71,31 @@ static void render_channel_list(int w, int h) {
         pax_draw_text(&fb, name_col, FONT, TXT_BODY, w - (int)msz.x - 14, y + (row_h - TXT_BODY) / 2, meta);
     }
 
-    if (channel_adding) {
+    if (channel_adding && channel_wiz_step == 0) {
+        // Centred 2-option menu: #community vs private channel.
+        const char* opts[2] = {"# community channel", "private channel"};
+        const char* mtitle  = channel_creating ? "Create channel" : "Add channel";
+        const int   mpw     = 320;
+        const int   mph     = 34 + 2 * 40 + 12;
+        int         mpx     = (w - mpw) / 2;
+        int         mpy     = (h - mph) / 2;
+        pax_simple_rect(&fb, COL_HEADER, mpx, mpy, mpw, mph);
+        pax_simple_rect(&fb, COL_ACCENT, mpx, mpy, mpw, 2);
+        pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL, mpx + 14, mpy + 8, mtitle);
+        for (int i = 0; i < 2; i++) {
+            int oy = mpy + 34 + i * 40;
+            if (i == channel_wiz_cursor) {
+                pax_simple_rect(&fb, COL_PANEL, mpx + 6, oy - 4, mpw - 12, 34);
+                pax_simple_rect(&fb, COL_ACCENT, mpx + 6, oy - 4, 4, 34);
+            }
+            pax_draw_text(&fb, COL_WHITE, FONT, TXT_BODY, mpx + 18, oy, opts[i]);
+        }
+    } else if (channel_adding) {
+        // Text entry: step 1 = name, step 2 = secret (private "add").
         int iy = h - CHAT_INPUT_H - footer_h;
         pax_simple_rect(&fb, COL_PANEL, 0, iy, w, CHAT_INPUT_H);
         pax_simple_rect(&fb, COL_ACCENT, 0, iy, w, 2);
-        // Show the tail of a long entry (e.g. a pasted meshcore:// link) so the
-        // cursor stays visible. disp is sized for the full 128-byte field so the
-        // shared buffer can't provoke a format-truncation warning.
-        const char* prefix = channel_creating ? "create: " : "add: ";
+        const char* prefix = (channel_wiz_step == 2) ? "secret: " : "name: ";
         const char* shown  = field_edit_buf;
         const int   window = 36;
         if (field_edit_len > window) shown = field_edit_buf + (field_edit_len - window);
@@ -92,8 +109,16 @@ static void render_channel_list(int w, int h) {
     pax_simple_rect(&fb, COL_PANEL, 0, fy, w, 1);
     const char* hint;
     if (channel_adding) {
-        hint = channel_creating ? "Type channel name   Enter: create   "
-                                : "Name or paste meshcore:// link   Enter: save   ";
+        if (channel_wiz_step == 0) {
+            hint = "W/S: choose   Enter: select   ";
+        } else if (channel_wiz_step == 2) {
+            hint = "Type the 32-hex secret key   Enter: add   ";
+        } else if (channel_wiz_private && !channel_creating) {
+            hint = "Type the channel name   Enter: next (secret)   ";
+        } else {
+            hint = channel_creating ? "Type the channel name   Enter: create   "
+                                    : "Type the # channel name (no #)   Enter: add   ";
+        }
     } else if (channel_list_cursor == 0) {
         hint = "W/S: nav  Enter: open  A: add  C: create  Q: share  Tab: next  ";  // Public: no delete
     } else {

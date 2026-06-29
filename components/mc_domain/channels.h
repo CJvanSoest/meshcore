@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define CHANNELS_MAX         8
+#define CHANNELS_MAX         15
 #define CHANNEL_NAME_MAX_LEN 23  // 24 bytes incl. null; covers "#abcdefghijklmnopqrstuv"
 #define CHANNEL_SECRET_LEN   16  // MeshCore CIPHER_KEY_SIZE
 
@@ -70,6 +70,13 @@ void channels_save_nvs(void);
 extern bool channel_list_mode;
 extern int  channel_list_cursor;
 extern bool channel_adding;
-// While channel_adding, true = "create private" (generate a random key on save
-// and open its share QR); false = "add" (name → community, or pasted link/hex).
+// While channel_adding, true = "create" (mint a new channel) vs "add" (join an
+// existing one). The add/create flow is a small wizard, refined by the fields
+// below: step 0 = pick #community/private, 1 = enter name, 2 = enter secret
+// (private "add" only). channel_wiz_name holds the name across the name→secret
+// step.
 extern bool channel_creating;
+extern int  channel_wiz_step;
+extern int  channel_wiz_cursor;   // menu selection: 0 = #community, 1 = private
+extern bool channel_wiz_private;  // chosen option after the menu
+extern char channel_wiz_name[CHANNEL_NAME_MAX_LEN + 1];
