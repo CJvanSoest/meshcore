@@ -141,35 +141,57 @@ void render_tab_bar(void) {
     }
 }
 
-// 2x4 emoji picker overlay. Drawn on top of an already-rendered chat view.
-// Active state owned by chat module.
+// Paged emoji picker overlay, drawn on top of an already-rendered chat view.
+// Active state owned by the chat module. The grid pages as the cursor moves
+// (page = cursor / per_page) so the set can grow past one screen without a
+// separate scroll variable.
 void render_emoji_picker_overlay(void) {
     int w = (int)pax_buf_get_width(&fb);
     int h = (int)pax_buf_get_height(&fb);
 
-    const int rows    = 2;
-    const int cols    = 4;
-    const int cell    = 52;
-    const int pad     = 14;
-    const int panel_w = cols * cell + 2 * pad;
-    const int panel_h = rows * cell + 2 * pad + TXT_SMALL + 6;
-    int       panel_x = (w - panel_w) / 2;
-    int       panel_y = h - CHAT_INPUT_H - FOOTER_H - panel_h - 4;
+    const int cols     = 4;
+    const int vis_rows = 5;
+    const int per_page = cols * vis_rows;
+    const int cell     = 48;
+    const int pad      = 14;
+    const int panel_w  = cols * cell + 2 * pad;
+    const int panel_h  = vis_rows * cell + 2 * pad + TXT_SMALL + 6;
+    int       panel_x  = (w - panel_w) / 2;
+    int       panel_y  = h - CHAT_INPUT_H - FOOTER_H - panel_h - 4;
     if (panel_y < TAB_BAR_H + 4) panel_y = TAB_BAR_H + 4;
+
+    if (emoji_picker_cursor < 0) emoji_picker_cursor = 0;
+    if (emoji_picker_cursor >= EMOJI_COUNT) emoji_picker_cursor = EMOJI_COUNT - 1;
+    int pages = (EMOJI_COUNT + per_page - 1) / per_page;
+    int page  = emoji_picker_cursor / per_page;
+    int start = page * per_page;
 
     pax_simple_rect(&fb, COL_HEADER, panel_x, panel_y, panel_w, panel_h);
     pax_simple_rect(&fb, COL_ACCENT, panel_x, panel_y, panel_w, 2);
-    pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL, panel_x + pad, panel_y + 4, "Pick emoji");
+
+    char title[40];
+    if (pages > 1) {
+        snprintf(title, sizeof(title), "Pick emoji  %d/%d", page + 1, pages);
+    } else {
+        snprintf(title, sizeof(title), "Pick emoji");
+    }
+    pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL, panel_x + pad, panel_y + 4, title);
+    if (pages > 1) {
+        const char* nav = "W/S: scroll";
+        pax_vec2f   nsz = pax_text_size(FONT, TXT_SMALL, nav);
+        pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, panel_x + panel_w - (int)nsz.x - 6, panel_y + 4, nav);
+    }
 
     int grid_x = panel_x + pad;
     int grid_y = panel_y + 6 + TXT_SMALL;
 
-    for (int i = 0; i < EMOJI_COUNT; i++) {
-        int  r   = i / cols;
-        int  c   = i % cols;
-        int  cx  = grid_x + c * cell + cell / 2;
-        int  cy  = grid_y + r * cell + cell / 2;
-        bool sel = (i == emoji_picker_cursor);
+    for (int i = start; i < start + per_page && i < EMOJI_COUNT; i++) {
+        int  local = i - start;
+        int  r     = local / cols;
+        int  c     = local % cols;
+        int  cx    = grid_x + c * cell + cell / 2;
+        int  cy    = grid_y + r * cell + cell / 2;
+        bool sel   = (i == emoji_picker_cursor);
         if (sel) {
             pax_simple_rect(&fb, COL_PANEL, cx - cell / 2 + 2, cy - cell / 2 + 2, cell - 4, cell - 4);
         }
