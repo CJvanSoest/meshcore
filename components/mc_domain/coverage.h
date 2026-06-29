@@ -13,8 +13,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define COVERAGE_MAX_RESULTS 32  // repeaters tracked per session
-#define COVERAGE_PINGS       3   // pings per repeater
+#define COVERAGE_MAX_RESULTS 64     // repeaters tracked per session
+#define COVERAGE_RADIUS_M    15000  // list filter: only repeaters within 15 km of us
+#define COVERAGE_PINGS       3      // pings per repeater
 
 typedef enum {
     COVERAGE_NONE = 0,  // not tested yet
@@ -46,7 +47,8 @@ typedef struct {
 
 // Snapshot discovered repeaters (role == REPEATER) into out[]; returns count.
 // Briefly holds node_mutex. Safe to call from the UI task.
-int coverage_collect_repeaters(coverage_repeater_t* out, int max);
+int coverage_collect_repeaters(coverage_repeater_t* out, int max, int32_t ref_lat_e6, int32_t ref_lon_e6,
+                               bool ref_valid, uint32_t max_dist_m);
 
 // Create the mutex. Idempotent; call once at boot.
 void coverage_init(void);
@@ -70,9 +72,9 @@ void coverage_arm_tag(uint32_t tag);  // ping task: expect this trace tag back
 // RX path: report a returned trace by tag, with the uplink SNR the trace
 // collected (first hop's, quarter-dB) and our downlink SNR of the return frame.
 // Returns true when the tag matched the armed probe.
-bool coverage_note_tag(uint32_t tag, int8_t uplink_snr_x4, int8_t downlink_snr_x4);
+bool coverage_note_tag(uint32_t tag, int8_t uplink_snr_x4, int8_t downlink_snr_x4, uint8_t hops);
 // ping task: poll + clear the hit; fills the two SNRs on a hit.
-bool coverage_take_tag(int8_t* uplink_snr_x4, int8_t* downlink_snr_x4);
+bool coverage_take_tag(int8_t* uplink_snr_x4, int8_t* downlink_snr_x4, uint8_t* hops);
 
 // Append one CSV row to the session log (no-op if SD is unavailable).
 void coverage_log(const uint8_t pub[32], const char* name, int32_t lat_e6, int32_t lon_e6, bool gps_valid, int attempt,

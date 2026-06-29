@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "coverage.h"
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -24,6 +25,7 @@ static bool     s_tag_got          = false;
 static uint32_t s_tag              = 0;
 static int8_t   s_got_uplink_snr   = COVERAGE_SNR_NONE;
 static int8_t   s_got_downlink_snr = COVERAGE_SNR_NONE;
+static uint8_t  s_got_hops         = 0;
 
 static char s_session_path[80];  // empty = no open session / no SD
 
@@ -130,23 +132,25 @@ void coverage_arm_tag(uint32_t tag) {
     s_tag_got          = false;
     s_got_uplink_snr   = COVERAGE_SNR_NONE;
     s_got_downlink_snr = COVERAGE_SNR_NONE;
+    s_got_hops         = 0;
     xSemaphoreGive(s_mutex);
 }
 
-bool coverage_note_tag(uint32_t tag, int8_t uplink_snr_x4, int8_t downlink_snr_x4) {
+bool coverage_note_tag(uint32_t tag, int8_t uplink_snr_x4, int8_t downlink_snr_x4, uint8_t hops) {
     bool matched = false;
     if (s_mutex == NULL || xSemaphoreTake(s_mutex, pdMS_TO_TICKS(10)) != pdTRUE) return false;
     if (s_tag_armed && tag == s_tag) {
         s_tag_got          = true;
         s_got_uplink_snr   = uplink_snr_x4;
         s_got_downlink_snr = downlink_snr_x4;
+        s_got_hops         = hops;
         matched            = true;
     }
     xSemaphoreGive(s_mutex);
     return matched;
 }
 
-bool coverage_take_tag(int8_t* uplink_snr_x4, int8_t* downlink_snr_x4) {
+bool coverage_take_tag(int8_t* uplink_snr_x4, int8_t* downlink_snr_x4, uint8_t* hops) {
     bool got = false;
     if (s_mutex == NULL || xSemaphoreTake(s_mutex, pdMS_TO_TICKS(20)) != pdTRUE) return false;
     if (s_tag_got) {
@@ -155,18 +159,35 @@ bool coverage_take_tag(int8_t* uplink_snr_x4, int8_t* downlink_snr_x4) {
         s_tag_armed = false;
         if (uplink_snr_x4) *uplink_snr_x4 = s_got_uplink_snr;
         if (downlink_snr_x4) *downlink_snr_x4 = s_got_downlink_snr;
+        if (hops) *hops = s_got_hops;
     }
     xSemaphoreGive(s_mutex);
     return got;
 }
 
-int coverage_collect_repeaters(coverage_repeater_t* out, int max) {
+// Haversine distance in metres between two e6-degree coordinates.
+static float cov_distance_m(int32_t lat1_e6, int32_t lon1_e6, int32_t lat2_e6, int32_t lon2_e6) {
+    const double R = 6371000.0, D = M_PI / 180.0 / 1e6;
+    double       p1 = lat1_e6 * D, p2 = lat2_e6 * D;
+    double       dp = (lat2_e6 - lat1_e6) * D, dl = (lon2_e6 - lon1_e6) * D;
+    double       a = sin(dp / 2) * sin(dp / 2) + cos(p1) * cos(p2) * sin(dl / 2) * sin(dl / 2);
+    return (float)(R * 2 * atan2(sqrt(a), sqrt(1 - a)));
+}
+
+int coverage_collect_repeaters(coverage_repeater_t* out, int max, int32_t ref_lat_e6, int32_t ref_lon_e6,
+                               bool ref_valid, uint32_t max_dist_m) {
     if (out == NULL || max <= 0) return 0;
     if (node_mutex == NULL || xSemaphoreTake(node_mutex, pdMS_TO_TICKS(20)) != pdTRUE) return 0;
     int n = 0;
     for (int i = 0; i < node_count && n < max; i++) {
         const node_entry_t* e = &node_list[i];
         if (!e->active || e->role != MESHCORE_DEVICE_ROLE_REPEATER) continue;
+        // Distance filter: drop repeaters known to be beyond max_dist_m. Keep
+        // ones without a position (unknown distance) so a nearby node is never hidden.
+        if (ref_valid && max_dist_m > 0 && e->position_valid &&
+            cov_distance_m(ref_lat_e6, ref_lon_e6, e->lat, e->lon) > (float)max_dist_m) {
+            continue;
+        }
         memcpy(out[n].pub, e->pub_key, 32);
         strncpy(out[n].name, e->name, sizeof(out[n].name) - 1);
         out[n].name[sizeof(out[n].name) - 1] = '\0';

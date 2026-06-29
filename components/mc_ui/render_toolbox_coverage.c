@@ -11,10 +11,12 @@
 #include <string.h>
 #include "app_config.h"
 #include "coverage.h"
+#include "gps_task.h"
 #include "pax_gfx.h"
 #include "pax_text.h"
 #include "render.h"
 #include "render_internal.h"
+#include "settings_nvs.h"
 #include "ui_state.h"
 
 #define COV_HEADER_H 50
@@ -64,7 +66,10 @@ void render_toolbox_coverage(void) {
     pax_background(&fb, COL_PAGER_BG);
     cov_header(w);
 
-    int count = coverage_collect_repeaters(s_reps, COVERAGE_MAX_RESULTS);
+    bool    rv    = gps_live_valid || gps_position_valid;
+    int32_t rlat  = gps_live_valid ? gps_live_lat_e6 : gps_lat_e6;
+    int32_t rlon  = gps_live_valid ? gps_live_lon_e6 : gps_lon_e6;
+    int     count = coverage_collect_repeaters(s_reps, COVERAGE_MAX_RESULTS, rlat, rlon, rv, COVERAGE_RADIUS_M);
 
     if (toolbox_coverage_cursor < 0) toolbox_coverage_cursor = 0;
     if (toolbox_coverage_cursor >= count) toolbox_coverage_cursor = count > 0 ? count - 1 : 0;

@@ -758,8 +758,11 @@ static void open_toolbox_tile(void) {
 // it indexes the same list the view rendered; no-op while a run is in flight.
 static void coverage_ping_selected(void) {
     if (coverage_busy()) return;
-    coverage_repeater_t reps[COVERAGE_MAX_RESULTS];
-    int                 n = coverage_collect_repeaters(reps, COVERAGE_MAX_RESULTS);
+    static coverage_repeater_t reps[COVERAGE_MAX_RESULTS];  // static: 64 entries is too large for the stack
+    bool                       rv   = gps_live_valid || gps_position_valid;
+    int32_t                    rlat = gps_live_valid ? gps_live_lat_e6 : gps_lat_e6;
+    int32_t                    rlon = gps_live_valid ? gps_live_lon_e6 : gps_lon_e6;
+    int n = coverage_collect_repeaters(reps, COVERAGE_MAX_RESULTS, rlat, rlon, rv, COVERAGE_RADIUS_M);
     if (toolbox_coverage_cursor < 0 || toolbox_coverage_cursor >= n) return;
     coverage_repeater_t* r = &reps[toolbox_coverage_cursor];
     coverage_ping_start(r->pub, r->name, gps_live_lat_e6, gps_live_lon_e6, gps_live_valid);
