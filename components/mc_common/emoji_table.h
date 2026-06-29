@@ -11,7 +11,7 @@
 
 #include <stdint.h>
 
-#define EMOJI_COUNT    8
+#define EMOJI_COUNT    40
 #define EMOJI_UTF8_MAX 5  // longest sequence is 4 bytes + NUL
 
 typedef struct {
