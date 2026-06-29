@@ -4,6 +4,7 @@
 #include "channels.h"
 #include <string.h>
 #include "esp_log.h"
+#include "esp_random.h"
 #include "mbedtls/sha256.h"
 #include "nvs.h"
 
@@ -31,9 +32,14 @@ int channel_unread_total(void) {
     return sum;
 }
 
-bool channel_list_mode   = true;
-int  channel_list_cursor = 0;
-bool channel_adding      = false;
+bool channel_list_mode                          = true;
+int  channel_list_cursor                        = 0;
+bool channel_adding                             = false;
+bool channel_creating                           = false;
+int  channel_wiz_step                           = 0;
+int  channel_wiz_cursor                         = 0;
+bool channel_wiz_private                        = false;
+char channel_wiz_name[CHANNEL_NAME_MAX_LEN + 1] = {0};
 
 static void compute_hash(channel_t* ch) {
     uint8_t digest[32];
@@ -180,6 +186,13 @@ int channels_add_by_name(const char* name) {
     if (!name || !name[0]) return -1;
     uint8_t secret[CHANNEL_SECRET_LEN];
     channels_derive_secret_from_name(name, secret);
+    return channels_add_with_secret(name, secret);
+}
+
+int channels_create_private(const char* name) {
+    if (!name || !name[0]) return -1;
+    uint8_t secret[CHANNEL_SECRET_LEN];
+    esp_fill_random(secret, sizeof(secret));  // HW RNG — a true private key, not name-derived
     return channels_add_with_secret(name, secret);
 }
 

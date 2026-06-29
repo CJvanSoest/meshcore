@@ -254,6 +254,7 @@ void render(void) {
             break;
         case VIEW_CHANNEL:
             render_channel();
+            if (qr_overlay_active) render_qr_overlay();
             break;
         case VIEW_SETTINGS:
         default:

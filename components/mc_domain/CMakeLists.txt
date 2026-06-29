@@ -6,6 +6,7 @@ idf_component_register(
         "identity.c"
         "contacts.c"
         "channels.c"
+        "channel_share.c"
         "chat.c"
         "nodes.c"
         "coverage.c"

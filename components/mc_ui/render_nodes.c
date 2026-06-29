@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "channels.h"
 #include "contacts.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -307,6 +308,35 @@ void render_qr_overlay(void) {
         snprintf(url, sizeof(url), "https://%s:8443/ping?key=%s", host, http_api_key[0] ? http_api_key : "(unset)");
         title_label = "Scan for OwnTracks";
         snprintf(subtitle, sizeof(subtitle), "https://%s:8443/ping", host);
+    } else if (qr_overlay_mode == QR_MODE_CHANNEL) {
+        // Channel share link: name is percent-encoded (the leading '#' becomes
+        // %23, which channel_parse_share decodes back); secret is 32 lowercase
+        // hex — the exact upstream meshcore://channel/add format.
+        const channel_t* ch =
+            (qr_channel_idx >= 0 && qr_channel_idx < channel_count) ? &channels[qr_channel_idx] : NULL;
+        char hex_key[2 * CHANNEL_SECRET_LEN + 1] = {0};
+        char enc_name[72]                        = {0};
+        int  ei                                  = 0;
+        if (ch) {
+            for (int i = 0; i < CHANNEL_SECRET_LEN; i++) snprintf(&hex_key[i * 2], 3, "%02x", ch->secret[i]);
+            static const char hexd[] = "0123456789abcdef";
+            for (int i = 0; ch->name[i] && ei < (int)sizeof(enc_name) - 4; i++) {
+                unsigned char c = (unsigned char)ch->name[i];
+                if (c == ' ') {
+                    enc_name[ei++] = '+';
+                } else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
+                           c == '_' || c == '.') {
+                    enc_name[ei++] = (char)c;
+                } else {
+                    enc_name[ei++] = '%';
+                    enc_name[ei++] = hexd[c >> 4];
+                    enc_name[ei++] = hexd[c & 0xf];
+                }
+            }
+        }
+        snprintf(url, sizeof(url), "meshcore://channel/add?name=%s&secret=%s", enc_name, hex_key);
+        title_label = "Scan to add channel";
+        snprintf(subtitle, sizeof(subtitle), "%s", ch ? ch->name : "(no channel)");
     } else {
         char hex_key[65];
         for (int i = 0; i < 32; i++) snprintf(&hex_key[i * 2], 3, "%02x", node_pub_key[i]);
@@ -381,6 +411,18 @@ void render_qr_overlay(void) {
         pax_vec2f ksz = pax_text_size(FONT, TXT_SMALL, key_preview);
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, (w - (int)ksz.x) / 2, next_y, key_preview);
         next_y += TXT_SMALL + 6;
+    } else if (qr_overlay_mode == QR_MODE_CHANNEL) {
+        // Print the 32-hex secret too, so a receiver without a camera can type
+        // it (name + secret) into their device by hand.
+        const channel_t* ch =
+            (qr_channel_idx >= 0 && qr_channel_idx < channel_count) ? &channels[qr_channel_idx] : NULL;
+        if (ch) {
+            char secret_hex[2 * CHANNEL_SECRET_LEN + 1] = {0};
+            for (int i = 0; i < CHANNEL_SECRET_LEN; i++) snprintf(&secret_hex[i * 2], 3, "%02x", ch->secret[i]);
+            pax_vec2f ssz = pax_text_size(FONT, TXT_SMALL, secret_hex);
+            pax_draw_text(&fb, COL_GRAY, FONT, TXT_SMALL, (w - (int)ssz.x) / 2, next_y, secret_hex);
+            next_y += TXT_SMALL + 6;
+        }
     }
 
     // Close hint: the red X on the Tanmatsu chassis dismisses the overlay (ESC
