@@ -162,7 +162,7 @@ static void handle_app_start(void) {
     info.advert_loc_policy   = advert_loc_policy;
     info.telemetry_mode      = 0;
     info.manual_add_contacts = 0;
-    info.frequency           = lora_cfg.frequency;
+    info.frequency           = lora_cfg.frequency / 1000u;            // Hz -> kHz (app shows value/1000 as MHz)
     info.bandwidth           = (uint32_t)lora_cfg.bandwidth * 1000u;  // kHz → Hz for wire fmt
     info.spreading_factor    = lora_cfg.spreading_factor;
     info.coding_rate         = lora_cfg.coding_rate;
