@@ -889,14 +889,17 @@ static void channel_commit_add(void) {
     int slot = -1;
     if (field_edit_len > 0) {
         if (channel_creating) {
+            // Private channels keep the name as typed (no '#': that prefix is the
+            // community/Public convention, and private keys aren't name-derived).
             char nm[CHANNEL_NAME_MAX_LEN + 1];
-            build_channel_name(nm, field_edit_buf);
-            slot = channels_create_private(nm);
+            strncpy(nm, field_edit_buf, CHANNEL_NAME_MAX_LEN);
+            nm[CHANNEL_NAME_MAX_LEN] = '\0';
+            slot                     = channels_create_private(nm);
         } else {
             char    pname[CHANNEL_NAME_MAX_LEN + 1];
             uint8_t psecret[CHANNEL_SECRET_LEN];
             if (channel_parse_share(field_edit_buf, pname, sizeof(pname), psecret)) {
-                slot = channels_add_with_secret(pname[0] ? pname : "#private", psecret);
+                slot = channels_add_with_secret(pname[0] ? pname : "private", psecret);
             } else {
                 char nm[CHANNEL_NAME_MAX_LEN + 1];
                 build_channel_name(nm, field_edit_buf);
