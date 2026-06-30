@@ -7,10 +7,11 @@
 // companion_dispatch_frame() so the same opcode-14 handler that USB-CDC
 // uses applies here too. Source tag is GPS_SRC_BLE.
 //
-// Pairing: Passkey Display Entry over LE Secure Connections. NimBLE
-// generates a 6-digit code we surface via the (TODO PR-2b UI iteration)
-// pairing callback; the iPhone prompts the user to type it. Bonds are
-// persisted in NVS so the second pairing is silent.
+// Pairing: Passkey Display Entry over LE Secure Connections. We inject the
+// user-configured fixed passkey (ble_pin from Settings, default 000000) as the
+// displayed code and surface it via the pairing callback; the iPhone prompts
+// the user to type the same 6-digit code. Bonds are persisted in NVS so the
+// second pairing is silent.
 
 #pragma once
 
