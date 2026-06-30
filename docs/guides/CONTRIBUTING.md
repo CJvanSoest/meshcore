@@ -55,7 +55,7 @@ in [Architecture.md](../architecture/Architecture.md) and [CLAUDE.md](../../CLAU
   graph (`components/mc_proto`, `components/vendor`, `main`) enforces this at
   build time, and `check-arch-rules.sh` covers the in-`main` layering.
 - **`components/mc_proto/` is the upstream protocol mirror.** Keep it free of
-  ESP-IDF / pax / BSP includes (C stdlib and POSIX only) so it stays
+  ESP-IDF / LVGL / BSP includes (C stdlib and POSIX only) so it stays
   host-testable. Do not extend a wire-format struct locally; take it upstream
   first, then re-pin the dependency. When the compiler warns inside the mirror,
   suppress it at the call site, not by editing the mirror.

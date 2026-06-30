@@ -57,7 +57,7 @@ into `main/`. The full dependency table and constants are in
 ### Pure where it can be, platform only where it must be
 
 `mc_proto` (protocol codecs, regulatory tables, NMEA, the advert signable-byte
-helper) and the crypto components carry no ESP-IDF, pax or BSP dependency in
+helper) and the crypto components carry no ESP-IDF, LVGL or BSP dependency in
 their pure parts. That is deliberate: it lets the host test suite link the
 **real shipping `.c` files** and prove they are correct off-device. Do not pull
 a platform header into a currently-pure translation unit without a strong

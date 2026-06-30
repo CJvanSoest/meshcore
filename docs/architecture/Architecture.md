@@ -15,14 +15,14 @@ just by convention — a backward include fails to compile.
 
 | # | Layer | Component | Role |
 |---|---|---|---|
-| L0 | Foundation | `mc_common` | App constants, view enum, global UI state, shared config enums, pax-free emoji table |
+| L0 | Foundation | `mc_common` | App constants, view enum, global UI state, shared config enums, emoji codepoint table |
 | L1 | Platform I/O | `mc_io` | NVS helpers, GPS reader, device-cert generation |
 | L1 | Data state | `mc_domain` | `nodes`, `chat`, `channels`, `contacts`, `identity`, `history`, `settings_nvs`, `sounds` — in-memory tables + NVS config, mutex-protected |
 | L2 | Wire protocol | `mc_proto` | MeshCore packet/payload codecs, region limits, GPS/companion parsers — mirror of upstream, host-tested |
 | L2 | Channel crypto | `mc_crypto` | GRP_TXT decrypt/encrypt + the ACK-binding CRC, mbedtls only, host-tested |
 | L3 | Transport | `mc_radio` | `radio.*`, `radio_system_protocol_client.*` — LoRa send/receive primitives, duty-cycle, region scope, config. Domain-free; the RX+TX handlers live in `mc_rx`. |
 | L4 | Connectivity | `mc_net` | HTTP server, BLE, companion transport, WiFi keepalive, GPS task, map |
-| L4 | UI | `mc_ui` | `input.*`, `render*.c`, `emoji.*` — user-facing |
+| L4 | UI | `mc_ui` | `lvgl_ui.*`, `lvgl_port.*`, `render*.c`, `input.*` — LVGL 9 UI, user-facing |
 | L5 | MeshCore app | `mc_rx` | RX handlers (behind the radio sink) + TX composers (called by the UI): decrypt/encrypt, domain writes, notifications, ADVERT signing, ACK |
 | L5 | App entry | `main` | `main.c` — `app_main()`, boot sequence, event loop |
 | — | Third-party | `vendor` | lodepng, qrcodegen, ed25519, emoji_bitmaps — kept verbatim |
@@ -35,9 +35,9 @@ grep-checkable and enforced in CI by `tests/lint/check-arch-rules.sh`.
 1. **`render_*.c` must not include `meshcore/*`** — UI doesn't speak the
    wire protocol; it reads and writes state through L1 (`chat`, `nodes`,
    `channels`, `contacts`).
-2. **`meshcore/` must not include `pax_*`, `bsp/*`, or any L1 data
+2. **`meshcore/` must not include `lvgl`/`lv_*`, `bsp/*`, or any L1 data
    header** — protocol code stays pure and can be reasoned about (or
-   unit-tested, or moved) without dragging in the UI stack.
+   unit-tested, or moved) without dragging in the UI toolkit.
 3. **L0–L3 files must not include `render*.h` or `input.h`** — data and
    protocol don't drive UI; UI subscribes to state.
 
@@ -46,7 +46,7 @@ these):
 
 ```sh
 grep -rE '^#include "meshcore/' components/mc_ui/render_*.c
-grep -rE '^#include "(pax_|bsp/|chat|nodes|channels|contacts|settings_nvs|render)' components/mc_proto/meshcore/
+grep -rE '^#include "(lvgl|lv_|bsp/|chat|nodes|channels|contacts|settings_nvs|render)' components/mc_proto/meshcore/
 grep -rE '^#include "(render|input)\.h"' \
   components/mc_proto/meshcore/ components/mc_proto/region_limits.c \
   components/mc_radio/radio*.c \

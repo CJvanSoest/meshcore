@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- VIEW_SETTINGS (category-list mode) — landscape 800×480 at half-scale.
-     Same compact 4×2 tile grid pattern as VIEW_HOME. -->
+<!-- VIEW_SETTINGS (category-list mode) — landscape 800x480 at half-scale.
+     v3.0.0: the old "Network" category was split into WiFi / HTTPS / Bluetooth,
+     so the grid grew to the 4x3 / 58px-tile pattern shared with VIEW_HOME.
+     Visible grid = 9 drilldown categories + the external Toolbox launcher tile,
+     in s_categories[] source order (Advert is hidden_from_grid — reached via
+     the Home -> Advert tile, so it is not drawn here):
+     Identity, Regulatory, Radio, WiFi, HTTPS, Bluetooth, Region & Location,
+     Brightness, Sounds, Toolbox. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240">
   <defs>
     <style type="text/css"><![CDATA[
@@ -19,74 +25,101 @@
   <text x="325" y="15" fill="#C0C8D0" font-size="9">TX:0.4%</text>
   <text x="364" y="15" fill="#9ECE6A" font-size="9">87%+</text>
 
-  <!-- Row 1 (y=30, h=72) -->
+  <!-- 4x3 tile grid. Tiles 74x58. Cols x=14,102,190,278 (centres 51,139,227,315).
+       Rows y=26,90,154. -->
+
+  <!-- ===== Row 1 (y=26) ===== -->
   <!-- Identity (focused) -->
-  <rect x="14" y="30" width="74" height="72" fill="#FAA61A"/>
-  <rect x="16" y="32" width="70" height="2" fill="#0E141B"/>
-  <rect x="16" y="98" width="70" height="2" fill="#0E141B"/>
-  <rect x="16" y="32" width="2" height="68" fill="#0E141B"/>
-  <rect x="86" y="32" width="2" height="68" fill="#0E141B"/>
-  <circle cx="51" cy="55" r="4" fill="none" stroke="#16161E" stroke-width="1.5"/>
-  <circle cx="51" cy="68" r="8" fill="none" stroke="#16161E" stroke-width="1.5"/>
-  <text x="51" y="90" text-anchor="middle" fill="#16161E" font-size="10" font-weight="500">Identity</text>
+  <rect x="14" y="26" width="74" height="58" fill="#FAA61A"/>
+  <rect x="16" y="28" width="70" height="2" fill="#0E141B"/>
+  <rect x="16" y="82" width="70" height="2" fill="#0E141B"/>
+  <rect x="16" y="28" width="2" height="54" fill="#0E141B"/>
+  <rect x="86" y="28" width="2" height="54" fill="#0E141B"/>
+  <circle cx="51" cy="43" r="3.5" fill="none" stroke="#16161E" stroke-width="1.5"/>
+  <circle cx="51" cy="55" r="7" fill="none" stroke="#16161E" stroke-width="1.5"/>
+  <text x="51" y="72" text-anchor="middle" fill="#16161E" font-size="10" font-weight="500">Identity</text>
 
   <!-- Regulatory -->
-  <rect x="102" y="30" width="74" height="72" fill="#16161E"/>
-  <polygon points="139,46 151,53 151,68 139,75 127,68 127,53" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
-  <text x="139" y="90" text-anchor="middle" fill="#C0C8D0" font-size="10" font-weight="500">Regulatory</text>
+  <rect x="102" y="26" width="74" height="58" fill="#16161E"/>
+  <polygon points="139,38 149,44 149,56 139,62 129,56 129,44" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
+  <text x="139" y="72" text-anchor="middle" fill="#C0C8D0" font-size="10" font-weight="500">Regulatory</text>
 
   <!-- Radio -->
-  <rect x="190" y="30" width="74" height="72" fill="#16161E"/>
-  <circle cx="227" cy="60" r="2.5" fill="#C0C8D0"/>
-  <circle cx="227" cy="60" r="7" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
-  <circle cx="227" cy="60" r="12" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
-  <text x="227" y="90" text-anchor="middle" fill="#C0C8D0" font-size="10" font-weight="500">Radio</text>
+  <rect x="190" y="26" width="74" height="58" fill="#16161E"/>
+  <circle cx="227" cy="48" r="2.5" fill="#C0C8D0"/>
+  <circle cx="227" cy="48" r="7" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
+  <circle cx="227" cy="48" r="11" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
+  <text x="227" y="72" text-anchor="middle" fill="#C0C8D0" font-size="10" font-weight="500">Radio</text>
 
-  <!-- Network -->
-  <rect x="278" y="30" width="74" height="72" fill="#16161E"/>
-  <circle cx="315" cy="50" r="1.8" fill="#C0C8D0"/>
-  <circle cx="306" cy="70" r="1.8" fill="#C0C8D0"/>
-  <circle cx="324" cy="70" r="1.8" fill="#C0C8D0"/>
-  <line x1="315" y1="50" x2="306" y2="70" stroke="#C0C8D0" stroke-width="0.9"/>
-  <line x1="315" y1="50" x2="324" y2="70" stroke="#C0C8D0" stroke-width="0.9"/>
-  <line x1="306" y1="70" x2="324" y2="70" stroke="#C0C8D0" stroke-width="0.9"/>
-  <text x="315" y="90" text-anchor="middle" fill="#C0C8D0" font-size="10" font-weight="500">Network</text>
+  <!-- WiFi (split from Network) -->
+  <rect x="278" y="26" width="74" height="58" fill="#16161E"/>
+  <g fill="none" stroke="#C0C8D0" stroke-width="1.5">
+    <path d="M 310.8 43.8 A 6 6 0 0 1 319.2 43.8"/>
+    <path d="M 307.9 41.1 A 10 10 0 0 1 322.1 41.1"/>
+    <path d="M 305.1 38.1 A 14 14 0 0 1 324.9 38.1"/>
+  </g>
+  <circle cx="315" cy="48" r="2" fill="#C0C8D0"/>
+  <text x="315" y="72" text-anchor="middle" fill="#C0C8D0" font-size="10" font-weight="500">WiFi</text>
 
-  <!-- Row 2 (y=110, h=72) -->
+  <!-- ===== Row 2 (y=90) ===== -->
+  <!-- HTTPS (split from Network) - padlock -->
+  <rect x="14" y="90" width="74" height="58" fill="#16161E"/>
+  <rect x="43" y="110" width="16" height="12" rx="1.5" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
+  <path d="M 46 110 L 46 106 A 5 5 0 0 1 56 106 L 56 110" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
+  <circle cx="51" cy="115" r="1.4" fill="#C0C8D0"/>
+  <text x="51" y="136" text-anchor="middle" fill="#C0C8D0" font-size="10" font-weight="500">HTTPS</text>
+
+  <!-- Bluetooth (split from Network) - rune -->
+  <rect x="102" y="90" width="74" height="58" fill="#16161E"/>
+  <path d="M 132 106 L 146 118 L 139 124 L 139 100 L 146 106 L 132 118"
+        fill="none" stroke="#C0C8D0" stroke-width="1.5" stroke-linejoin="round"/>
+  <text x="139" y="136" text-anchor="middle" fill="#C0C8D0" font-size="10" font-weight="500">Bluetooth</text>
+
   <!-- Region & Location -->
-  <rect x="14" y="110" width="74" height="72" fill="#16161E"/>
-  <circle cx="51" cy="132" r="7" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
-  <line x1="46" y1="137" x2="51" y2="150" stroke="#C0C8D0" stroke-width="1.5"/>
-  <line x1="56" y1="137" x2="51" y2="150" stroke="#C0C8D0" stroke-width="1.5"/>
-  <circle cx="51" cy="132" r="2.5" fill="#C0C8D0"/>
-  <text x="51" y="167" text-anchor="middle" fill="#C0C8D0" font-size="9" font-weight="500">Region &amp;</text>
-  <text x="51" y="176" text-anchor="middle" fill="#C0C8D0" font-size="9" font-weight="500">Location</text>
+  <rect x="190" y="90" width="74" height="58" fill="#16161E"/>
+  <circle cx="227" cy="108" r="7" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
+  <line x1="222" y1="113" x2="227" y2="126" stroke="#C0C8D0" stroke-width="1.5"/>
+  <line x1="232" y1="113" x2="227" y2="126" stroke="#C0C8D0" stroke-width="1.5"/>
+  <circle cx="227" cy="108" r="2.5" fill="#C0C8D0"/>
+  <text x="227" y="133" text-anchor="middle" fill="#C0C8D0" font-size="9" font-weight="500">Region &amp;</text>
+  <text x="227" y="142" text-anchor="middle" fill="#C0C8D0" font-size="9" font-weight="500">Location</text>
 
   <!-- Brightness -->
-  <rect x="102" y="110" width="74" height="72" fill="#16161E"/>
-  <circle cx="139" cy="138" r="5" fill="#C0C8D0"/>
+  <rect x="278" y="90" width="74" height="58" fill="#16161E"/>
+  <circle cx="315" cy="112" r="5" fill="#C0C8D0"/>
   <g stroke="#C0C8D0" stroke-width="1.5">
-    <line x1="139" y1="128" x2="139" y2="124"/>
-    <line x1="139" y1="152" x2="139" y2="148"/>
-    <line x1="129" y1="138" x2="125" y2="138"/>
-    <line x1="149" y1="138" x2="153" y2="138"/>
+    <line x1="315" y1="102" x2="315" y2="98"/>
+    <line x1="315" y1="126" x2="315" y2="122"/>
+    <line x1="305" y1="112" x2="301" y2="112"/>
+    <line x1="325" y1="112" x2="329" y2="112"/>
   </g>
-  <text x="139" y="170" text-anchor="middle" fill="#C0C8D0" font-size="10" font-weight="500">Brightness</text>
+  <text x="315" y="136" text-anchor="middle" fill="#C0C8D0" font-size="10" font-weight="500">Brightness</text>
 
-  <!-- Sounds (NEW) -->
-  <rect x="190" y="110" width="74" height="72" fill="#16161E"/>
-  <polygon points="217,132 224,132 231,126 231,150 224,144 217,144" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
-  <path d="M 234 132 A 7 7 0 0 1 234 144" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
-  <path d="M 239 128 A 12 12 0 0 1 239 148" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
-  <text x="227" y="170" text-anchor="middle" fill="#C0C8D0" font-size="10" font-weight="500">Sounds</text>
+  <!-- ===== Row 3 (y=154) ===== -->
+  <!-- Sounds -->
+  <rect x="14" y="154" width="74" height="58" fill="#16161E"/>
+  <polygon points="41,170 48,170 55,164 55,188 48,182 41,182" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
+  <path d="M 58 170 A 7 7 0 0 1 58 182" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
+  <path d="M 63 166 A 12 12 0 0 1 63 186" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
+  <text x="51" y="200" text-anchor="middle" fill="#C0C8D0" font-size="10" font-weight="500">Sounds</text>
 
-  <!-- Empty slot -->
-  <rect x="278" y="110" width="74" height="72" fill="#0E141B" stroke="#16161E" stroke-width="1" stroke-dasharray="2,2"/>
+  <!-- Toolbox (external launcher tile, first == FIELD_COUNT) -->
+  <rect x="102" y="154" width="74" height="58" fill="#16161E"/>
+  <path d="M 133 172 L 133 169 A 2 2 0 0 1 135 167 L 143 167 A 2 2 0 0 1 145 169 L 145 172"
+        fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
+  <rect x="125" y="172" width="28" height="14" rx="1.5" fill="none" stroke="#C0C8D0" stroke-width="1.5"/>
+  <line x1="125" y1="178" x2="153" y2="178" stroke="#C0C8D0" stroke-width="1.5"/>
+  <rect x="137" y="176" width="4" height="4" fill="#C0C8D0"/>
+  <text x="139" y="200" text-anchor="middle" fill="#C0C8D0" font-size="10" font-weight="500">Toolbox</text>
 
-  <!-- Footer -->
-  <rect x="0" y="194" width="400" height="46" fill="#16161E"/>
-  <rect x="0" y="194" width="400" height="1" fill="#FAA61A"/>
-  <text x="6" y="207" fill="#565F89" font-size="8">WSAD: nav   Enter: open category   ESC: home   Tab: next view</text>
-  <text x="6" y="219" fill="#565F89" font-size="8">Advert reached via Home → Advert tile (hidden here)</text>
-  <text x="394" y="207" text-anchor="end" fill="#565F89" font-size="8">7 categories  ·  6 visible</text>
+  <!-- Empty slots -->
+  <rect x="190" y="154" width="74" height="58" fill="#0E141B" stroke="#16161E" stroke-width="1" stroke-dasharray="2,2"/>
+  <rect x="278" y="154" width="74" height="58" fill="#0E141B" stroke="#16161E" stroke-width="1" stroke-dasharray="2,2"/>
+
+  <!-- Footer (shrunk to ~28px so three rows fit) -->
+  <rect x="0" y="212" width="400" height="28" fill="#16161E"/>
+  <rect x="0" y="212" width="400" height="1" fill="#FAA61A"/>
+  <text x="6" y="224" fill="#565F89" font-size="8">WSAD: nav   Enter: open category   ESC: home   Tab: next view</text>
+  <text x="6" y="235" fill="#565F89" font-size="8">Advert category is hidden here - reached via Home -&gt; Advert tile</text>
+  <text x="394" y="224" text-anchor="end" fill="#565F89" font-size="8">9 categories + Toolbox</text>
 </svg>

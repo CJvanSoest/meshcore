@@ -28,7 +28,7 @@ check "render_*.c includes meshcore/" \
 # 2. The protocol mirror stays pure (no UI, BSP or L1 data headers).
 #    meshcore/ now lives in the mc_proto component.
 check "meshcore/ includes UI/BSP/L1 headers" \
-    '^#include "(pax_|bsp/|chat|nodes|channels|contacts|settings_nvs|render)' \
+    '^#include "(lvgl|lv_|bsp/|chat|nodes|channels|contacts|settings_nvs|render)' \
     components/mc_proto/meshcore/
 
 # 3. Data and protocol layers do not drive UI.

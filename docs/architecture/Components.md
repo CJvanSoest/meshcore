@@ -10,7 +10,7 @@ here see [`Blueprint.md`](Blueprint.md); this page is the descriptive tour.
 
 ### `mc_common` — foundation (L0)
 App-wide constants, the view enum and global UI-state externs, the shared
-`gps_/map_` config enums, and the pax-free emoji table (codepoint lookup +
+`gps_/map_` config enums, and the emoji codepoint table (codepoint lookup +
 UTF-8 decode). Also the Toolbox **`diag`** ring — a small mutex-protected PSRAM
 ring of the most-recent radio frames (both directions), captured straight off
 the transport in `radio.c` and read by the packet-log UI. A leaf with no
@@ -21,7 +21,7 @@ The MeshCore packet/payload codecs (`meshcore/packet.*`, `payload/advert.*`,
 `payload/grp_txt.*`), the regulatory tables (`region_limits`), the GPS NMEA
 parser, the upstream companion-radio protocol, the Toolbox **`diag_decode`**
 packet dissector (+ the `diag_csv_row` CSV formatter for the SD export), and the
-**`trace`** reachability-probe codec. No ESP-IDF, FreeRTOS, pax or BSP includes
+**`trace`** reachability-probe codec. No ESP-IDF, FreeRTOS, LVGL or BSP includes
 — C stdlib and POSIX only — which is what keeps every file here host-buildable
 and unit-tested in `tests/` (`test_diag_decode`, `test_trace`). This is the
 upstream protocol mirror: fixes go upstream first, never as local struct growth.
@@ -66,11 +66,15 @@ keepalive, the GPS task, and the map renderer. These read settings and feed the
 domain, so they sit above it.
 
 ### `mc_ui` — presentation (L4)
-The pax-based renderers (`render*.c`), input handling, and the emoji picker —
-including the Toolbox launcher and its tools (`render_toolbox.c`,
-`render_toolbox_log.c` for the packet log, `render_toolbox_coverage.c` for the
-coverage test). Top of the stack: it draws domain state and radio status, and
-pulls in `pax-gfx`.
+The LVGL 9 UI: the central widget tree (`lvgl_ui.c`) and the display glue
+(`lvgl_port.c`, a `flush_cb` → `bsp_display_blit`), the view dispatch
+(`render*.c`), input handling, and the emoji picker — including the Toolbox
+launcher and its tools (`render_toolbox.c`, `render_toolbox_log.c` for the
+packet log, and the coverage test). Custom glyphs and map tiles draw onto an
+`lv_canvas`; the screen is rebuilt each frame and input is keyboard-only,
+read from the BSP input queue and dispatched by `input.c` (no touch, no LVGL
+indev).
+Top of the stack: it draws domain state and radio status, and pulls in `lvgl`.
 
 ### `mc_rx` — RX application layer (L5)
 The MeshCore receive handlers, lifted out of `radio.c` so the radio transport
