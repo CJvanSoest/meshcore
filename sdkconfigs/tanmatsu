@@ -67,6 +67,10 @@ CONFIG_LV_USE_LOG=n
 # Trim the binary to fit the 2 MB app partition. The views are built from
 # obj/label/line/arc/image/canvas only; every other widget + heavy optional
 # subsystem is dead weight here. Re-enable a widget if a later view needs it.
+# Canvas (+ its lv_image/lv_label deps) backs the Map view's tile raster.
+CONFIG_LV_USE_CANVAS=y
+CONFIG_LV_USE_IMAGE=y
+CONFIG_LV_USE_LABEL=y
 CONFIG_LV_USE_ANIMIMG=n
 CONFIG_LV_USE_BAR=n
 CONFIG_LV_USE_BUTTON=n
