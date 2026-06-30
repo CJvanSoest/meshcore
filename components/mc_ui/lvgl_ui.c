@@ -81,17 +81,20 @@ static lv_obj_t* add_label(lv_obj_t* parent, int x, int y, int font_sz, uint32_t
     return l;
 }
 
-// As add_label, but in the built-in UNSCII 8x16 monospace face. Used only for
-// the Packet Log hex dump lines (pubkey + raw on-air bytes) so the columns line
-// up; everything else stays on the proportional Montserrat faces.
-static lv_obj_t* add_label_mono(lv_obj_t* parent, int x, int y, uint32_t col, const char* text) {
-    lv_obj_t* l = lv_label_create(parent);
-    lv_label_set_text(l, text);
-    lv_obj_set_style_text_font(l, &lv_font_unscii_16, 0);
-    lv_obj_set_style_text_color(l, mc_col(col), 0);
-    lv_obj_set_style_pad_all(l, 0, 0);
-    lv_obj_set_pos(l, x, y);
-    return l;
+// Render `n` bytes as fixed-width hex columns for the Packet Log detail dump.
+// Each "%02X" sits left-aligned in an equal-width cell, so rows line up
+// vertically without a monospace font — the proportional Montserrat reads
+// lighter (anti-aliased) than the chunky UNSCII bitmap face it replaces.
+static void add_hex_cols(lv_obj_t* parent, int x, int y, uint32_t col, const uint8_t* bytes, int n) {
+    static int cell = 0;
+    if (cell == 0) {
+        cell = text_w("FF", TXT_SMALL) + 6;  // widest hex pair + a small gutter
+    }
+    for (int i = 0; i < n; i++) {
+        char pair[3];
+        snprintf(pair, sizeof(pair), "%02X", bytes[i]);
+        add_label(parent, x + i * cell, y, TXT_SMALL, col, pair);
+    }
 }
 
 // A filled rectangle (PAX pax_simple_rect equivalent): used for header/footer
@@ -775,14 +778,7 @@ static void render_log_detail_lvgl(lv_obj_t* scr, int w, int h, const diag_entry
         add_label(scr, x, y, TXT_SMALL, COL_AMBER, "Public key:");
         y += TXT_SMALL + 2;
         for (int half = 0; half < 2; half++) {
-            char hex[40];
-            int  p = 0;
-            for (int b = 0; b < 16 && p < (int)sizeof(hex); b++) {
-                int n = snprintf(hex + p, sizeof(hex) - p, "%02X", d->pubkey[half * 16 + b]);
-                if (n < 0 || n >= (int)sizeof(hex) - p) break;
-                p += n;
-            }
-            add_label_mono(scr, x + 8, y, COL_GREEN, hex);
+            add_hex_cols(scr, x + 8, y, COL_GREEN, &d->pubkey[half * 16], 16);
             y += TXT_SMALL + 2;
         }
         snprintf(line, sizeof(line), "role %s   name %s", diag_role_name(d->role), d->has_name ? d->name : "-");
@@ -798,14 +794,9 @@ static void render_log_detail_lvgl(lv_obj_t* scr, int w, int h, const diag_entry
     y      += TXT_SMALL + 2;
     int fy  = h - LOG_FOOTER_H;
     for (int off = 0; off < e->raw_len && y < fy - TXT_SMALL; off += 16) {
-        char hex[56];
-        int  p = 0;
-        for (int b = off; b < off + 16 && b < e->raw_len && p < (int)sizeof(hex); b++) {
-            int n = snprintf(hex + p, sizeof(hex) - p, "%02X ", e->raw[b]);
-            if (n < 0 || n >= (int)sizeof(hex) - p) break;
-            p += n;
-        }
-        add_label_mono(scr, x + 8, y, COL_PAGER_TEXT, hex);
+        int n = e->raw_len - off;
+        if (n > 16) n = 16;
+        add_hex_cols(scr, x + 8, y, COL_PAGER_TEXT, &e->raw[off], n);
         y += TXT_SMALL + 2;
     }
 
