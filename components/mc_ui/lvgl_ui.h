@@ -10,10 +10,19 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>      // uint32_t (splash colour)
 #include "app_config.h"  // app_view_t
 
-// True when `v` is rendered through LVGL (migrated). False -> PAX path.
+// True when `v` is rendered through LVGL. Every view is LVGL after the cleanup,
+// so this returns true for all valid views (kept for the dispatcher contract).
 bool lvgl_view_active(app_view_t v);
 
-// Rebuild + flush the LVGL screen for `v`. Precondition: lvgl_view_active(v).
+// Rebuild + flush the LVGL screen for `v`.
 void lvgl_view_render(app_view_t v);
+
+// ── Boot splash ──────────────────────────────────────────────────────────────
+// Incremental init readout drawn during app_main before the first view render.
+// Colours are passed as 0xAARRGGBB (the app's COL_* palette) so main.c does not
+// need lvgl.h on its include path. lvgl_port_init() must have run first.
+void lvgl_splash_begin(const char* title, const char* subtitle);
+void lvgl_splash_line(uint32_t argb, const char* text);

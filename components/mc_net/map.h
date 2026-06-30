@@ -12,7 +12,6 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "pax_gfx.h"
 
 // map_profile_t + the map_profile / map_lock_on globals and the
 // map_profile_label helper live in the neutral config_types.h so the L1
@@ -52,11 +51,11 @@ void map_latlon_to_tile(double lat_deg, double lon_deg, int zoom, int* tile_x, i
 int map_wrap_tile_x(int tile_x, int zoom);
 
 // Look up (or load + decode) a tile from /sd/maps/tiles/{z}/{x}/{y}.png.
-// Returns a pointer to a PAX RGB565 buffer of size MAP_TILE_PX×MAP_TILE_PX
-// on success, NULL if the tile is missing, malformed, or out of bounds.
-// The pointer is owned by the cache and must NOT be freed by the caller;
-// it stays valid until the cache evicts that slot.
-pax_buf_t* map_tile_get(int zoom, int tile_x, int tile_y);
+// Returns a pointer to a native-order RGB565 pixel array of MAP_TILE_PX ×
+// MAP_TILE_PX (row-major, no padding) on success, NULL if the tile is missing,
+// malformed, or out of bounds. The pointer is owned by the cache and must NOT
+// be freed by the caller; it stays valid until the cache evicts that slot.
+const uint16_t* map_tile_get(int zoom, int tile_x, int tile_y);
 
 // Drop every cached tile (e.g. on view exit or low-memory pressure).
 void map_cache_clear(void);
@@ -66,8 +65,8 @@ void map_cache_clear(void);
 void map_loader_init(void);
 
 // Render-side lock around a single raster sweep. While held, the loader
-// cannot evict an in-use slot mid-pax_draw_image. Mutex pair, both safe
-// from the same task.
+// cannot evict an in-use slot mid-draw. Mutex pair, both safe from the
+// same task.
 void map_cache_lock(void);
 void map_cache_unlock(void);
 

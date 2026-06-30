@@ -13,13 +13,11 @@ idf_component_register(
         "ed25519.c"
         "ed25519_mpi.c"
         "emoji_bitmaps.c"
-        "font_bitmap_montserrat.c"
     INCLUDE_DIRS
         "."
     PRIV_REQUIRES
         mbedtls
         esp_hw_support
-        robotman2412__pax-gfx  # font_bitmap_montserrat.c needs <pax_fonts.h>
 )
 
 # Slim lodepng to decoder-only — we read PNGs from SD via fread and never

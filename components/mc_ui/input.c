@@ -16,7 +16,7 @@
 #include "contacts.h"
 #include "coverage.h"
 #include "diag.h"
-#include "emoji.h"
+#include "emoji_table.h"  // EMOJI_SET / emoji_entry_t (picker selection)
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "gps.h"

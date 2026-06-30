@@ -147,6 +147,30 @@ static lv_obj_t* begin_screen(uint32_t bg_col) {
     return scr;
 }
 
+// ── Boot splash ──────────────────────────────────────────────────────────────
+// Incremental init readout shown during app_main, before the first view render.
+// main.c stays LVGL-free: it calls these with COL_* ARGB values + plain text;
+// each line is appended and flushed so the user sees init progress live (this
+// replaces the PAX pax_draw_text + blit splash). lvgl_splash_begin() clears the
+// screen + paints the title/attribution; lvgl_splash_line() appends one status
+// line below the previous and reflushes.
+static int s_splash_y;
+
+void lvgl_splash_begin(const char* title, const char* subtitle) {
+    lv_obj_t* scr = begin_screen(COL_BG);
+    add_label(scr, 14, 16, TXT_TITLE, COL_AMBER, title);
+    add_label(scr, 14, 16 + TXT_TITLE + 4, TXT_SMALL, COL_AMBER, subtitle);
+    s_splash_y = 74;  // below the title + attribution, matching the old PAX layout
+    lvgl_port_refresh_now();
+}
+
+void lvgl_splash_line(uint32_t argb, const char* text) {
+    lv_obj_t* scr = (lv_obj_t*)lvgl_port_screen();
+    add_label(scr, 14, s_splash_y, TXT_SMALL, argb, text);
+    s_splash_y += 22;
+    lvgl_port_refresh_now();
+}
+
 // ── Vector-glyph primitives (for the Home tile icons) ────────────────────────
 // lv_line keeps a pointer to the caller's point array, so the points must live
 // until the frame is flushed. A per-frame pool reset at the top of each render
@@ -2759,14 +2783,14 @@ static void render_map_lvgl(void) {
         map_cache_lock();
         for (int dy = -2; dy <= 2; dy++) {
             for (int dx = -2; dx <= 2; dx++) {
-                int        tile_x  = center_tx + dx;
-                int        tile_y  = center_ty + dy;
-                int        tx      = origin_x + dx * MAP_TILE_PX;
-                int        ty      = origin_y + dy * MAP_TILE_PX;
-                bool       visible = !(tx + MAP_TILE_PX < 0 || tx >= map_w || ty + MAP_TILE_PX < 0 || ty >= map_h);
+                int             tile_x  = center_tx + dx;
+                int             tile_y  = center_ty + dy;
+                int             tx      = origin_x + dx * MAP_TILE_PX;
+                int             ty      = origin_y + dy * MAP_TILE_PX;
+                bool            visible = !(tx + MAP_TILE_PX < 0 || tx >= map_w || ty + MAP_TILE_PX < 0 || ty >= map_h);
                 // Request every cell (visible + ring) so a one-step pan finds
                 // the new edge tiles already warm in the LRU cache.
-                pax_buf_t* t       = map_tile_get(z, tile_x, tile_y);
+                const uint16_t* t       = map_tile_get(z, tile_x, tile_y);
                 if (!visible || !t || img_n >= (int)(sizeof(imgs) / sizeof(imgs[0]))) continue;
                 lv_image_dsc_t* img = &imgs[img_n++];
                 memset(img, 0, sizeof(*img));
@@ -2776,7 +2800,7 @@ static void render_map_lvgl(void) {
                 img->header.h      = MAP_TILE_PX;
                 img->header.stride = MAP_TILE_PX * 2;
                 img->data_size     = MAP_TILE_PX * MAP_TILE_PX * 2;
-                img->data          = (const uint8_t*)pax_buf_get_pixels(t);
+                img->data          = (const uint8_t*)t;
                 lv_draw_image_dsc_t id;
                 lv_draw_image_dsc_init(&id);
                 id.src           = img;

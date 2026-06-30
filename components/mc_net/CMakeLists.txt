@@ -19,7 +19,6 @@ idf_component_register(
         mc_domain
         mc_common
         badge-bsp
-        robotman2412__pax-gfx
     PRIV_REQUIRES
         mc_io
         mc_proto

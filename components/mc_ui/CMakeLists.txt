@@ -8,7 +8,6 @@ idf_component_register(
         "render_toolbox.c"
         "render_toolbox_log.c"
         "input.c"
-        "emoji.c"
         "lvgl_port.c"
         "lvgl_ui.c"
     INCLUDE_DIRS
@@ -18,7 +17,6 @@ idf_component_register(
         mc_domain
         mc_radio
         mc_net
-        robotman2412__pax-gfx
         lvgl
         badge-bsp
         freertos

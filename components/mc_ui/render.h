@@ -3,11 +3,13 @@
 
 #pragma once
 
-#include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
-#include "bsp/display.h"
-#include "pax_fonts.h"
-#include "pax_gfx.h"
+
+// Shared palette + typography + layout constants for the LVGL views. (The PAX
+// renderers that originally consumed these were retired in the LVGL-only
+// migration; lvgl_ui.c maps COL_* to lv_color via mc_col() and TXT_* to the
+// built-in Montserrat faces via mc_font().)
 
 // ── Tokyo Night palette ──────────────────────────────────────────────────────
 // COL_BLACK / COL_DARK are repurposed as background + panel surfaces.
@@ -35,17 +37,7 @@
 #define COL_PAGER_TEXT   0xFFC0C8D0  // body / label text
 #define COL_PAGER_ACCENT 0xFFFAA61A  // focused tile + highlights (orange)
 
-// ── Typography (Montserrat: ASCII + Latin-1, variable pitch) ─────────────────
-// Montserrat is a vendored PAX bitmap font (components/vendor/font_bitmap_
-// montserrat.c), generated from the OFL TTF. It reads rounder/more geometric
-// than the previous Saira face; one macro repoints the whole proportional UI.
-// Declared extern here (resolved via mc_ui's PRIV_REQUIRES vendor) rather than
-// pulling the vendor header onto every render.h consumer's include path.
-extern const pax_font_t pax_font_montserrat_raw;
-#define FONT      (&pax_font_montserrat_raw)
-// Monospace face for the packet log + hash/hex, where column alignment and a
-// clearly distinct i / l / 1 matter more than a smooth proportional look.
-#define MONO      pax_font_sky_mono
+// ── Typography sizes (mapped onto the built-in Montserrat faces in lvgl_ui.c) ─
 #define TXT_TITLE 24
 #define TXT_TAB   22
 #define TXT_BODY  20
@@ -59,16 +51,9 @@ extern const pax_font_t pax_font_montserrat_raw;
 #define CHAT_Y0      (TAB_BAR_H + 4)
 #define CHAT_INPUT_H 36
 
-// ── Display globals (initialised in app_main, read by render) ────────────────
-extern size_t    display_h_res;
-extern size_t    display_v_res;
-extern pax_buf_t fb;
+// ── Display globals (initialised in app_main, handed to lvgl_port_init) ───────
+extern size_t display_h_res;
+extern size_t display_v_res;
 
-// ── Lifecycle ────────────────────────────────────────────────────────────────
-// Push the framebuffer to the panel. Safe to call from any thread that's
-// already serialised access to `fb`.
-void blit(void);
-
-// Top-level dispatcher: paints the current view (or overlay) into `fb` and
-// calls blit().
+// Top-level dispatcher: paints the current view through LVGL.
 void render(void);
