@@ -226,6 +226,11 @@ static void add_circle(lv_obj_t* p, int cx, int cy, int r, int64_t fill, int64_t
 // Static arc stroke from start_deg to end_deg (LVGL angles: 0 deg = 3 o'clock,
 // increasing clockwise; wraps through 0 if start > end).
 static void add_arc(lv_obj_t* p, int cx, int cy, int r, int start_deg, int end_deg, int w, uint32_t col) {
+    // Normalize to [0,360): lv_arc draws clockwise from start to end (wrapping
+    // through 0 when start > end) but mishandles negative angles — without this
+    // a wedge like -45..45 loses its top (-45..0) half.
+    start_deg   = ((start_deg % 360) + 360) % 360;
+    end_deg     = ((end_deg % 360) + 360) % 360;
     lv_obj_t* a = lv_arc_create(p);
     lv_obj_remove_style(a, NULL, LV_PART_KNOB);
     lv_obj_clear_flag(a, LV_OBJ_FLAG_CLICKABLE);
@@ -2212,11 +2217,12 @@ static void cat_icon_wifi_lv(lv_obj_t* s, int cx, int cy, int sz, uint32_t col) 
     int   half = sz / 2;
     int   oy   = cy + half / 3;  // arc origin sits low so the fan opens up
     float pi   = 3.14159265f;
-    // Arcs span from upper-left to upper-right (10 o'clock .. 2 o'clock).
-    add_arc_rad(s, cx, oy, half * 9 / 10, -pi * 5.0f / 6.0f, -pi / 6.0f, 2, col);
-    add_arc_rad(s, cx, oy, half * 6 / 10, -pi * 5.0f / 6.0f, -pi / 6.0f, 2, col);
-    add_arc_rad(s, cx, oy, half * 3 / 10, -pi * 5.0f / 6.0f, -pi / 6.0f, 2, col);
-    add_circle(s, cx, oy, sz / 14, col, -1, 0);
+    // Three broad arcs fanning upward over a dot (the standard WiFi glyph):
+    // span ~9 o'clock .. 3 o'clock through the top so each wave is nice and wide.
+    add_arc_rad(s, cx, oy, half * 9 / 10, -pi * 11.0f / 12.0f, -pi / 12.0f, 2, col);
+    add_arc_rad(s, cx, oy, half * 6 / 10, -pi * 11.0f / 12.0f, -pi / 12.0f, 2, col);
+    add_arc_rad(s, cx, oy, half * 3 / 10, -pi * 11.0f / 12.0f, -pi / 12.0f, 2, col);
+    add_circle(s, cx, oy, sz / 12, col, -1, 0);
 }
 
 // HTTPS: a globe (outline circle + one meridian + two parallels).
