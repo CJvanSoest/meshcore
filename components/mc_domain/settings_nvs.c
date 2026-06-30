@@ -57,6 +57,7 @@
 #define GPS_SCALE_VER_CUR   2
 #define NVS_GPS_SRC         "lora.gps.src"
 #define NVS_BLE_ENABLED     "ble.en"
+#define NVS_BLE_PIN         "ble.pin"  // u32: fixed 6-digit pairing passkey (0..999999)
 #define NVS_BLE_GPS_PREF    "ble.gps.pref"
 #define NVS_ADVERT_LOC_POL  "ble.advloc"
 #define NVS_UI_DISP_BL      "ui.disp_bl"
@@ -180,6 +181,7 @@ int32_t                gps_lat_e6            = 0;
 int32_t                gps_lon_e6            = 0;
 gps_source_t           gps_last_source       = GPS_SRC_NONE;
 bool                   ble_enabled           = true;  // default ON
+uint32_t               ble_pin               = 0;     // default 000000 until user sets it
 bool                   ble_gps_pref          = true;  // iPhone "GPS Mode = Enabled"
 uint8_t                advert_loc_policy     = 0;     // ADVERT_LOC_NONE
 char                   wifi_ssid[33]         = {0};
@@ -411,6 +413,30 @@ void save_ble_enabled(void) {
     if (nvs_save_u8("system", NVS_BLE_ENABLED, ble_enabled ? 1 : 0)) {
         ESP_LOGI(TAG, "BLE enabled saved: %s", ble_enabled ? "on" : "off");
     }
+}
+
+// ── BLE pairing passkey (fixed 6-digit code) ────────────────────────────────
+// Stored as a u32; nvs_helpers only covers u8/i8 scalars so we use the raw NVS
+// API here. Missing key keeps the default (0 = "000000").
+void load_ble_pin(void) {
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
+    uint32_t v;
+    if (nvs_get_u32(handle, NVS_BLE_PIN, &v) == ESP_OK && v <= 999999u) ble_pin = v;
+    nvs_close(handle);
+}
+
+void save_ble_pin(void) {
+    if (ble_pin > 999999u) ble_pin = ble_pin % 1000000u;
+    nvs_handle_t handle;
+    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) {
+        ESP_LOGW(TAG, "BLE pin save: NVS open failed");
+        return;
+    }
+    if (nvs_set_u32(handle, NVS_BLE_PIN, ble_pin) == ESP_OK && nvs_commit(handle) == ESP_OK) {
+        ESP_LOGI(TAG, "BLE pairing code saved: %06lu", (unsigned long)ble_pin);
+    }
+    nvs_close(handle);
 }
 
 // ── HTTP API key (shared secret for the /ping endpoint) ─────────────────────

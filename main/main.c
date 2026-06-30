@@ -304,6 +304,7 @@ void app_main(void) {
     load_antenna_gain();
     load_gps_coords();
     load_ble_enabled();
+    load_ble_pin();
     load_ble_gps_pref();
     load_advert_loc_policy();
     load_wifi();

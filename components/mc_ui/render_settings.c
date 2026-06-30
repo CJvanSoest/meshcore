@@ -174,6 +174,7 @@ static const field_def_t s_fields[FIELD_COUNT] = {
     [FIELD_HTTP_QR]            = {"Show QR (OwnTracks)", NULL},
     // ── Bluetooth ──
     [FIELD_BLE_ENABLED]        = {"BLE companion", save_ble_enabled},
+    [FIELD_BLE_PIN]            = {"Pairing code", save_ble_pin},
     // ── Region & Location ──
     [FIELD_REGION_SCOPE]       = {"Region scope", save_region_scope},
     [FIELD_GPS_LAT]            = {"GPS latitude", save_gps_coords},
@@ -509,6 +510,11 @@ void settings_field_value(field_t f, char* out, size_t cap) {
             break;
         case FIELD_BLE_ENABLED:
             snprintf(out, cap, "%s", ble_enabled ? "On" : "Off");
+            break;
+        case FIELD_BLE_PIN:
+            // Always 6 digits with leading zeros (e.g. "012345") so it matches
+            // exactly what the phone prompts for.
+            snprintf(out, cap, "%06lu", (unsigned long)ble_pin);
             break;
 
         // ── Brightness ──

@@ -54,6 +54,7 @@ typedef enum {
     FIELD_HTTP_QR,           // Action row: open QR overlay with /ping URL + key for iPhone capture
     // ── Bluetooth (own category) ──
     FIELD_BLE_ENABLED,  // Toggle: BLE companion radio on/off (takes effect on next app start)
+    FIELD_BLE_PIN,      // 6-digit fixed NimBLE pairing passkey (0..999999, shown as %06u)
     // ── Region & location ──
     FIELD_REGION_SCOPE,
     FIELD_GPS_LAT,

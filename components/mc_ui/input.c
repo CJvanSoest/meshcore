@@ -386,6 +386,11 @@ static void settings_begin_text_edit(field_t f) {
     } else if (f == FIELD_GPS_LON) {
         if (gps_position_valid) snprintf(numbuf, sizeof(numbuf), "%.6f", (double)gps_lon_e6 / 1e6);
         src = numbuf;
+    } else if (f == FIELD_BLE_PIN) {
+        // Prefill with the current 6-digit code (leading zeros included) so the
+        // user edits in place rather than retyping from scratch.
+        snprintf(numbuf, sizeof(numbuf), "%06lu", (unsigned long)ble_pin);
+        src = numbuf;
     }
     strncpy(field_edit_buf, src, sizeof(field_edit_buf) - 1);
     field_edit_buf[sizeof(field_edit_buf) - 1] = '\0';
@@ -433,6 +438,12 @@ static void settings_commit_text_edit(field_t f) {
             }
         }
         save_gps_coords();
+    } else if (f == FIELD_BLE_PIN) {
+        // Digits-only buffer (enforced on input); empty stays 0. strtoul clamps
+        // safely and the explicit modulo keeps it inside 0..999999.
+        unsigned long v = strtoul(field_edit_buf, NULL, 10);
+        ble_pin         = (uint32_t)(v % 1000000ul);
+        save_ble_pin();
     }
     field_editing_text = false;
 }
@@ -724,7 +735,7 @@ static void nav_settings(uint32_t key) {
             if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
             edit_mode = true;
             if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME || selected == FIELD_REGION_SCOPE ||
-                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
+                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON || selected == FIELD_BLE_PIN) {
                 settings_begin_text_edit(selected);
             }
         } else {
@@ -1294,7 +1305,7 @@ static void key_settings(char c) {
             if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
             edit_mode = true;
             if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME || selected == FIELD_REGION_SCOPE ||
-                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
+                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON || selected == FIELD_BLE_PIN) {
                 settings_begin_text_edit(selected);
             }
         } else {
@@ -1425,6 +1436,10 @@ void handle_key(char c) {
                 if (c >= 'A' && c <= 'Z') c = c - 'A' + 'a';
                 bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
                 if (!ok) return;
+            }
+            // BLE pairing code: digits only, capped at 6 characters.
+            if (selected == FIELD_BLE_PIN) {
+                if (c < '0' || c > '9' || field_edit_len >= 6) return;
             }
             field_edit_buf[field_edit_len++] = c;
             field_edit_buf[field_edit_len]   = '\0';

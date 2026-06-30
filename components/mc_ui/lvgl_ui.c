@@ -2495,7 +2495,7 @@ static void render_settings_drilldown_lvgl(lv_obj_t* scr, int w, int h) {
         settings_field_value((field_t)f, value, sizeof(value));
         char val_disp[80];
         bool is_text_field = (f == FIELD_OWNER || f == FIELD_ADV_NAME || f == FIELD_REGION_SCOPE ||
-                              f == FIELD_GPS_LAT || f == FIELD_GPS_LON);
+                              f == FIELD_GPS_LAT || f == FIELD_GPS_LON || f == FIELD_BLE_PIN);
         if (is_sel && edit_mode && field_editing_text && is_text_field) {
             snprintf(val_disp, sizeof(val_disp), "%.76s_", field_edit_buf);
         } else if (is_sel && edit_mode && !is_text_field) {

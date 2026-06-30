@@ -107,6 +107,12 @@ extern uint16_t display_blank_after_s;
 // cleanly mid-runtime is non-trivial.
 extern bool ble_enabled;
 
+// Fixed BLE pairing passkey (0..999999). Used as the NimBLE Passkey-Display
+// value so the iPhone always prompts for the same user-chosen 6-digit code.
+// Default 0 → "000000" out of the box; the user changes it in Settings.
+// Stored as an integer and rendered %06u so leading zeros survive.
+extern uint32_t ble_pin;
+
 // iPhone MeshCore companion-app "GPS Mode" preference. Reported via
 // COMPANION_CMD_GET_CUSTOM_VARS as "gps:1"/"gps:0" so the app's Position
 // Settings screen reflects the persisted state. Currently informational
@@ -203,6 +209,8 @@ void load_gps_coords(void);
 void save_gps_coords(void);
 void load_ble_enabled(void);
 void save_ble_enabled(void);
+void load_ble_pin(void);
+void save_ble_pin(void);
 void load_ble_gps_pref(void);
 void save_ble_gps_pref(void);
 void load_advert_loc_policy(void);
