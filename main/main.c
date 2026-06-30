@@ -205,7 +205,11 @@ void app_main(void) {
     const bsp_configuration_t bsp_cfg = {
         .display =
             {
-                .requested_color_format = BSP_DISPLAY_COLOR_FORMAT_24_888RGB,
+                // Request 16-bit 565RGB so the whole stack is uniformly 2 bytes/px.
+                // LVGL renders 16-bit (keeps the binary small); PAX renders 565
+                // fine (the UI is flat solid colours). A 24-bit panel would feed
+                // LVGL's 2-byte buffer to a 3-byte blit -> stride corruption.
+                .requested_color_format = BSP_DISPLAY_COLOR_FORMAT_16_565RGB,
                 .num_fbs                = 1,
             },
     };
