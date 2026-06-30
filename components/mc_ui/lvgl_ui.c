@@ -2333,9 +2333,8 @@ typedef void (*cat_icon_lv_fn)(lv_obj_t*, int, int, int, uint32_t);
 // Index order MUST match s_categories[] in render_settings.c (real index,
 // including the hidden-from-grid Advert slot).
 static const cat_icon_lv_fn s_cat_icons_lv[] = {
-    cat_icon_identity_lv,   cat_icon_regulatory_lv, cat_icon_radio_lv,     cat_icon_advert_lv,
-    cat_icon_wifi_lv,       cat_icon_bluetooth_lv,  cat_icon_region_lv,    cat_icon_brightness_lv,
-    cat_icon_sounds_lv,     cat_icon_toolbox_lv,
+    cat_icon_identity_lv,  cat_icon_regulatory_lv, cat_icon_radio_lv,      cat_icon_advert_lv, cat_icon_wifi_lv,
+    cat_icon_bluetooth_lv, cat_icon_region_lv,     cat_icon_brightness_lv, cat_icon_sounds_lv, cat_icon_toolbox_lv,
 };
 #define S_CAT_ICONS_LV_N ((int)(sizeof(s_cat_icons_lv) / sizeof(s_cat_icons_lv[0])))
 
