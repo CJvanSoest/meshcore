@@ -104,3 +104,17 @@ CONFIG_LV_USE_GRIDNAV=n
 CONFIG_LV_USE_FRAGMENT=n
 CONFIG_LV_USE_IME_PINYIN=n
 CONFIG_LV_USE_FILE_EXPLORER=n
+# Reclaim app-partition headroom for the chat views (inline emoji pulls in the
+# lv_image transform path). The views position everything absolutely with
+# explicit per-object styles, so the theme engine and the flex/grid layout
+# engines are dead weight; the fonts are uncompressed bitmaps, so the
+# compressed-font decoder is unused too. Montserrat 14/16/20/22/24 stay enabled
+# (14 referenced explicitly now that the default theme no longer pins it).
+CONFIG_LV_FONT_MONTSERRAT_14=y
+CONFIG_LV_USE_THEME_DEFAULT=n
+CONFIG_LV_USE_THEME_SIMPLE=n
+CONFIG_LV_USE_THEME_MONO=n
+CONFIG_LV_USE_FLEX=n
+CONFIG_LV_USE_GRID=n
+CONFIG_LV_USE_FONT_COMPRESSED=n
+CONFIG_LV_FONT_FMT_TXT_LARGE=n
