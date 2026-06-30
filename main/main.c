@@ -275,14 +275,14 @@ void app_main(void) {
     // Start diag output below both so they don't overlap.
     int diag_y    = 74;
     int diag_line = 22;
-#define DIAG(col, fmt, ...)                                           \
-    do {                                                              \
-        char _buf[80];                                                \
-        snprintf(_buf, sizeof(_buf), fmt, ##__VA_ARGS__);             \
-        ESP_LOGI(TAG, "%s", _buf);                                    \
-        pax_draw_text(&fb, (col), FONT, TXT_SMALL, 14, diag_y, _buf); \
-        diag_y += diag_line;                                          \
-        blit();                                                       \
+#define DIAG(col, fmt, ...)                                    \
+    do {                                                       \
+        char _buf[80];                                         \
+        snprintf(_buf, sizeof(_buf), fmt, ##__VA_ARGS__);      \
+        ESP_LOGI(TAG, "%s", _buf);                             \
+        pax_draw_text(&fb, (col), FONT, 18, 14, diag_y, _buf); \
+        diag_y += diag_line;                                   \
+        blit();                                                \
     } while (0)
 
     pax_background(&fb, COL_BG);
@@ -308,14 +308,14 @@ void app_main(void) {
     // tanmatsu-lora rides on top of. We keep this call but skip the actual
     // connect step (wifi_connect_try_all) — the badge runs as a LoRa node,
     // not a WiFi client, so no scan / associate / DHCP / SNTP wastes air.
-    DIAG(COL_GRAY, "wifi_connection_init_stack...");
+    DIAG(COL_WHITE, "wifi_connection_init_stack...");
     res = wifi_connection_init_stack();
     DIAG(res == ESP_OK ? COL_GREEN : COL_YELLOW, "  wifi init: %s (%d)", res == ESP_OK ? "OK" : "FAIL", res);
 
     // Time comes from the C6 coprocessor RTC (set by launcher/firmware SNTP
     // at boot). bsp_rtc_update_time pulls that value into the P4 system
     // clock — no app-side SNTP needed. Per Nicolai's hint.
-    DIAG(COL_GRAY, "bsp_rtc_update_time...");
+    DIAG(COL_WHITE, "bsp_rtc_update_time...");
     esp_err_t rtc_res = bsp_rtc_update_time();
     if (rtc_res == ESP_OK) {
         identity_mark_time_synced();
@@ -385,7 +385,7 @@ void app_main(void) {
     diag_init();      // Toolbox packet-log ring — before the radio tasks start capturing
     coverage_init();  // Toolbox coverage-test result store + ACK matcher
 
-    DIAG(COL_GRAY, "SD mount...");
+    DIAG(COL_WHITE, "SD mount...");
     history_init(node_prv_key);
     DIAG(history_is_ready() ? COL_GREEN : COL_YELLOW, "  SD: %s", history_status());
     // sounds_init runs before the SD mount, so its first sounds_refresh_list()
@@ -411,7 +411,7 @@ void app_main(void) {
         nodes_start_save_task();
     }
 
-    DIAG(COL_GRAY, "lora_init_remote(16)...");
+    DIAG(COL_WHITE, "lora_init_remote(16)...");
     res = lora_init_remote(&lora_handle, 16);
     DIAG(res == ESP_OK ? COL_GREEN : COL_RED, "  lora_init_remote: %s (%d)", res == ESP_OK ? "OK" : "FAIL", res);
 
@@ -435,7 +435,7 @@ void app_main(void) {
         // older firmware the call NACKs/times-out and render.c falls back to
         // the hand-maintained TANMATSU_RADIO_FW_LABEL.
         radio_fw_app_version[0] = '\0';
-        DIAG(COL_GRAY, "sys_proto get_information...");
+        DIAG(COL_WHITE, "sys_proto get_information...");
         if (radio_system_protocol_init() == ESP_OK) {
             radio_system_protocol_information_t info = {0};
             if (radio_system_protocol_get_information(&info) == ESP_OK) {
@@ -450,7 +450,7 @@ void app_main(void) {
         } else {
             DIAG(COL_YELLOW, "  fw: init failed - hardcoded fallback");
         }
-        DIAG(COL_GRAY, "lora_get_config from C6...");
+        DIAG(COL_WHITE, "lora_get_config from C6...");
         lora_protocol_config_params_t c6_cfg  = {0};
         esp_err_t                     cfg_res = lora_get_config(&lora_handle, &c6_cfg);
         if (cfg_res == ESP_OK) {
@@ -466,7 +466,7 @@ void app_main(void) {
             }
 
             // Set RX mode and start background task
-            DIAG(COL_GRAY, "lora_set_mode(RX)...");
+            DIAG(COL_WHITE, "lora_set_mode(RX)...");
             esp_err_t mode_res = lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_RX);
             if (mode_res == ESP_OK) {
                 lora_rx_ok = true;

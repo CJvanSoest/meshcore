@@ -493,7 +493,8 @@ static void render_settings_drilldown(int w, int h) {
     // category; the edit-mode branches switch it to cancel.
     const char* back = ": back to categories";
     char        hintbuf[128];
-    pax_col_t   hint_col = COL_GRAY;
+    // Bright/readable like the back hint (was COL_GRAY, too dim to read).
+    pax_col_t   hint_col = COL_HINT;
     if (edit_mode && field_editing_text) {
         hint = "Type to edit   Backspace: del   Enter: save   ";
         back = ": cancel";

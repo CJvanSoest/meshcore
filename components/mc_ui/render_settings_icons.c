@@ -6,9 +6,29 @@
 #include "pax_gfx.h"
 #include "render.h"  // fb (shared draw buffer)
 
+// ID card: a landscape card with a person silhouette on the left (head +
+// shoulder arc) and three text lines on the right — the classic identity glyph.
 static void cat_icon_identity(int cx, int cy, int sz, pax_col_t col) {
-    pax_outline_circle(&fb, col, cx, cy - sz / 6, sz / 4);  // head
-    pax_outline_circle(&fb, col, cx, cy + sz / 3, sz / 2);  // shoulders (cropped)
+    int half = sz / 2;
+    int x0 = cx - half, x1 = cx + half;      // card spans the full icon width
+    int y0 = cy - sz / 3, y1 = cy + sz / 3;  // landscape card
+    pax_simple_line(&fb, col, x0, y0, x1, y0);
+    pax_simple_line(&fb, col, x1, y0, x1, y1);
+    pax_simple_line(&fb, col, x1, y1, x0, y1);
+    pax_simple_line(&fb, col, x0, y1, x0, y0);
+    // person on the left third: head + shoulder arc (upper semicircle)
+    int pcx   = cx - sz / 4;
+    int headR = sz / 10;
+    int headY = cy - sz / 10;
+    pax_outline_circle(&fb, col, pcx, headY, headR);
+    pax_outline_arc(&fb, col, pcx, headY + headR + sz / 16, sz / 8, -3.14159265f, 0.0f);
+    // three text lines on the right
+    int lx0 = cx + sz / 16, lx1 = x1 - sz / 10;
+    int ly = cy - sz / 8;
+    for (int i = 0; i < 3; i++) {
+        pax_simple_line(&fb, col, lx0, ly, lx1, ly);
+        ly += sz / 8;
+    }
 }
 
 // Hexagonal-ish "regulatory" badge -- six straight segments instead of
@@ -23,12 +43,32 @@ static void cat_icon_regulatory(int cx, int cy, int sz, pax_col_t col) {
     pax_simple_line(&fb, col, cx - s, cy - s / 3, cx, cy - s);
 }
 
-// Three concentric rings = a node radiating into the mesh.
+// Radio set: a body box with a round speaker on the left, a tuning grille on
+// the right, and a diagonal antenna rising from the top — the classic radio glyph.
 static void cat_icon_radio(int cx, int cy, int sz, pax_col_t col) {
-    int q = sz / 2;
-    pax_outline_circle(&fb, col, cx, cy, q / 4);
-    pax_outline_hollow_circle(&fb, col, cx, cy, q / 2 - 2, q / 2);
-    pax_outline_hollow_circle(&fb, col, cx, cy, q - 2, q);
+    int half = sz / 2;
+    int x0 = cx - half, x1 = cx + half;
+    int y0 = cy - sz / 6, y1 = cy + sz / 3;  // body sits in the lower portion
+    // antenna: from the body's top-left up and to the right
+    pax_simple_line(&fb, col, x0 + sz / 6, y0, cx + sz / 5, y0 - sz / 3);
+    // body box
+    pax_simple_line(&fb, col, x0, y0, x1, y0);
+    pax_simple_line(&fb, col, x1, y0, x1, y1);
+    pax_simple_line(&fb, col, x1, y1, x0, y1);
+    pax_simple_line(&fb, col, x0, y1, x0, y0);
+    // speaker dial (left)
+    int bodyH = y1 - y0;
+    int spR   = bodyH / 2 - sz / 16;
+    int spcx  = x0 + bodyH / 2 + sz / 16;
+    int spcy  = (y0 + y1) / 2;
+    pax_outline_circle(&fb, col, spcx, spcy, spR);
+    // tuning grille (right)
+    int gx0 = spcx + spR + sz / 12, gx1 = x1 - sz / 10;
+    int gy = y0 + bodyH / 4;
+    for (int i = 0; i < 3; i++) {
+        pax_simple_line(&fb, col, gx0, gy, gx1, gy);
+        gy += bodyH / 4;
+    }
 }
 
 // Antenna mast + tripod base + two outward radio waves at the tip.
