@@ -12,7 +12,7 @@
 #include "ui_state.h"
 
 // ── Tile-grid geometry (kept in sync with lvgl_ui.c's home renderer) ─────────
-#define HOME_TILE_COLS  3
+#define HOME_TILE_COLS  4
 #define HOME_TILE_ROWS  3
 #define HOME_TILE_COUNT (HOME_TILE_COLS * HOME_TILE_ROWS)
 
@@ -29,6 +29,9 @@ static const home_tile_t home_tiles[HOME_TILE_COUNT] = {
     {"Channel", VIEW_CHANNEL, HOME_ACTION_NONE},
     {"Map", VIEW_MAP, HOME_ACTION_NONE},
     {"Advert", VIEW_SETTINGS, HOME_ACTION_OPEN_ADVERT},
+    {"WiFi", VIEW_SETTINGS, HOME_ACTION_OPEN_WIFI},
+    {"Bluetooth", VIEW_SETTINGS, HOME_ACTION_OPEN_BLUETOOTH},
+    {"Toolbox", VIEW_TOOLBOX, HOME_ACTION_NONE},
     {"Settings", VIEW_SETTINGS, HOME_ACTION_NONE},
     {"About", VIEW_ABOUT, HOME_ACTION_NONE},
     {"QR", VIEW_NODES, HOME_ACTION_OPEN_QR},

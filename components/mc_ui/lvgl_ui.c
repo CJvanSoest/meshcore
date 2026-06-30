@@ -326,7 +326,7 @@ static void render_about_lvgl(void) {
 // two in step. Icons are widget-built approximations of the PAX vector glyphs
 // (LVGL's bitmap fonts can't scale to the ~60 px glyph sizes the PAX path uses).
 
-#define HOME_TILE_COLS  3
+#define HOME_TILE_COLS  4
 #define HOME_TILE_ROWS  3
 #define HOME_TILE_COUNT (HOME_TILE_COLS * HOME_TILE_ROWS)
 #define HOME_H_MARGIN   30
@@ -340,6 +340,9 @@ typedef enum {
     IC_CHANNEL,
     IC_MAP,
     IC_ANTENNA,
+    IC_WIFI,
+    IC_BLUETOOTH,
+    IC_TOOLBOX,
     IC_SETTINGS,
     IC_ABOUT,
     IC_QR,
@@ -396,6 +399,44 @@ static void home_icon(lv_obj_t* p, icon_id_t id, int cx, int cy, int sz, uint32_
             add_arc(p, cx, top_y, r2, 315, 45, 2, col);
             break;
         }
+        case IC_WIFI: {
+            // Mirrors cat_icon_wifi_lv: a fan of concentric arcs over a dot,
+            // opening upward. Arc origin sits low so the waves open up.
+            int half = sz / 2, oy = cy + half / 3;
+            add_arc(p, cx, oy, half * 9 / 10, 195, 345, 2, col);
+            add_arc(p, cx, oy, half * 6 / 10, 195, 345, 2, col);
+            add_arc(p, cx, oy, half * 3 / 10, 195, 345, 2, col);
+            add_circle(p, cx, oy, sz / 12, col, -1, 0);
+            break;
+        }
+        case IC_BLUETOOTH: {
+            // Mirrors cat_icon_bluetooth_lv: the runic glyph (vertical spine +
+            // two crossed bowties).
+            int half = sz / 2, top = cy - half, bot = cy + half;
+            int rx = half / 2, qy = cy - half / 2, by = cy + half / 2;
+            add_line(p, cx, top, cx, bot, 2, col);
+            add_line(p, cx, top, cx + rx, qy, 2, col);
+            add_line(p, cx + rx, qy, cx - rx, by, 2, col);
+            add_line(p, cx, bot, cx + rx, by, 2, col);
+            add_line(p, cx + rx, by, cx - rx, qy, 2, col);
+            break;
+        }
+        case IC_TOOLBOX: {
+            // Mirrors cat_icon_toolbox_lv: a tool chest with a handle.
+            int half = sz / 2;
+            int bx0 = cx - half, bx1 = cx + half;
+            int by0 = cy - half / 5, by1 = cy + half;
+            add_line(p, bx0, by0, bx1, by0, 2, col);
+            add_line(p, bx1, by0, bx1, by1, 2, col);
+            add_line(p, bx1, by1, bx0, by1, 2, col);
+            add_line(p, bx0, by1, bx0, by0, 2, col);
+            add_line(p, bx0, cy + half / 4, bx1, cy + half / 4, 2, col);
+            int hx0 = cx - half / 3, hx1 = cx + half / 3, hy = cy - half / 2;
+            add_line(p, hx0, by0, hx0, hy, 2, col);
+            add_line(p, hx1, by0, hx1, hy, 2, col);
+            add_line(p, hx0, hy, hx1, hy, 2, col);
+            break;
+        }
         case IC_SETTINGS: {
             int ro = sz / 3, ri = sz / 4, rm = (ro + ri) / 2, bw = ro - ri;
             if (bw < 2) bw = 2;
@@ -440,9 +481,18 @@ typedef struct {
 } home_tile_meta_t;
 
 static const home_tile_meta_t home_meta[HOME_TILE_COUNT] = {
-    {"Nodes", IC_NODES, 0}, {"DM", IC_DM, 1},          {"Channel", IC_CHANNEL, 2},
-    {"Map", IC_MAP, 0},     {"Advert", IC_ANTENNA, 0}, {"Settings", IC_SETTINGS, 0},
-    {"About", IC_ABOUT, 0}, {"QR", IC_QR, 0},          {"Exit", IC_EXIT, 0},
+    {"Nodes", IC_NODES, 0},
+    {"DM", IC_DM, 1},
+    {"Channel", IC_CHANNEL, 2},
+    {"Map", IC_MAP, 0},
+    {"Advert", IC_ANTENNA, 0},
+    {"WiFi", IC_WIFI, 0},
+    {"Bluetooth", IC_BLUETOOTH, 0},
+    {"Toolbox", IC_TOOLBOX, 0},
+    {"Settings", IC_SETTINGS, 0},
+    {"About", IC_ABOUT, 0},
+    {"QR", IC_QR, 0},
+    {"Exit", IC_EXIT, 0},
 };
 
 static void home_status_right(lv_obj_t* scr, int x_right, int ty, int font) {
@@ -527,10 +577,17 @@ static void render_home_lvgl(void) {
         if (icon_sz > tile_h * 2 / 5) icon_sz = tile_h * 2 / 5;
         home_icon(scr, home_meta[i].icon, tx + tile_w / 2, tyt + tile_h * 2 / 5, icon_sz, fg);
 
-        // Label centred in the lower third.
-        const char* lbl = home_meta[i].label;
-        int         lw  = text_w(lbl, TXT_BODY);
-        add_label(scr, tx + (tile_w - lw) / 2, tyt + tile_h * 2 / 3, TXT_BODY, fg, lbl);
+        // Label centred in the lower third. With 4 columns the tiles are
+        // narrower (~180 px); the long labels ("Bluetooth", "Channel") overflow
+        // TXT_BODY, so fall back to TXT_SMALL when the body width won't fit.
+        const char* lbl      = home_meta[i].label;
+        int         lbl_font = TXT_BODY;
+        int         lw       = text_w(lbl, lbl_font);
+        if (lw > tile_w - 8) {
+            lbl_font = TXT_SMALL;
+            lw       = text_w(lbl, lbl_font);
+        }
+        add_label(scr, tx + (tile_w - lw) / 2, tyt + tile_h * 2 / 3, lbl_font, fg, lbl);
 
         // Unread badge (DM, Channel).
         int count = home_meta[i].unread == 1   ? contact_unread_total()

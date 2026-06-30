@@ -34,9 +34,11 @@ void toolbox_log_format_detail(const diag_entry_t* e, const diag_decoded_t* d, c
 // for placeholder ("soon") tiles so input can no-op on them.
 typedef enum {
     HOME_ACTION_NONE = 0,
-    HOME_ACTION_OPEN_QR,      // QR-tile: open QR overlay, stay rooted at home
-    HOME_ACTION_OPEN_ADVERT,  // Advert-tile: drill into Settings -> Advert
-    HOME_ACTION_EXIT,         // Exit-tile: return to the BadgeVMS launcher
+    HOME_ACTION_OPEN_QR,         // QR-tile: open QR overlay, stay rooted at home
+    HOME_ACTION_OPEN_ADVERT,     // Advert-tile: drill into Settings -> Advert
+    HOME_ACTION_OPEN_WIFI,       // WiFi-tile: drill into Settings -> WiFi
+    HOME_ACTION_OPEN_BLUETOOTH,  // Bluetooth-tile: drill into Settings -> Bluetooth
+    HOME_ACTION_EXIT,            // Exit-tile: return to the BadgeVMS launcher
 } home_action_t;
 
 int           home_tile_count(void);

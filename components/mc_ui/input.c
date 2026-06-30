@@ -71,6 +71,29 @@ static void open_home_tile(int idx) {
         return;
     }
 
+    // WiFi / Bluetooth tiles: drill straight into the matching Settings
+    // category. Unlike Advert (a hidden category), these are visible tiles, so
+    // park the category cursor on their visible slot -- ESC-back then lands on
+    // the right Settings tile instead of slot 0.
+    if (action == HOME_ACTION_OPEN_WIFI || action == HOME_ACTION_OPEN_BLUETOOTH) {
+        int field = (action == HOME_ACTION_OPEN_WIFI) ? FIELD_WIFI_SSID : FIELD_BLE_ENABLED;
+        int cat   = settings_category_for_field(field);
+        if (cat < 0) cat = 0;
+        int slot = 0;  // fallback if the category isn't found in the visible list
+        for (int s = 0, n = settings_visible_category_count(); s < n; s++) {
+            if (settings_visible_category_real_idx(s) == cat) {
+                slot = s;
+                break;
+            }
+        }
+        settings_category_active    = cat;
+        settings_category_cursor    = slot;
+        settings_category_list_mode = false;
+        selected                    = field;
+        current_view                = VIEW_SETTINGS;
+        return;
+    }
+
     if (target == VIEW_HOME) return;
     current_view = target;
     if (target == VIEW_CHAT) {
@@ -455,7 +478,7 @@ static void settings_commit_text_edit(field_t f) {
 // taken by the time these run, so they only see directional keys + RETURN.
 
 static void nav_home(uint32_t key) {
-    int cols = 3;  // mirrors HOME_TILE_COLS in render_home.c
+    int cols = 4;  // mirrors HOME_TILE_COLS in render_home.c
     if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
         if (home_cursor - cols >= 0) home_cursor -= cols;
     } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
@@ -1122,7 +1145,7 @@ void handle_nav(uint32_t key) {
 // `<>,.`/D, previously a long `else if (current_view == VIEW_X)` cascade.
 
 static void key_home(char c) {
-    const int cols  = 3;  // mirrors HOME_TILE_COLS in render_home.c
+    const int cols  = 4;  // mirrors HOME_TILE_COLS in render_home.c
     const int total = home_tile_count();
     if (c == 'w' || c == 'W') {
         if (home_cursor - cols >= 0) home_cursor -= cols;
