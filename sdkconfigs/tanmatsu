@@ -59,6 +59,9 @@ CONFIG_LV_FONT_MONTSERRAT_16=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
 CONFIG_LV_FONT_MONTSERRAT_22=y
 CONFIG_LV_FONT_MONTSERRAT_24=y
+# UNSCII 8x16 monospace: used only for the Packet Log hex dump lines so bytes
+# line up column-for-column (TXT_SMALL Montserrat is proportional).
+CONFIG_LV_FONT_UNSCII_16=y
 # Keep the image bulk out of the binary: no demos, examples, or file-system
 # image decoders during the core migration.
 CONFIG_LV_BUILD_EXAMPLES=n

@@ -150,8 +150,9 @@ static void log_col_headers(int w, int top) {
     pax_simple_rect(&fb, COL_HEADER, 0, top + LOG_COLHDR_H - 1, w, 1);
 }
 
-// Build the right-hand detail string for one entry into `out`.
-static void format_detail(const diag_entry_t* e, const diag_decoded_t* d, char* out, size_t cap) {
+// Build the right-hand detail string for one entry into `out`. Non-static so
+// the LVGL list view (render_toolbox_log_lvgl) reuses the exact same formatting.
+void toolbox_log_format_detail(const diag_entry_t* e, const diag_decoded_t* d, char* out, size_t cap) {
     if (toolbox_log_dissect) {
         if (!d->valid) {
             snprintf(out, cap, "(unparsed) %uB", e->full_len);
@@ -182,9 +183,33 @@ static void format_detail(const diag_entry_t* e, const diag_decoded_t* d, char* 
     }
 }
 
-// Map a newest-first index to the raw ring slot in the frozen snapshot.
-static int snap_ri(int newest_idx) {
+// Map a newest-first index to the raw ring slot in the frozen snapshot. Non-
+// static so the LVGL view maps indices against the same captured head after
+// calling toolbox_log_snapshot().
+int toolbox_log_snap_ri(int newest_idx) {
     return (s_snap_head - 1 - newest_idx + 2 * DIAG_LOG_SIZE) % DIAG_LOG_SIZE;
+}
+
+// Refresh the frozen ring snapshot (unless paused) and hand back the single-
+// source buffers the list/detail views walk. Mirrors the prep block at the top
+// of render_toolbox_log() so the LVGL renderer never re-implements or duplicates
+// the snapshot. Returns false if the PSRAM buffers could not be allocated.
+bool toolbox_log_snapshot(const diag_entry_t** out_snap, const diag_decoded_t** out_decoded, int* out_count,
+                          int* out_head) {
+    ensure_snap();
+    if (s_snap == NULL || s_decoded == NULL) return false;
+    if (!toolbox_log_paused) {
+        s_snap_count = diag_snapshot(s_snap, &s_snap_head);
+        for (int i = 0; i < s_snap_count; i++) {
+            int ri = (s_snap_head - 1 - i + 2 * DIAG_LOG_SIZE) % DIAG_LOG_SIZE;
+            diag_decode(s_snap[ri].raw, s_snap[ri].raw_len, &s_decoded[ri]);
+        }
+    }
+    *out_snap    = s_snap;
+    *out_decoded = s_decoded;
+    *out_count   = s_snap_count;
+    *out_head    = s_snap_head;
+    return true;
 }
 
 // Full-screen breakdown of one captured frame: every field plus the complete
@@ -291,7 +316,7 @@ void render_toolbox_log(void) {
     if (toolbox_log_cursor >= s_snap_count) toolbox_log_cursor = s_snap_count - 1;
     if (toolbox_log_cursor < 0) toolbox_log_cursor = 0;
     if (toolbox_log_detail && s_snap_count > 0) {
-        int ri = snap_ri(toolbox_log_cursor);
+        int ri = toolbox_log_snap_ri(toolbox_log_cursor);
         render_log_detail(w, h, &s_snap[ri], &s_decoded[ri]);
         return;
     }
@@ -321,7 +346,7 @@ void render_toolbox_log(void) {
         if (si >= s_snap_count) break;
         // Newest-first walk over the raw-order snapshot via the captured head;
         // the matching dissection was cached at refresh time.
-        int                   ri = snap_ri(si);
+        int                   ri = toolbox_log_snap_ri(si);
         const diag_entry_t*   e  = &s_snap[ri];
         const diag_decoded_t* d  = &s_decoded[ri];
         int                   ry = rows_y0 + i * LOG_ROW_H;
@@ -372,7 +397,7 @@ void render_toolbox_log(void) {
         pax_draw_text(&fb, COL_GRAY, FONT, TXT_TINY, COL_HOPS, ty, hop);
 
         char detail[160];
-        format_detail(e, d, detail, sizeof(detail));
+        toolbox_log_format_detail(e, d, detail, sizeof(detail));
         pax_draw_text(&fb, COL_PAGER_TEXT, FONT, TXT_TINY, COL_DETAIL, ty, detail);
     }
 

@@ -7,8 +7,10 @@
 // per-view render_*.c files. Not part of the public render API — public
 // callers use render.h.
 
-#include "chat.h"      // chat_msg_t (render_msg_list signature)
-#include "ui_state.h"  // app_view_t, field_t
+#include "chat.h"         // chat_msg_t (render_msg_list signature)
+#include "diag.h"         // diag_entry_t (packet-log snapshot accessors)
+#include "diag_decode.h"  // diag_decoded_t (packet-log snapshot accessors)
+#include "ui_state.h"     // app_view_t, field_t
 
 // Top header strip; called at the start of every full-view render.
 void render_tab_bar(void);
@@ -40,6 +42,17 @@ void render_toolbox_coverage(void);  // repeater coverage test
 // raise a result toast. Called from the packet-log key handler ('E'). Safe to
 // call from the UI task; takes a fresh ring snapshot internally.
 void toolbox_log_export_sd(void);
+
+// Packet-log snapshot accessors (the single-source snapshot + format logic live
+// in render_toolbox_log.c). The LVGL view reuses them so the snapshot is not
+// duplicated during the migration — mirrors how settings_field_label/value
+// expose the field registry. Call toolbox_log_snapshot() first, then map
+// newest-first indices with toolbox_log_snap_ri() against the captured head.
+// Returns false if the PSRAM snapshot buffers are unavailable.
+bool toolbox_log_snapshot(const diag_entry_t** out_snap, const diag_decoded_t** out_decoded, int* out_count,
+                          int* out_head);
+int  toolbox_log_snap_ri(int newest_idx);
+void toolbox_log_format_detail(const diag_entry_t* e, const diag_decoded_t* d, char* out, size_t cap);
 
 // Draw the centred status-toast overlay (set via toast_text / toast_start_ms /
 // toast_duration_ms) if one is active, and clear it once expired. Call last in
