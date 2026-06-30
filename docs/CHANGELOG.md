@@ -21,21 +21,24 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-07-01
+
 ### Removed
-- **On-device HTTPS subsystem** — the HTTPS config/`/ping` server, the per-badge
-  self-signed ECDSA P-256 cert generator, the `http_api_key` shared secret, and
-  the entire OwnTracks / iOS-Shortcuts-HTTP / MeshMapper GPS-push path (GPS
+- **On-device HTTPS subsystem** — the HTTPS config/`/ping` server, the per badge
+  self signed ECDSA P-256 cert generator, the `http_api_key` shared secret, and
+  the entire OwnTracks / iOS Shortcuts HTTP / MeshMapper GPS push path (GPS
   source #3, `POST https://tanmatsu.local:8443/ping`) are all gone. The
   Settings → HTTPS category and its fields (Endpoint, API key, Regenerate key,
   Cert fingerprint, Regenerate cert, Show QR), the `_https._tcp:8443` mDNS
   service, and the OwnTracks QR overlay mode are removed with it. **Reason:** cert
-  generation ran synchronously in the `sys_evt` system-event task on
+  generation ran synchronously in the `sys_evt` system event task on
   `IP_EVENT_STA_GOT_IP`, and mbedTLS ECDSA P-256 keygen + X.509 write overflowed
   that task's small stack → "Stack protection fault" panic → reboot loop / blue
   screen on first boot for any user with WiFi configured. Removing the subsystem
   eliminates the crash class. **WiFi itself is kept** — the WiFi settings tile
   and connect toggle stay; only the HTTPS/cert/OwnTracks layer on top was
   removed. GPS can still be set manually or pushed from the MeshCore phone app.
+  (PR #49)
 
 ## [3.0.0] - 2026-06-30
 
