@@ -12,11 +12,12 @@
 // FIELD_FREQ onward is a radio-config field that needs the C6 — render greys
 // those out when the radio is unavailable, so FIELD_FREQ must stay that boundary.
 typedef enum {
-    // ── Device & identity ──
+    // ── Identity ──
     FIELD_RADIO_FW = 0,  // read-only — SX126x silicon ID (version register) reported by C6
     FIELD_RADIO_FW_APP,  // read-only — hand-maintained tanmatsu-radio app fw label
     FIELD_OWNER,
     FIELD_ADV_NAME,
+    FIELD_ROLE,  // mesh device role — lives in Identity (no C6 needed to set)
     // ── Regulatory ──
     FIELD_COUNTRY,       // regulatory country — gates freq/power warnings + DC enforcement
     FIELD_ANTENNA_GAIN,  // dBi — only editable once country is set
@@ -30,30 +31,29 @@ typedef enum {
     FIELD_SYNC,
     FIELD_PREAMBLE,
     FIELD_PRESET,
-    FIELD_SENSITIVITY,  // RX boost on/off (radio gain vs power-save)
+    FIELD_SENSITIVITY,     // RX boost on/off (radio gain vs power-save)
+    FIELD_PATH_HASH_SIZE,  // per-hop path-hash byte count — a radio/mesh wire param
     // ── Advert (own category — flood + direct intervals, manual sends) ──
     FIELD_FLOOD_ADVERT_INT,   // periodic flood-route advert; 0 = off (default)
     FIELD_DIRECT_ADVERT_INT,  // periodic direct-route advert; 0 = off
     FIELD_SEND_FLOOD_NOW,     // Action row: emit a single flood advert immediately
     FIELD_SEND_DIRECT_NOW,    // Action row: emit a single direct advert (1-hop) now
-    // ── Network & behavior ──
-    FIELD_ROLE,
-    FIELD_PATH_HASH_SIZE,
-    // ── WiFi (lives in the Network tile alongside mesh params).
-    //     Slot management (add/edit SSID + password for new networks) lives
-    //     in the launcher's WiFi settings; our app only flips the on/off
-    //     toggle and lets the user pick which already-stored slot to use.
-    FIELD_WIFI_SSID,         // Read-only: SSID of the currently selected slot
-    FIELD_WIFI_STATUS,       // Read-only: "Disconnected" / "Connecting..." / "IP: x.x.x.x"
-    FIELD_WIFI_NETWORK,      // Picker: cycles launcher-stored slots (idx + SSID)
-    FIELD_WIFI_ENABLED,      // Toggle: On = wifi_connection_connect, Off = disconnect
+    // ── WiFi (own category). Slot management (add/edit SSID + password for new
+    //     networks) lives in the launcher's WiFi settings; our app only flips
+    //     the on/off toggle and lets the user pick which stored slot to use. ──
+    FIELD_WIFI_SSID,     // Read-only: SSID of the currently selected slot
+    FIELD_WIFI_STATUS,   // Read-only: "Disconnected" / "Connecting..." / "IP: x.x.x.x"
+    FIELD_WIFI_NETWORK,  // Picker: cycles launcher-stored slots (idx + SSID)
+    FIELD_WIFI_ENABLED,  // Toggle: On = wifi_connection_connect, Off = disconnect
+    // ── HTTPS server (own category — MeshMapper /ping endpoint) ──
     FIELD_HTTP_URL,          // Read-only: https://<ip>:8443/ping (for MeshMapper config)
     FIELD_HTTP_API_KEY,      // Read-only: 64 hex chars (paste into MeshMapper)
     FIELD_HTTP_KEY_REGEN,    // Action row: press OK to roll a new API key
     FIELD_HTTPS_CERT_FP,     // Read-only: SHA-256 fingerprint of the on-device cert
     FIELD_HTTPS_CERT_REGEN,  // Action row: wipe NVS cert + regenerate self-signed
     FIELD_HTTP_QR,           // Action row: open QR overlay with /ping URL + key for iPhone capture
-    FIELD_BLE_ENABLED,       // Toggle: BLE companion radio on/off (takes effect on next app start)
+    // ── Bluetooth (own category) ──
+    FIELD_BLE_ENABLED,  // Toggle: BLE companion radio on/off (takes effect on next app start)
     // ── Region & location ──
     FIELD_REGION_SCOPE,
     FIELD_GPS_LAT,

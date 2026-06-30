@@ -2117,9 +2117,9 @@ static void render_channel_lvgl(void) {
 
 // ── VIEW_SETTINGS ────────────────────────────────────────────────────────────
 // Pixel-matched port of render_settings.c (category-list grid + drilldown) and
-// the 9 category glyphs from render_settings_icons.c. The PAX files stay until
-// Phase 4; this view reuses the field registry (settings_field_label/value) and
-// the category table helpers so no per-field logic is duplicated here.
+// the category glyphs from the former render_settings_icons.c. This view reuses
+// the field registry (settings_field_label/value) and the category table
+// helpers so no per-field logic is duplicated here.
 
 extern bool c6_available;
 
@@ -2207,14 +2207,47 @@ static void cat_icon_advert_lv(lv_obj_t* s, int cx, int cy, int sz, uint32_t col
     add_circle(s, cx + half / 6, top + half / 6, half / 2, -1, col, 2);
 }
 
-static void cat_icon_network_lv(lv_obj_t* s, int cx, int cy, int sz, uint32_t col) {
-    int t = sz / 3;
-    add_circle(s, cx, cy - t, sz / 12, col, -1, 0);
-    add_circle(s, cx - t, cy + t, sz / 12, col, -1, 0);
-    add_circle(s, cx + t, cy + t, sz / 12, col, -1, 0);
-    add_line(s, cx, cy - t, cx - t, cy + t, 2, col);
-    add_line(s, cx, cy - t, cx + t, cy + t, 2, col);
-    add_line(s, cx - t, cy + t, cx + t, cy + t, 2, col);
+// WiFi: a fan of concentric signal arcs over a dot, opening upward.
+static void cat_icon_wifi_lv(lv_obj_t* s, int cx, int cy, int sz, uint32_t col) {
+    int   half = sz / 2;
+    int   oy   = cy + half / 3;  // arc origin sits low so the fan opens up
+    float pi   = 3.14159265f;
+    // Arcs span from upper-left to upper-right (10 o'clock .. 2 o'clock).
+    add_arc_rad(s, cx, oy, half * 9 / 10, -pi * 5.0f / 6.0f, -pi / 6.0f, 2, col);
+    add_arc_rad(s, cx, oy, half * 6 / 10, -pi * 5.0f / 6.0f, -pi / 6.0f, 2, col);
+    add_arc_rad(s, cx, oy, half * 3 / 10, -pi * 5.0f / 6.0f, -pi / 6.0f, 2, col);
+    add_circle(s, cx, oy, sz / 14, col, -1, 0);
+}
+
+// HTTPS: a globe (outline circle + one meridian + two parallels).
+static void cat_icon_https_lv(lv_obj_t* s, int cx, int cy, int sz, uint32_t col) {
+    int r = sz / 2;
+    add_circle(s, cx, cy, r, -1, col, 2);
+    // Vertical meridian + a narrow ellipse approximated by an inner arc pair.
+    add_line(s, cx, cy - r, cx, cy + r, 2, col);
+    add_circle(s, cx, cy, r / 2, -1, col, 2);  // squashed look stands in for a meridian curve
+    // Two parallels.
+    add_line(s, cx - r * 9 / 10, cy - r / 3, cx + r * 9 / 10, cy - r / 3, 2, col);
+    add_line(s, cx - r, cy, cx + r, cy, 2, col);
+    add_line(s, cx - r * 9 / 10, cy + r / 3, cx + r * 9 / 10, cy + r / 3, 2, col);
+}
+
+// Bluetooth: the runic glyph (vertical spine + two crossed bowties).
+static void cat_icon_bluetooth_lv(lv_obj_t* s, int cx, int cy, int sz, uint32_t col) {
+    int half = sz / 2;
+    int top  = cy - half;
+    int bot  = cy + half;
+    int rx   = half / 2;  // horizontal reach of the bowtie tips
+    int qy   = cy - half / 2;
+    int by   = cy + half / 2;
+    // Spine from the top apex to the bottom apex.
+    add_line(s, cx, top, cx, bot, 2, col);
+    // Upper triangle: apex top -> right at upper-quarter -> centre.
+    add_line(s, cx, top, cx + rx, qy, 2, col);
+    add_line(s, cx + rx, qy, cx - rx, by, 2, col);
+    // Lower triangle: centre -> right at lower-quarter -> apex bottom.
+    add_line(s, cx, bot, cx + rx, by, 2, col);
+    add_line(s, cx + rx, by, cx - rx, qy, 2, col);
 }
 
 static void cat_icon_region_lv(lv_obj_t* s, int cx, int cy, int sz, uint32_t col) {
@@ -2265,11 +2298,12 @@ static void cat_icon_toolbox_lv(lv_obj_t* s, int cx, int cy, int sz, uint32_t co
 }
 
 typedef void (*cat_icon_lv_fn)(lv_obj_t*, int, int, int, uint32_t);
-// Index order MUST match s_categories[] in render_settings.c (and the PAX
-// settings_category_icons[] table).
+// Index order MUST match s_categories[] in render_settings.c (real index,
+// including the hidden-from-grid Advert slot).
 static const cat_icon_lv_fn s_cat_icons_lv[] = {
-    cat_icon_identity_lv, cat_icon_regulatory_lv, cat_icon_radio_lv,  cat_icon_advert_lv,  cat_icon_network_lv,
-    cat_icon_region_lv,   cat_icon_brightness_lv, cat_icon_sounds_lv, cat_icon_toolbox_lv,
+    cat_icon_identity_lv,   cat_icon_regulatory_lv, cat_icon_radio_lv,     cat_icon_advert_lv,
+    cat_icon_wifi_lv,       cat_icon_https_lv,      cat_icon_bluetooth_lv, cat_icon_region_lv,
+    cat_icon_brightness_lv, cat_icon_sounds_lv,     cat_icon_toolbox_lv,
 };
 #define S_CAT_ICONS_LV_N ((int)(sizeof(s_cat_icons_lv) / sizeof(s_cat_icons_lv[0])))
 

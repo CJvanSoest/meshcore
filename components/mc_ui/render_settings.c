@@ -42,13 +42,15 @@ typedef struct {
 // bounds/lookup math never maps a real field to it; see settings_category_is_external.
 
 static const settings_category_t s_categories[] = {
-    {FIELD_RADIO_FW, "Identity", "Owner name, advert name, radio firmware", false},
+    {FIELD_RADIO_FW, "Identity", "Owner name, advert name, role, radio firmware", false},
     {FIELD_COUNTRY, "Regulatory", "Country, antenna gain, duty cycle", false},
-    {FIELD_FREQ, "Radio", "Freq, SF, BW, CR, power, sync, preamble, ...", false},
+    {FIELD_FREQ, "Radio", "Freq, SF, BW, CR, power, preamble, path hash, ...", false},
     // Advert is reached only via the Home -> Advert tile (the tile drills in
     // directly). Hidden here so the Settings grid doesn't have a duplicate.
     {FIELD_FLOOD_ADVERT_INT, "Advert", "Flood + direct intervals, manual send", true},
-    {FIELD_ROLE, "Network", "Role, path hash, WiFi, HTTP endpoint", false},
+    {FIELD_WIFI_SSID, "WiFi", "Slot picker + connect toggle", false},
+    {FIELD_HTTP_URL, "HTTPS", "MeshMapper /ping endpoint + cert", false},
+    {FIELD_BLE_ENABLED, "Bluetooth", "BLE companion radio + pairing code", false},
     {FIELD_REGION_SCOPE, "Region &\nLocation", "Region scope, GPS coordinates", false},
     {FIELD_DISPLAY_BL, "Brightness", "Display, keyboard, RGB LED, auto-blank", false},
     {FIELD_SOUND_VOLUME, "Sounds", "Volume + per-event toggles + previews", false},
@@ -137,6 +139,7 @@ static const field_def_t s_fields[FIELD_COUNT] = {
     [FIELD_RADIO_FW_APP]       = {"Radio firmware", NULL},
     [FIELD_OWNER]              = {"Owner name", save_owner_name},
     [FIELD_ADV_NAME]           = {"Advert name", save_lora_advert_name},
+    [FIELD_ROLE]               = {"Role", NULL},
     // ── Regulatory ──
     [FIELD_COUNTRY]            = {"Country", save_country_code},
     [FIELD_ANTENNA_GAIN]       = {"Antenna gain", save_antenna_gain},
@@ -151,27 +154,26 @@ static const field_def_t s_fields[FIELD_COUNT] = {
     [FIELD_PREAMBLE]           = {"Preamble length", NULL},
     [FIELD_PRESET]             = {"LoRa preset", NULL},
     [FIELD_SENSITIVITY]        = {"RX sensitivity", NULL},
+    [FIELD_PATH_HASH_SIZE]     = {"Path hash size", NULL},
     // ── Advert ──
     [FIELD_FLOOD_ADVERT_INT]   = {"Flood interval", NULL},
     [FIELD_DIRECT_ADVERT_INT]  = {"Direct interval", NULL},
     [FIELD_SEND_FLOOD_NOW]     = {"Send flood now", NULL},
     [FIELD_SEND_DIRECT_NOW]    = {"Send direct now", NULL},
-    // ── Network ──
-    // Labels here are deliberately short; render_settings_drilldown draws
-    // "WiFi" / "HTTPS server" section headers above the first row of each
-    // group so the qualifier doesn't need to repeat on every label.
-    [FIELD_ROLE]               = {"Role", NULL},
-    [FIELD_PATH_HASH_SIZE]     = {"Path hash size", NULL},
+    // ── WiFi ──
     [FIELD_WIFI_SSID]          = {"SSID", NULL},
     [FIELD_WIFI_STATUS]        = {"Status", NULL},
     [FIELD_WIFI_NETWORK]       = {"Network", save_wifi_prefs},
     [FIELD_WIFI_ENABLED]       = {"Enabled", save_wifi_prefs},
+    // ── HTTPS ──
     [FIELD_HTTP_URL]           = {"Endpoint", NULL},
     [FIELD_HTTP_API_KEY]       = {"API key", NULL},
     [FIELD_HTTP_KEY_REGEN]     = {"Regenerate key", NULL},
     [FIELD_HTTPS_CERT_FP]      = {"Cert fingerprint", NULL},
     [FIELD_HTTPS_CERT_REGEN]   = {"Regenerate cert", NULL},
     [FIELD_HTTP_QR]            = {"Show QR (OwnTracks)", NULL},
+    // ── Bluetooth ──
+    [FIELD_BLE_ENABLED]        = {"BLE companion", save_ble_enabled},
     // ── Region & Location ──
     [FIELD_REGION_SCOPE]       = {"Region scope", save_region_scope},
     [FIELD_GPS_LAT]            = {"GPS latitude", save_gps_coords},
@@ -182,7 +184,6 @@ static const field_def_t s_fields[FIELD_COUNT] = {
     [FIELD_GPS_INTERVAL_S]     = {"Poll interval", save_gps_track_prefs},
     [FIELD_GPS_DISTANCE_M]     = {"Commit distance", save_gps_track_prefs},
     [FIELD_MAP_PROFILE]        = {"Style", save_map_profile},
-    [FIELD_BLE_ENABLED]        = {"BLE companion", save_ble_enabled},
     // ── Brightness ──
     [FIELD_DISPLAY_BL]         = {"Display backlight", save_brightness},
     [FIELD_KB_BL]              = {"Keyboard backlight", save_brightness},
@@ -222,18 +223,13 @@ const char* settings_field_label(field_t f) {
 // LVGL settings view can reuse the same per-field value formatter. Its
 // definition lives near the bottom of this file.
 
-// Optional inline section header drawn above a specific field's row. The
-// Network drilldown groups its 12 rows into mesh / WiFi / HTTPS server, so
-// the user can see at a glance which subsystem a field belongs to without
-// repeating qualifiers on every label.
+// Optional inline section header drawn above a specific field's row. WiFi,
+// HTTPS and Bluetooth are now their own categories, so their headers are
+// dropped (the category title already names the subsystem). Region &
+// Location still bundles GPS coordinates / live tracking / map style, so it
+// keeps the "Tracking" and "Map" sub-headers to separate those groups.
 const char* settings_section_above(field_t f) {
     switch (f) {
-        case FIELD_WIFI_SSID:
-            return "WiFi";
-        case FIELD_HTTP_URL:
-            return "HTTPS server";
-        case FIELD_BLE_ENABLED:
-            return "BLE companion";
         case FIELD_GPS_PROFILE:
             return "Tracking";
         case FIELD_MAP_PROFILE:
