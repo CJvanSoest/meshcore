@@ -213,6 +213,13 @@ void field_save(field_t f) {
         save_lora_config();
 }
 
+// Registry label accessor — the LVGL settings view reads field labels through
+// this rather than duplicating s_fields[].
+const char* settings_field_label(field_t f) {
+    if (f < 0 || f >= FIELD_COUNT) return "";
+    return s_fields[f].label ? s_fields[f].label : "";
+}
+
 // row_t is the label/value pair rendered on one drilldown row. Label is
 // copied from s_fields[f].label; value is produced by fmt_field() below.
 typedef struct {
@@ -220,9 +227,10 @@ typedef struct {
     char        value[64];
 } row_t;
 
-// Forward decl — implementation lives near the bottom of this file so the
-// switch sits next to the rendering code that consumes it.
-static void fmt_field(field_t f, char* out, size_t cap);
+// fmt_field is exposed as settings_field_value() (render_internal.h) so the
+// LVGL settings view can reuse the same per-field value formatter. Its
+// definition lives near the bottom of this file so the switch sits next to the
+// rendering code that consumes it.
 
 // Category tile-grid icons live in render_settings_icons.c so this file
 // stays focused on layout + per-field rendering. Index order in
@@ -316,7 +324,7 @@ static void render_settings_category_list(int w, int h) {
 // Network drilldown groups its 12 rows into mesh / WiFi / HTTPS server, so
 // the user can see at a glance which subsystem a field belongs to without
 // repeating qualifiers on every label.
-static const char* settings_section_above(field_t f) {
+const char* settings_section_above(field_t f) {
     switch (f) {
         case FIELD_WIFI_SSID:
             return "WiFi";
@@ -355,7 +363,7 @@ static void render_settings_drilldown(int w, int h) {
     // never touched by the renderer.
     for (int i = first_field; i <= last_field && i < FIELD_COUNT; i++) {
         rows[i].label = s_fields[i].label;
-        fmt_field((field_t)i, rows[i].value, sizeof(rows[i].value));
+        settings_field_value((field_t)i, rows[i].value, sizeof(rows[i].value));
     }
 
     const int row_h    = 44;
@@ -590,7 +598,7 @@ static void render_settings_drilldown(int w, int h) {
 // settings row means: one entry in s_fields[] (label/save) + one case here
 // (value formatting). Labels live in the registry; only the dynamic value
 // string is produced here.
-static void fmt_field(field_t f, char* out, size_t cap) {
+void settings_field_value(field_t f, char* out, size_t cap) {
     switch (f) {
         // ── Identity ──
         case FIELD_RADIO_FW:

@@ -89,6 +89,15 @@ bool        settings_category_is_external(int cat, app_view_t* out_view);
 // fall back to save_lora_config(). Replaces input.c's old persist_field_change.
 void field_save(field_t f);
 
+// Field registry accessors (table + value switch live in render_settings.c).
+// The LVGL settings view reuses them so the per-field label/value formatting
+// is not duplicated across the PAX + LVGL renderers during the migration.
+const char* settings_field_label(field_t f);
+void        settings_field_value(field_t f, char* out, size_t cap);
+// Optional inline section header drawn above a field's drilldown row; NULL when
+// the field has no header (only the Network/Region groups opt in).
+const char* settings_section_above(field_t f);
+
 // Overlays drawn on top of a base view by the dispatcher.
 void render_qr_overlay(void);
 void render_emoji_picker_overlay(void);
