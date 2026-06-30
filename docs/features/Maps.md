@@ -97,20 +97,31 @@ style with no tiles just renders grey. No other code changes are required; the
 picker, the default, and the NVS clamp all read this list. (This section is
 mirrored to the project wiki "Map styles" page.)
 
-Disk usage scales by 4× per zoom level. For the Netherlands bounding
-box (lon 3.10–7.25, lat 50.75–53.70) at one profile:
+Tile count roughly quadruples each zoom level; PNG size grows faster
+still at high zoom as more detail packs into each tile. For the
+Netherlands bounding box (lon 3.10–7.25, lat 50.75–53.70) at one
+profile:
 
-| Zoom | Tile count | Disk on FAT |
-|---|---|---|
-| 0 – 13 | 14 189 | ~ 350 MB |
-| 14 | 41 769 | ~ 1.3 GB |
-| 15 | ~ 170 000 | ~ 4 GB |
-| 16 | ~ 670 000 | ~ 15 GB |
-| 17 | ~ 2.7 M | ~ 50 GB |
+| Zoom band | Tiles | Raw PNG | On the SD (FAT, 4 KB clusters) |
+|---|---|---|---|
+| 0 – 13 | 14 189 | ~ 90 MB | ~ 105 MB |
+| 14 | 41 769 | ~ 260 MB | ~ 300 MB |
+| 15 | ~ 170 000 | ~ 4 GB | ~ 4.6 GB |
+| 16 | ~ 670 000 | ~ 15 GB | ~ 17 GB |
+| 17 | ~ 2.7 M | ~ 50 GB | ~ 57 GB |
 
-FAT inflates raster PNGs by ~3× compared to ext4 because of 32 KB
-cluster waste on tiny sea / empty tiles. Filter those out at render
-time if you need to fit four profiles on a 32 GB SD.
+So a full **Carto z0–14** set — the practical everyday range — is about
+**350 MB raw / ~400 MB on the card**; the high zooms are where it
+balloons.
+
+The right-hand column is what the card actually reports, and it tracks
+the raw size closely. The SD is formatted with **4 KB clusters**
+(`newfs_msdos -F 32 -c 8`), which adds only ~10–15 % over the raw PNG
+size — measured ≈1.14× on a 26 k-tile carto sample. The FAT *default* of
+32 KB clusters roughly doubled that (~2.2× on the same sample) by
+rounding every tiny sea / empty tile up to a full 32 KB cluster;
+reformatting to 4 KB clusters reclaims that waste without having to
+filter empty tiles out at render time.
 
 ## Operation
 

@@ -6,6 +6,15 @@ For end-user setup see the [README](../README.md).
 
 ## What's new since v2.2.0
 
+- **LVGL UI rewrite (v3.0.0)** — the entire UI was rebuilt on **LVGL 9**: a
+  modern widget tree replaces the hand-painted frames, every view redrawn with
+  anti-aliased Montserrat fonts, and the PAX painter retired. The Settings tab
+  was reorganised — the old **Network** category is split into separate
+  **WiFi**, **HTTPS** and **Bluetooth** tiles, **Path hash size** moved under
+  **Radio**, and **Role** moved under **Identity**. A new **6-digit BLE pairing
+  code** (fixed NimBLE passkey, persisted to NVS) lives under Bluetooth. The
+  Home screen is now a 4×3 grid with new **WiFi**, **Bluetooth** and
+  **Toolbox** shortcut tiles. See [UI / UX](features/UI-UX.md).
 - **Toolbox (v2.7.0)** — a Settings tile launching LoRa diagnostic tools.
   **Packet Log**: a live hex / dissector view of every RX and TX frame, with
   pause, scroll, a per-frame detail view, and an `E` export of the capture ring

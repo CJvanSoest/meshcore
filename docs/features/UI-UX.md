@@ -1,9 +1,17 @@
 # UI / UX
 
-The UI is a single full-screen framebuffer (PAX-GFX) rendered after every
-input event and at ~1 Hz idle ticks for live counters. As of v2.2.0 the
-classic tab-bar is replaced with a shared Pager-style status strip on every
-view, and boot lands on a tile-grid home screen instead of Settings.
+The UI is an **LVGL 9** widget tree — LVGL is the sole UI toolkit since the
+hand-laid PAX-GFX framebuffer was retired in the v3.0.0 LVGL-only migration
+(`main/idf_component.yml` pins `lvgl/lvgl: "^9.2.0"`). On every input event,
+and on ~1 Hz idle ticks for live counters, the active view is rebuilt as an
+LVGL screen (`begin_screen` does `lv_obj_clean` + fresh widgets in
+`components/mc_ui/lvgl_ui.c`) and flushed to the panel by an LVGL display whose
+`flush_cb` calls `bsp_display_blit` (`components/mc_ui/lvgl_port.c`). Input is
+keyboard-only — there is no touch pointer: the BSP input queue is read in
+`main.c` and dispatched by `input.c`, which updates the focused tile/row index
+that the renderer reads back. As of v2.2.0 the classic tab-bar is replaced with
+a shared Pager-style status strip on every view, and boot lands on a tile-grid
+home screen instead of Settings.
 
 ## Layout constants
 
@@ -17,16 +25,26 @@ Defined in `components/mc_ui/render.h`:
 | `CHAT_Y0` | `TAB_BAR_H + 4` | First chat row Y |
 | `CHAT_INPUT_H` | 36 | Input bar height (above footer) |
 
-Home tile-grid geometry lives in `render_home.c` as `HOME_HEADER_H=50`,
-`HOME_FOOTER_H=38`, `HOME_H_MARGIN=30`, `HOME_V_MARGIN=20`, with a 4×2 tile
-layout. Settings tile-grid geometry mirrors the same numbers in
-`render_settings.c`.
+Fonts are LVGL's built-in **Montserrat** faces (14 / 16 / 20 / 22 / 24,
+selected by `mc_font()` in `lvgl_ui.c`) — anti-aliased; the old bundled PAX
+bitmap font is gone.
+
+Home tile-grid geometry now lives in `lvgl_ui.c` as `HOME_HEADER_H=50`,
+`HOME_FOOTER_H=60`, `HOME_H_MARGIN=30`, `HOME_V_MARGIN=20`, with a **4×3** tile
+layout (`HOME_TILE_COLS=4` × `HOME_TILE_ROWS=3` = 12 tiles). `render_home.c`
+mirrors the same `HOME_TILE_COLS`/`HOME_TILE_ROWS` and holds the non-rendering
+tile registry. The Settings grid is rendered the same way in `lvgl_ui.c`, off
+the category/field registry in `render_settings.c`.
 
 ## Palettes
 
 The classic views (Settings drilldown, Nodes, DM, Channel) use the Tokyo
 Night palette; home and About use the LilyGo Pager palette. The Pager
-status strip is rendered in Pager colours and overlays every view.
+status strip is rendered in Pager colours and overlays every view. The
+`COL_*` tokens below are the same ARGB values as before, now applied through
+per-object LVGL style setters (`lv_obj_set_style_bg_color` /
+`lv_obj_set_style_text_color`, see `add_rect` / `add_label` in `lvgl_ui.c`)
+rather than direct framebuffer writes.
 
 ### Tokyo Night
 
@@ -56,8 +74,8 @@ status strip is rendered in Pager colours and overlays every view.
 
 | View | Enum | Entry behaviour |
 |---|---|---|
-| Home | `VIEW_HOME` | 4×2 tile-grid (Nodes / DM / Channel / Map / Advert / Settings / About / QR); WSAD or D-pad to focus, Enter opens |
-| Settings | `VIEW_SETTINGS` | Tile-grid of 7 drilldown categories + 1 external Toolbox tile (+ a hidden Advert category) → Enter drills in to a category's field list, or opens the Toolbox launcher |
+| Home | `VIEW_HOME` | 4×3 tile-grid (Nodes / DM / Channel / Map / Advert / WiFi / Bluetooth / Toolbox / Settings / About / QR / Exit); WSAD or D-pad to focus, Enter opens |
+| Settings | `VIEW_SETTINGS` | Tile-grid of 9 drilldown categories + 1 external Toolbox tile (+ a hidden Advert category) → Enter drills in to a category's field list, or opens the Toolbox launcher |
 | Nodes | `VIEW_NODES` | Live heard-node list with column header (Role / Name / RSSI / SNR / #Pkt / Dist / Seen) |
 | DM | `VIEW_CHAT` | If no target: inbox view (saved contacts + active DM target). If target set: per-peer conversation |
 | Channel | `VIEW_CHANNEL` | Public channel chat |
@@ -76,23 +94,29 @@ launcher *only* from home, so back-navigation can't quit by accident. Each
 submenu footer signposts the red X with a small ✗ glyph (`render_back_hint`);
 home shows `✗ home   ESC: exit`.
 
-## Home tile grid (`render_home.c`)
+## Home tile grid (`render_home.c` registry, `lvgl_ui.c` renderer)
 
-4 columns × 2 rows = 8 tiles. Each tile carries:
+4 columns × 3 rows = 12 tiles, in order: Nodes, DM, Channel, Map, Advert,
+WiFi, Bluetooth, Toolbox, Settings, About, QR, Exit. The tile metadata
+(label / target / action) is the `home_tiles[]` array in `render_home.c`; the
+LVGL renderer in `lvgl_ui.c` mirrors that order and draws each tile. Each tile
+carries:
 
-- A PAX-drawn icon (lines / circles / triangles — no bundled bitmaps yet)
+- An LVGL-widget-built vector glyph — `home_icon()` composes the icon from
+  `lv_line` / `lv_arc` primitives (no bundled bitmaps; LVGL bitmap fonts can't
+  scale to the large glyph sizes)
 - A centered label (supports embedded `\n` for multi-line names)
-- An optional `home_badge_fn` callback (DM / Channel return their unread
-  totals via `contact_unread_total` / `channel_unread_total`, drawn as a
-  red pill in the top-right corner of the tile)
-- An optional `home_action_t` (Advert tile = `HOME_ACTION_SEND_ADVERT`
-  fires `send_advert()` inline + 2-second toast; QR tile =
+- An optional unread badge (DM / Channel pull their totals via
+  `contact_unread_total` / `channel_unread_total`, drawn as a red pill in the
+  top-right corner of the tile)
+- An optional `home_action_t` post-open side-effect: `HOME_ACTION_OPEN_ADVERT`
+  drills straight into Settings → Advert; `HOME_ACTION_OPEN_WIFI` /
+  `HOME_ACTION_OPEN_BLUETOOTH` drill into those Settings categories;
   `HOME_ACTION_OPEN_QR` flips on the QR overlay and tracks origin so the red X
-  returns to home)
+  returns to home; `HOME_ACTION_EXIT` returns to the BadgeVMS launcher
 
-A tile is rendered as a "soon" placeholder (dim foreground + small
-`soon` subtitle) only when its target is `VIEW_HOME` *and* it carries
-no action — so Advert reads as live even though it doesn't switch view.
+All 12 home tiles are live — the old "soon" placeholder state no longer applies
+on home (it survives only in the Toolbox launcher for not-yet-built tools).
 
 ## Pager status strip (`render_tab_bar`)
 
@@ -111,19 +135,23 @@ name on the left instead of a view name; same right-side stats.
 Two levels:
 
 1. **Category list** (`settings_category_list_mode == true`) — 4-column
-   Pager tile grid, seven drilldown tiles: Identity / Regulatory / Radio /
-   Network / Region & Location / Brightness / Sounds, plus an external
-   **Toolbox** tile (marked by `first == FIELD_COUNT`) that opens the Toolbox
-   launcher instead of a field list. (A further category, Advert, is hidden
-   from this grid and reached via the Home -> Advert tile.) Each tile has
-   its own PAX-drawn category icon. Multi-line labels via embedded `\n` so the
-   wider "Region & Location" wraps onto two lines. The per-category field lists
-   live in `s_categories[]` (`render_settings.c`): Identity = owner/advert name
-   + radio firmware; Regulatory = country, antenna gain, duty cycle; Radio =
-   freq, SF, BW, CR, power, sync, preamble, preset; Network = role, path hash,
-   WiFi, HTTP endpoint, BLE; Region & Location = region scope, GPS coordinates,
-   GPS source/profile, map style; Brightness = display, keyboard, RGB LED,
-   auto-blank; Sounds = volume + per-event toggles + previews.
+   Pager tile grid, nine drilldown tiles: Identity / Regulatory / Radio /
+   WiFi / HTTPS / Bluetooth / Region & Location / Brightness / Sounds, plus an
+   external **Toolbox** tile (marked by `first == FIELD_COUNT`) that opens the
+   Toolbox launcher instead of a field list. (A further category, Advert, is
+   hidden from this grid and reached via the Home -> Advert tile.) Each tile
+   has its own LVGL-widget-built category glyph (`lv_line` / `lv_arc`
+   primitives in `lvgl_ui.c`). Multi-line labels via embedded `\n` so the wider
+   "Region & Location" wraps onto two lines. The per-category field lists live
+   in `s_categories[]` (`render_settings.c`): Identity = owner/advert name,
+   role, radio firmware; Regulatory = country, antenna gain, duty cycle; Radio =
+   freq, SF, BW, CR, power, sync, preamble, preset, RX sensitivity, path hash
+   size; WiFi = slot picker + connect toggle; HTTPS = MeshMapper /ping endpoint
+   + cert; Bluetooth = BLE companion + 6-digit pairing code; Region & Location =
+   region scope, GPS coordinates, GPS source/profile, map style; Brightness =
+   display, keyboard, RGB LED, auto-blank; Sounds = volume + per-event toggles +
+   previews. (The old single "Network" category was split into WiFi / HTTPS /
+   Bluetooth; Role moved to Identity and Path hash size moved to Radio.)
 2. **Drilldown** (`settings_category_list_mode == false`) — Tokyo Night
    row list, but only the fields belonging to `settings_category_active`.
    The category title is the amber page header.
@@ -136,12 +164,16 @@ navigation from the category list is `±1` horizontal, `±4` vertical
 
 | Category | Fields |
 |---|---|
-| Identity | Radio ID, Radio firmware, Owner name, Advert name |
+| Identity | Radio ID, Radio firmware, Owner name, Advert name, Role |
 | Regulatory | Country, Antenna gain, Duty cycle |
-| Radio | Frequency, SF, BW, CR, TX power, Sync word, Preamble, LoRa preset, RX sensitivity |
-| Network | Advert interval, Role, Path hash size |
-| Region & Location | Region scope, GPS latitude, GPS longitude |
-| Brightness | Display backlight, Keyboard backlight, RGB LED brightness |
+| Radio | Frequency, SF, BW, CR, TX power, Sync word, Preamble, LoRa preset, RX sensitivity, Path hash size |
+| Advert *(hidden; via Home → Advert)* | Flood interval, Direct interval, Send flood now, Send direct now |
+| WiFi | SSID, Status, Network, Enabled |
+| HTTPS | Endpoint, API key, Regenerate key, Cert fingerprint, Regenerate cert, Show QR (OwnTracks) |
+| Bluetooth | BLE companion, Pairing code (6-digit) |
+| Region & Location | Region scope, GPS latitude, GPS longitude, GPS source, Profile, Poll interval, Commit distance, Style |
+| Brightness | Display backlight, Keyboard backlight, RGB LED brightness, Auto-blank display |
+| Sounds | Volume, DM/Channel/Error/Boot sound toggles, previews |
 
 Opening Settings from the home tile resets to the category list; opening
 via `Tab` cycle preserves the last drilled-in category so power users can
@@ -276,10 +308,11 @@ to avoid stack overflow (~3.9 KB each).
 
 ## Status toast
 
-`render_home.c` paints a centered Pager-style toast box for ~2 seconds
-when `toast_text[0] != '\0'`. Used by the Advert tile ("Flood advert
-sent"); auto-clears once the timestamp ages out. Future action tiles can
-re-use the same `toast_text` / `toast_start_ms` globals.
+`lvgl_ui.c` paints a centered Pager-style toast box for ~2 seconds
+when `toast_text[0] != '\0'`. Used by the Advert category's "Send flood now"
+action ("Flood advert sent") and other action fields; auto-clears once the
+timestamp ages out. Action handlers share the same `toast_text` /
+`toast_start_ms` globals.
 
 ## Battery / RX / TX indicator
 

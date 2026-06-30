@@ -5,9 +5,10 @@ Mock-ups of every view in landscape proportions (800x480). The
 on what you are looking at.
 
 ### Home — tile grid
-The landing screen. A grid of tiles in LilyGo Pager style, one per view (Nodes,
-DM, Channel, Map, Advert, Settings, About, QR). The red X steps back to home and
-stops there; ESC on home returns to the launcher. Tiles carry their own unread badges.
+The landing screen. A 4x3 grid of tiles in LilyGo Pager style (Nodes, DM,
+Channel, Map, Advert, WiFi, Bluetooth, Toolbox, Settings, About, QR, Exit). The
+red X steps back to home and stops there; ESC on home (or the Exit tile) returns
+to the launcher. Tiles carry their own unread badges.
 <p><img src="../../assets/screenshots/screen-home.svg" width="480" alt="Home tile grid"></p>
 
 ### Nodes
@@ -31,9 +32,12 @@ channel message rings, region scope in the header, and an unread badge.
 <p><img src="../../assets/screenshots/screen-channel.svg" width="480" alt="Channel"></p>
 
 ### Settings — category tiles
-The first level of the two level Settings menu: a tile grid of categories
-(Identity, Regulatory, Radio, Network, Region and Location, Brightness, Sounds).
-Enter drills into one category's field list.
+The first level of the two level Settings menu: a tile grid of nine
+drilldown categories (Identity, Regulatory, Radio, WiFi, HTTPS, Bluetooth,
+Region and Location, Brightness, Sounds) plus an external **Toolbox**
+launcher tile. Enter drills into one category's field list (or opens the
+Toolbox). The Advert category is hidden here — it is reached via the Home
+→ Advert tile.
 <p><img src="../../assets/screenshots/screen-settings-tiles.svg" width="480" alt="Settings category tiles"></p>
 
 ### Settings → Radio
