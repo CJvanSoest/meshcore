@@ -1064,6 +1064,73 @@ static int emoji_text(lv_obj_t* parent, int x, int y, int size, uint32_t col, co
     return dx;
 }
 
+// Draw emoji `idx` centred at (cx, cy) with diameter `d` — the LVGL mirror of
+// emoji.c's emoji_draw (top-left at cx-d/2, cy-d/2, scaled from EMOJI_PX).
+static void emoji_image(lv_obj_t* parent, int idx, int cx, int cy, int d) {
+    if (idx < 0 || idx >= EMOJI_COUNT) {
+        return;
+    }
+    emoji_dsc_init();
+    lv_obj_t* im = lv_image_create(parent);
+    lv_image_set_src(im, &s_emoji_dsc[idx]);
+    lv_image_set_antialias(im, true);
+    lv_image_set_pivot(im, 0, 0);
+    lv_image_set_scale(im, (256 * d) / EMOJI_PX);
+    lv_obj_set_pos(im, cx - d / 2, cy - d / 2);
+}
+
+// Paged 4x5 emoji-picker overlay drawn on top of the Chat/Channel base view
+// while typing. Pixel-matched port of render_emoji_picker_overlay() in render.c.
+static void render_emoji_picker_overlay_lvgl(lv_obj_t* scr, int w, int h) {
+    const int cols     = 4;
+    const int vis_rows = 5;
+    const int per_page = cols * vis_rows;
+    const int cell     = 48;
+    const int pad      = 14;
+    const int panel_w  = cols * cell + 2 * pad;
+    const int panel_h  = vis_rows * cell + 2 * pad + TXT_SMALL + 6;
+    int       panel_x  = (w - panel_w) / 2;
+    int       panel_y  = h - CHAT_INPUT_H - FOOTER_H - panel_h - 4;
+    if (panel_y < TAB_BAR_H + 4) panel_y = TAB_BAR_H + 4;
+
+    if (emoji_picker_cursor < 0) emoji_picker_cursor = 0;
+    if (emoji_picker_cursor >= EMOJI_COUNT) emoji_picker_cursor = EMOJI_COUNT - 1;
+    int pages = (EMOJI_COUNT + per_page - 1) / per_page;
+    int page  = emoji_picker_cursor / per_page;
+    int start = page * per_page;
+
+    add_rect(scr, panel_x, panel_y, panel_w, panel_h, COL_HEADER);
+    add_rect(scr, panel_x, panel_y, panel_w, 2, COL_ACCENT);
+
+    char title[40];
+    if (pages > 1) {
+        snprintf(title, sizeof(title), "Pick emoji  %d/%d", page + 1, pages);
+    } else {
+        snprintf(title, sizeof(title), "Pick emoji");
+    }
+    add_label(scr, panel_x + pad, panel_y + 4, TXT_SMALL, COL_AMBER, title);
+    if (pages > 1) {
+        const char* nav = "W/S: scroll";
+        add_label(scr, panel_x + panel_w - text_w(nav, TXT_SMALL) - 6, panel_y + 4, TXT_SMALL, COL_GRAY, nav);
+    }
+
+    int grid_x = panel_x + pad;
+    int grid_y = panel_y + 6 + TXT_SMALL;
+
+    for (int i = start; i < start + per_page && i < EMOJI_COUNT; i++) {
+        int  local = i - start;
+        int  r     = local / cols;
+        int  c     = local % cols;
+        int  cx    = grid_x + c * cell + cell / 2;
+        int  cy    = grid_y + r * cell + cell / 2;
+        bool sel   = (i == emoji_picker_cursor);
+        if (sel) {
+            add_rect(scr, cx - cell / 2 + 2, cy - cell / 2 + 2, cell - 4, cell - 4, COL_PANEL);
+        }
+        emoji_image(scr, i, cx, cy, 2 * (cell / 2 - 6));
+    }
+}
+
 // ── Shared chat-message ring renderer (DM + Channel) ─────────────────────────
 // Pixel-matched port of render_msg_list() / msg_wrap() in render_chat.c.
 
@@ -1415,6 +1482,10 @@ static void render_chat_lvgl(void) {
         add_label(scr, 10, hint_ty, TXT_SMALL, COL_HINT, hint);
         add_back_hint(scr, 10 + text_w(hint, TXT_SMALL), hint_ty, ": back to inbox", TXT_SMALL);
     }
+
+    if (emoji_picker_active && chat_typing) {
+        render_emoji_picker_overlay_lvgl(scr, w, h);
+    }
 }
 
 // ── VIEW_CHANNEL (channel list + wizard + conversation) ──────────────────────
@@ -1603,6 +1674,10 @@ static void render_channel_lvgl(void) {
         add_label(scr, 10, hint_ty, TXT_SMALL, COL_HINT, hint);
         add_back_hint(scr, 10 + text_w(hint, TXT_SMALL), hint_ty, ": list", TXT_SMALL);
     }
+
+    if (emoji_picker_active && chat_typing) {
+        render_emoji_picker_overlay_lvgl(scr, w, h);
+    }
 }
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────
@@ -1620,13 +1695,12 @@ bool lvgl_view_active(app_view_t v) {
             // so the overlay keeps rendering through the proven renderer.
             return !qr_overlay_active;
         case VIEW_CHAT:
-            // The emoji-picker overlay (active while typing) is not yet ported;
-            // defer chat+picker to the PAX path while it's up.
-            return !(emoji_picker_active && chat_typing);
+            // Chat + the emoji-picker overlay both render through LVGL now.
+            return true;
         case VIEW_CHANNEL:
-            // Both the QR (share) overlay and the emoji-picker overlay reachable
-            // from this view are still PAX-only; defer the whole frame while up.
-            return !qr_overlay_active && !(emoji_picker_active && chat_typing);
+            // The QR (share) overlay reachable from this view is still PAX-only;
+            // defer the whole frame while it's up. The emoji picker is ported.
+            return !qr_overlay_active;
         default:
             return false;
     }
