@@ -3,11 +3,7 @@
 nvs,	data,	nvs,	0x19000,	16K,
 otadata,	data,	ota,	0x1D000,	8K,
 phy_init,	data,	phy,	0x1F000,	4K,
-# App partition temporarily 3 MB (was 2 MB) for the PAX->LVGL migration: during
-# the hybrid phase both UI stacks are linked. Reclaimed from appfs (8->6 MB, the
-# app is deployed via badgelink AppFS upload so this CSV is not flashed to the
-# device). Right-size back toward 2 MB after Phase 4 removes PAX.
-ota_0,	0,	ota_0,	0x20000,	3072K,
-ota_1,	0,	ota_1,	0x320000,	3072K,
-appfs,	0x43,	3,	0x620000,	6144K,
+ota_0,	0,	ota_0,	0x20000,	2048K,
+ota_1,	0,	ota_1,	0x220000,	2048K,
+appfs,	0x43,	3,	0x420000,	8192K,
 locfd,	data,	fat,	0xC20000,	3968K,

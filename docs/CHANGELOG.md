@@ -21,6 +21,33 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-06-30
+
+### Changed
+- **The entire UI now renders through LVGL 9** instead of PAX. Every screen —
+  home, nodes, DM, channel, settings, map, about, toolbox, packet log, coverage,
+  the QR and emoji overlays — was rebuilt on LVGL, giving anti-aliased Montserrat
+  text and cleaner widgets. Input, navigation and all features are unchanged;
+  this is a rendering-layer rewrite.
+- **Settings reorganised.** The catch-all "Network" category is split into three
+  connectivity tiles — **WiFi**, **HTTPS** and **Bluetooth**. *Role* moved to
+  Identity and *Path hash size* moved to Radio, where they fit better.
+
+### Added
+- **Bluetooth pairing code** — a 6-digit code you set in Settings → Bluetooth is
+  used as the BLE companion's fixed pairing passkey, so the phone prompts for the
+  code you chose (replaces the previous random passkey).
+- **Home shortcuts** — the home grid grows to a 4x3 layout (12 tiles) with new
+  **WiFi**, **Bluetooth** and **Toolbox** shortcut tiles.
+
+### Removed
+- The PAX graphics library and the vendored PAX bitmap font are gone now that the
+  UI is LVGL-only, shrinking the binary.
+
+### Fixed
+- Panel pixel format is requested as 16-bit 565RGB so the LVGL flush matches the
+  display (no stride corruption).
+
 ## [2.8.0] - 2026-06-30
 
 ### Added
