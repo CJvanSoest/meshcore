@@ -22,9 +22,6 @@ idf_component_register(
 		nvs_flash
 		bt
 		lwip
-		esp_http_server
-		esp_https_server
-		json
 		badge-bsp
 		tanmatsu-lora
 		tanmatsu-wifi
@@ -35,7 +32,6 @@ idf_component_register(
 		esp_driver_sdmmc
 		esp_driver_i2s
 		${extra_requires}
-		espressif__mdns
 	INCLUDE_DIRS
 		"."
 )

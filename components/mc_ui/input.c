@@ -22,7 +22,6 @@
 #include "gps.h"
 #include "gps_task.h"
 #include "history.h"
-#include "http_server.h"
 #include "identity.h"
 #include "map.h"
 #include "mc_rx.h"
@@ -712,22 +711,8 @@ static void nav_settings(uint32_t key) {
         bool gain_locked = (selected == FIELD_ANTENNA_GAIN && (country_code[0] == '-' || country_code[0] == '\0'));
         if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP || selected == FIELD_DUTY_CYCLE ||
             selected == FIELD_GPS_SOURCE || selected == FIELD_WIFI_SSID || selected == FIELD_WIFI_STATUS ||
-            selected == FIELD_HTTP_URL || selected == FIELD_HTTP_API_KEY || selected == FIELD_HTTPS_CERT_FP ||
             gain_locked) {
             // ignore (read-only rows)
-        } else if (selected == FIELD_HTTP_KEY_REGEN) {
-            regenerate_http_api_key();
-            snprintf(toast_text, sizeof(toast_text), "API key regenerated");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_HTTPS_CERT_REGEN) {
-            esp_err_t rc = http_server_regen_cert();
-            snprintf(toast_text, sizeof(toast_text),
-                     rc == ESP_OK ? "Cert regen'd — reinstall iPhone profile" : "Cert regen FAILED (rc=%d)", rc);
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_HTTP_QR) {
-            qr_overlay_mode   = QR_MODE_OWNTRACKS;
-            qr_from_settings  = true;
-            qr_overlay_active = true;
         } else if (selected == FIELD_SEND_FLOOD_NOW) {
             send_advert();
             snprintf(toast_text, sizeof(toast_text), "Flood advert sent");
@@ -980,8 +965,6 @@ void handle_nav(uint32_t key) {
             if (qr_from_home) {
                 qr_from_home = false;
                 current_view = VIEW_HOME;
-            } else if (qr_from_settings) {
-                qr_from_settings = false;
             } else if (qr_from_channel) {
                 qr_from_channel   = false;
                 current_view      = VIEW_CHANNEL;
@@ -1287,22 +1270,8 @@ static void key_settings(char c) {
         bool gain_locked = (selected == FIELD_ANTENNA_GAIN && (country_code[0] == '-' || country_code[0] == '\0'));
         if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP || selected == FIELD_DUTY_CYCLE ||
             selected == FIELD_GPS_SOURCE || selected == FIELD_WIFI_SSID || selected == FIELD_WIFI_STATUS ||
-            selected == FIELD_HTTP_URL || selected == FIELD_HTTP_API_KEY || selected == FIELD_HTTPS_CERT_FP ||
             gain_locked) {
             // ignore (read-only rows)
-        } else if (selected == FIELD_HTTP_KEY_REGEN) {
-            regenerate_http_api_key();
-            snprintf(toast_text, sizeof(toast_text), "API key regenerated");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_HTTPS_CERT_REGEN) {
-            esp_err_t rc = http_server_regen_cert();
-            snprintf(toast_text, sizeof(toast_text),
-                     rc == ESP_OK ? "Cert regen'd — reinstall iPhone profile" : "Cert regen FAILED (rc=%d)", rc);
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_HTTP_QR) {
-            qr_overlay_mode   = QR_MODE_OWNTRACKS;
-            qr_from_settings  = true;
-            qr_overlay_active = true;
         } else if (selected == FIELD_SEND_FLOOD_NOW) {
             send_advert();
             snprintf(toast_text, sizeof(toast_text), "Flood advert sent");

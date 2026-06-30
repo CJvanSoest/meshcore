@@ -135,8 +135,8 @@ name on the left instead of a view name; same right-side stats.
 Two levels:
 
 1. **Category list** (`settings_category_list_mode == true`) — 4-column
-   Pager tile grid, nine drilldown tiles: Identity / Regulatory / Radio /
-   WiFi / HTTPS / Bluetooth / Region & Location / Brightness / Sounds, plus an
+   Pager tile grid, eight drilldown tiles: Identity / Regulatory / Radio /
+   WiFi / Bluetooth / Region & Location / Brightness / Sounds, plus an
    external **Toolbox** tile (marked by `first == FIELD_COUNT`) that opens the
    Toolbox launcher instead of a field list. (A further category, Advert, is
    hidden from this grid and reached via the Home -> Advert tile.) Each tile
@@ -146,11 +146,11 @@ Two levels:
    in `s_categories[]` (`render_settings.c`): Identity = owner/advert name,
    role, radio firmware; Regulatory = country, antenna gain, duty cycle; Radio =
    freq, SF, BW, CR, power, sync, preamble, preset, RX sensitivity, path hash
-   size; WiFi = slot picker + connect toggle; HTTPS = MeshMapper /ping endpoint
-   + cert; Bluetooth = BLE companion + 6-digit pairing code; Region & Location =
+   size; WiFi = slot picker + connect toggle; Bluetooth = BLE companion +
+   6-digit pairing code; Region & Location =
    region scope, GPS coordinates, GPS source/profile, map style; Brightness =
    display, keyboard, RGB LED, auto-blank; Sounds = volume + per-event toggles +
-   previews. (The old single "Network" category was split into WiFi / HTTPS /
+   previews. (The old single "Network" category was split into WiFi /
    Bluetooth; Role moved to Identity and Path hash size moved to Radio.)
 2. **Drilldown** (`settings_category_list_mode == false`) — Tokyo Night
    row list, but only the fields belonging to `settings_category_active`.
@@ -169,7 +169,6 @@ navigation from the category list is `±1` horizontal, `±4` vertical
 | Radio | Frequency, SF, BW, CR, TX power, Sync word, Preamble, LoRa preset, RX sensitivity, Path hash size |
 | Advert *(hidden; via Home → Advert)* | Flood interval, Direct interval, Send flood now, Send direct now |
 | WiFi | SSID, Status, Network, Enabled |
-| HTTPS | Endpoint, API key, Regenerate key, Cert fingerprint, Regenerate cert, Show QR (OwnTracks) |
 | Bluetooth | BLE companion, Pairing code (6-digit) |
 | Region & Location | Region scope, GPS latitude, GPS longitude, GPS source, Profile, Poll interval, Commit distance, Style |
 | Brightness | Display backlight, Keyboard backlight, RGB LED brightness, Auto-blank display |

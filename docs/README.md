@@ -10,7 +10,7 @@ For end-user setup see the [README](../README.md).
   modern widget tree replaces the hand-painted frames, every view redrawn with
   anti-aliased Montserrat fonts, and the PAX painter retired. The Settings tab
   was reorganised — the old **Network** category is split into separate
-  **WiFi**, **HTTPS** and **Bluetooth** tiles, **Path hash size** moved under
+  **WiFi** and **Bluetooth** tiles, **Path hash size** moved under
   **Radio**, and **Role** moved under **Identity**. A new **6-digit BLE pairing
   code** (fixed NimBLE passkey, persisted to NVS) lives under Bluetooth. The
   Home screen is now a 4×3 grid with new **WiFi**, **Bluetooth** and
@@ -35,15 +35,6 @@ For end-user setup see the [README](../README.md).
   `/sd/meshcore/sounds/{1..4}.wav`, pick one per event (DM / Channel /
   Error / Boot) in **Settings → Sounds**. Volume + on/off per event,
   all NVS-persisted.
-- **On-device HTTPS cert** — each badge generates its own ECDSA P-256
-  self-signed cert on first boot, persisted to NVS. Replaces the
-  embedded shared cert + 70-line static SAN list.
-- **mDNS publishing** — the badge announces `tanmatsu.local` + the
-  `_https._tcp:8443` service so iOS / curl / OwnTracks resolve it by
-  name on the LAN without a hardcoded IP.
-- **HTTPS `/ping` endpoint** — accepts MeshMapper batches, iOS Shortcut
-  flat pushes, and OwnTracks HTTP-mode bodies. Auth via `X-API-Key`
-  header or `?key=` query param. See [GPS sources](features/GPS-Sources.md).
 - **PA1010D GPS auto-fill** — one-press scan from
   **Settings → Region & Location → Auto-fill from GPS**, reads NMEA over
   the QWIIC bus, commits `lat_e6` / `lon_e6` to NVS with source tag
@@ -84,7 +75,7 @@ The docs are grouped into four folders.
 - **[UI / UX](features/UI-UX.md)** — views, key bindings, the edit-mode state machine, the QR overlay, the Toolbox
 - **[Maps](features/Maps.md)** — the slippy map: tile cache, the Carto-only style picker, the rendering pipeline
 - **[Toolbox](features/Toolbox.md)** — the Packet Log and Coverage Test (TRACE-based reachability + the wire gotchas)
-- **[GPS sources](features/GPS-Sources.md)** — the five input paths and how to wire OwnTracks / iOS Shortcuts / MeshMapper
+- **[GPS sources](features/GPS-Sources.md)** — the four input paths (manual, PA1010D, USB-CDC companion, BLE companion)
 - **[Sounds](features/Sounds.md)** — WAV format, recommended free sources, the upload recipe
 - **[Screenshots](features/Screenshots.md)** — every view, full set
 

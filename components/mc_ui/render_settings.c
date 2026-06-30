@@ -9,10 +9,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "app_config.h"
-#include "cert_gen.h"
 #include "gps.h"
 #include "gps_task.h"
-#include "http_server.h"
 #include "map.h"
 #include "nodes.h"
 #include "radio.h"
@@ -49,7 +47,6 @@ static const settings_category_t s_categories[] = {
     // directly). Hidden here so the Settings grid doesn't have a duplicate.
     {FIELD_FLOOD_ADVERT_INT, "Advert", "Flood + direct intervals, manual send", true},
     {FIELD_WIFI_SSID, "WiFi", "Slot picker + connect toggle", false},
-    {FIELD_HTTP_URL, "HTTPS", "MeshMapper /ping endpoint + cert", false},
     {FIELD_BLE_ENABLED, "Bluetooth", "BLE companion radio + pairing code", false},
     {FIELD_REGION_SCOPE, "Region &\nLocation", "Region scope, GPS coordinates", false},
     {FIELD_DISPLAY_BL, "Brightness", "Display, keyboard, RGB LED, auto-blank", false},
@@ -165,13 +162,6 @@ static const field_def_t s_fields[FIELD_COUNT] = {
     [FIELD_WIFI_STATUS]        = {"Status", NULL},
     [FIELD_WIFI_NETWORK]       = {"Network", save_wifi_prefs},
     [FIELD_WIFI_ENABLED]       = {"Enabled", save_wifi_prefs},
-    // ── HTTPS ──
-    [FIELD_HTTP_URL]           = {"Endpoint", NULL},
-    [FIELD_HTTP_API_KEY]       = {"API key", NULL},
-    [FIELD_HTTP_KEY_REGEN]     = {"Regenerate key", NULL},
-    [FIELD_HTTPS_CERT_FP]      = {"Cert fingerprint", NULL},
-    [FIELD_HTTPS_CERT_REGEN]   = {"Regenerate cert", NULL},
-    [FIELD_HTTP_QR]            = {"Show QR (OwnTracks)", NULL},
     // ── Bluetooth ──
     [FIELD_BLE_ENABLED]        = {"BLE companion", save_ble_enabled},
     [FIELD_BLE_PIN]            = {"Pairing code", save_ble_pin},
@@ -406,50 +396,6 @@ void settings_field_value(field_t f, char* out, size_t cap) {
                 snprintf(out, cap, "Disconnected");
             }
             break;
-        case FIELD_HTTP_URL:
-            if (wifi_connection_is_connected()) {
-                esp_netif_ip_info_t* ip = wifi_get_ip_info();
-                if (ip && ip->ip.addr)
-                    snprintf(out, cap, "https://" IPSTR ":8443/ping", IP2STR(&ip->ip));
-                else
-                    snprintf(out, cap, "(no IP yet)");
-            } else {
-                snprintf(out, cap, "(WiFi disconnected)");
-            }
-            break;
-        case FIELD_HTTP_API_KEY:
-            // First 8 + last 4 chars only -- enough to visually confirm a match
-            // without exposing the full secret on every glance. Full key still
-            // grabbable from serial log.
-            if (http_api_key[0])
-                snprintf(out, cap, "%.8s...%.4s", http_api_key, http_api_key + 60);
-            else
-                snprintf(out, cap, "(not set)");
-            break;
-        case FIELD_HTTP_KEY_REGEN:
-            snprintf(out, cap, "press OK to roll");
-            break;
-        case FIELD_HTTPS_CERT_FP: {
-            const char* cert_pem = http_server_cert_pem();
-            if (cert_pem) {
-                char fp[65] = {0};
-                if (cert_gen_fingerprint_hex(cert_pem, fp, sizeof(fp)) == ESP_OK) {
-                    snprintf(out, cap, "%.8s...%.4s", fp, fp + 60);
-                } else {
-                    snprintf(out, cap, "(parse error)");
-                }
-            } else {
-                snprintf(out, cap, "(not yet generated)");
-            }
-            break;
-        }
-        case FIELD_HTTPS_CERT_REGEN:
-            snprintf(out, cap, "press OK (~2 s)");
-            break;
-        case FIELD_HTTP_QR:
-            snprintf(out, cap, "press OK to show QR");
-            break;
-
         // ── Region & Location ──
         case FIELD_REGION_SCOPE:
             snprintf(out, cap, "%s", region_scope[0] ? region_scope : "(not set)");

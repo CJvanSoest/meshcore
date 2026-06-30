@@ -32,8 +32,8 @@ channel message rings, region scope in the header, and an unread badge.
 <p><img src="../../assets/screenshots/screen-channel.svg" width="480" alt="Channel"></p>
 
 ### Settings — category tiles
-The first level of the two level Settings menu: a tile grid of nine
-drilldown categories (Identity, Regulatory, Radio, WiFi, HTTPS, Bluetooth,
+The first level of the two level Settings menu: a tile grid of eight
+drilldown categories (Identity, Regulatory, Radio, WiFi, Bluetooth,
 Region and Location, Brightness, Sounds) plus an external **Toolbox**
 launcher tile. Enter drills into one category's field list (or opens the
 Toolbox). The Advert category is hidden here — it is reached via the Home

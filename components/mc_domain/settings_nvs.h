@@ -187,13 +187,6 @@ void        wifi_slots_refresh(void);
 void load_gps_track_prefs(void);
 void save_gps_track_prefs(void);
 
-// Shared secret used by the HTTPS /ping endpoint to authenticate POSTs.
-// Auto-generated (64 random hex chars) at first boot if NVS is empty, so
-// nobody can push to /ping just by knowing the URL. Surfaced in Settings
-// so the user can copy it into MeshMapper. Regenerate via the action
-// row in Settings if the secret leaks.
-extern char http_api_key[65];  // 64 hex chars + NUL
-
 // ── Load/save ────────────────────────────────────────────────────────────────
 void load_owner_name(void);
 void save_owner_name(void);
@@ -220,13 +213,6 @@ void save_advert_loc_policy(void);
 // wifi_ssid / wifi_password so wifi_connect_try_all() can use them.
 void load_wifi(void);
 
-// Pull http_api_key from NVS; if missing/empty, generate a fresh one and
-// persist it. Idempotent: safe to call multiple times.
-void load_or_init_http_api_key(void);
-
-// Force-generate a new API key and save. Used by the Settings "Regenerate"
-// action row when the existing key may have leaked.
-void regenerate_http_api_key(void);
 void load_brightness(void);
 void save_brightness(void);
 // Apply the current backlight + LED values to the BSP. Safe to call any time.
