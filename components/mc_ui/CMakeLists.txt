@@ -1,19 +1,12 @@
-# mc_ui — presentation: pax renderers, input handling, emoji picker.
+# mc_ui — presentation: LVGL views, input handling, non-rendering registries.
 # See docs/Components.md.
 idf_component_register(
     SRCS
         "render.c"
         "render_settings.c"
-        "render_settings_icons.c"
-        "render_nodes.c"
-        "render_chat.c"
-        "render_channel.c"
         "render_home.c"
-        "render_about.c"
-        "render_map.c"
         "render_toolbox.c"
         "render_toolbox_log.c"
-        "render_toolbox_coverage.c"
         "input.c"
         "emoji.c"
         "lvgl_port.c"
