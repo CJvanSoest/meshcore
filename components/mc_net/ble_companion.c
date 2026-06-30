@@ -222,13 +222,13 @@ static int gap_event(struct ble_gap_event* event, void* arg) {
             // io_cap is DISPLAY_ONLY → only DISP action is expected.
             struct ble_sm_io io = {0};
             if (event->passkey.params.action == BLE_SM_IOACT_DISP) {
-                // Generate a random 6-digit passkey, log it, hand to SMP.
-                uint32_t        pk = 0;
-                // ble_hs has no random helper here; use IDF's esp_random.
-                extern uint32_t esp_random(void);
-                pk         = esp_random() % 1000000;
-                io.action  = BLE_SM_IOACT_DISP;
-                io.passkey = pk;
+                // Use the user-configured fixed pairing code (ble_pin) as the
+                // displayed passkey instead of a random one, so the phone always
+                // prompts for the same predictable 6-digit code the user set in
+                // Settings. Defaults to 0 ("000000") out of the box.
+                uint32_t pk = ble_pin % 1000000u;
+                io.action   = BLE_SM_IOACT_DISP;
+                io.passkey  = pk;
                 ble_companion_show_passkey(pk);
                 int rc = ble_sm_inject_io(event->passkey.conn_handle, &io);
                 ESP_LOGI(TAG, "passkey injected rc=%d (pk=%06lu)", rc, (unsigned long)pk);

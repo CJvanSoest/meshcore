@@ -32,7 +32,7 @@ typedef struct {
     int       tile_x;
     int       tile_y;
     uint32_t  last_use_seq;
-    pax_buf_t buf;
+    uint16_t* px;  // MAP_TILE_PX² native-order RGB565, PSRAM-resident
 } tile_cache_entry_t;
 
 static tile_cache_entry_t s_cache[MAP_CACHE_SLOTS] = {0};
@@ -103,7 +103,8 @@ static int cache_pick_victim(void) {
         }
     }
     if (s_cache[victim].used) {
-        pax_buf_destroy(&s_cache[victim].buf);
+        heap_caps_free(s_cache[victim].px);
+        s_cache[victim].px   = NULL;
         s_cache[victim].used = false;
     }
     return victim;
@@ -258,7 +259,8 @@ void map_cache_clear(void) {
     if (s_cache_mutex) xSemaphoreTake(s_cache_mutex, portMAX_DELAY);
     for (int i = 0; i < MAP_CACHE_SLOTS; i++) {
         if (s_cache[i].used) {
-            pax_buf_destroy(&s_cache[i].buf);
+            heap_caps_free(s_cache[i].px);
+            s_cache[i].px   = NULL;
             s_cache[i].used = false;
         }
     }
@@ -267,10 +269,10 @@ void map_cache_clear(void) {
 
 // ── Tile loader ─────────────────────────────────────────────────────────────
 
-// Inflate PNG bytes into a fresh PAX 16-bit (RGB565) buffer of size 256×256
-// (the OSM tile pixel size). Returns true on success; on failure leaves
-// `out` uninitialised and the caller must NOT touch it.
-static bool decode_png_to_rgb565(const uint8_t* png, size_t png_len, pax_buf_t* out) {
+// Inflate PNG bytes into a fresh native-order RGB565 pixel array of size
+// 256×256 (the OSM tile pixel size). Returns the PSRAM-resident buffer on
+// success (caller owns it; free with heap_caps_free), NULL on failure.
+static uint16_t* decode_png_to_rgb565(const uint8_t* png, size_t png_len) {
     unsigned char* rgba = NULL;
     unsigned       w    = 0;
     unsigned       h    = 0;
@@ -278,37 +280,34 @@ static bool decode_png_to_rgb565(const uint8_t* png, size_t png_len, pax_buf_t* 
     if (err) {
         ESP_LOGW(TAG, "lodepng decode err=%u", err);
         free(rgba);
-        return false;
+        return NULL;
     }
     if (w != MAP_TILE_PX || h != MAP_TILE_PX) {
         ESP_LOGW(TAG, "unexpected tile size %ux%u", w, h);
         free(rgba);
-        return false;
+        return NULL;
     }
-    // Allocate the framebuffer in PSRAM so we don't dent internal RAM with
+    // Allocate the pixel buffer in PSRAM so we don't dent internal RAM with
     // 128 KB per cached tile.
-    void* fb_mem = heap_caps_malloc(MAP_TILE_PX * MAP_TILE_PX * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!fb_mem) {
+    uint16_t* out = heap_caps_malloc(MAP_TILE_PX * MAP_TILE_PX * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!out) {
         ESP_LOGW(TAG, "PSRAM alloc failed for tile buffer");
         free(rgba);
-        return false;
+        return NULL;
     }
-    pax_buf_init(out, fb_mem, MAP_TILE_PX, MAP_TILE_PX, PAX_BUF_16_565RGB);
-    pax_buf_set_orientation(out, PAX_O_UPRIGHT);
-    // Per-pixel RGBA8 → RGB565. PAX uses 0xRRRGGGBB encoding internally
-    // via pax_col_t (the public API stays AARRGGBB) — easiest to feed it
-    // pax_set_pixel(col=ARGB) so we don't depend on internal buffer
-    // layout. That costs a function call per pixel but the cache only
-    // refills on miss; pan / zoom hit the cached buffer directly.
+    // Per-pixel RGBA8 → native-order RGB565 (R in bits 15..11, G 10..5, B 4..0).
+    // The LVGL canvas reads these straight through as LV_COLOR_FORMAT_RGB565,
+    // and the panel flush handles byte-order separately — same bytes the old
+    // PAX 16_565RGB buffer produced. The cache only refills on miss; pan / zoom
+    // hit the cached buffer directly.
     for (unsigned y = 0; y < h; y++) {
         for (unsigned x = 0; x < w; x++) {
-            unsigned  i   = (y * w + x) * 4;
-            pax_col_t col = pax_col_argb(0xFF, rgba[i + 0], rgba[i + 1], rgba[i + 2]);
-            pax_set_pixel(out, col, (int)x, (int)y);
+            unsigned i     = (y * w + x) * 4;
+            out[y * w + x] = (uint16_t)(((rgba[i + 0] & 0xF8) << 8) | ((rgba[i + 1] & 0xFC) << 3) | (rgba[i + 2] >> 3));
         }
     }
     free(rgba);
-    return true;
+    return out;
 }
 
 // Pick the on-disk tile sub-dir for the active style profile. The default
@@ -328,13 +327,13 @@ static const char* tile_subdir(void) {
     }
 }
 
-static bool load_tile_from_sd(int zoom, int tile_x, int tile_y, pax_buf_t* out) {
+static uint16_t* load_tile_from_sd(int zoom, int tile_x, int tile_y) {
     char path[96];
     snprintf(path, sizeof(path), "%s/%s/%d/%d/%d.png", MAP_TILE_ROOT, tile_subdir(), zoom, tile_x, tile_y);
     FILE* f = fopen(path, "rb");
     if (!f) {
         ESP_LOGD(TAG, "miss %s", path);
-        return false;
+        return NULL;
     }
     fseek(f, 0, SEEK_END);
     long n = ftell(f);
@@ -342,24 +341,24 @@ static bool load_tile_from_sd(int zoom, int tile_x, int tile_y, pax_buf_t* out) 
     if (n <= 0 || n > 512 * 1024) {
         ESP_LOGW(TAG, "tile %s has weird size %ld", path, n);
         fclose(f);
-        return false;
+        return NULL;
     }
     uint8_t* buf = (uint8_t*)malloc((size_t)n);
     if (!buf) {
         ESP_LOGW(TAG, "alloc failed for tile %s (%ld B)", path, n);
         fclose(f);
-        return false;
+        return NULL;
     }
     size_t got = fread(buf, 1, (size_t)n, f);
     fclose(f);
     if (got != (size_t)n) {
         ESP_LOGW(TAG, "short read on %s (%zu/%ld)", path, got, n);
         free(buf);
-        return false;
+        return NULL;
     }
-    bool ok = decode_png_to_rgb565(buf, (size_t)n, out);
+    uint16_t* px = decode_png_to_rgb565(buf, (size_t)n);
     free(buf);
-    return ok;
+    return px;
 }
 
 // Lookup-only: returns the cached buf if present, NULL otherwise.
@@ -367,7 +366,7 @@ static bool load_tile_from_sd(int zoom, int tile_x, int tile_y, pax_buf_t* out) 
 // can render a placeholder and the tile will be available a few frames
 // later without ever blocking the render path on SD I/O + PNG decode.
 // Must be called with s_cache_mutex held.
-pax_buf_t* map_tile_get(int zoom, int tile_x, int tile_y) {
+const uint16_t* map_tile_get(int zoom, int tile_x, int tile_y) {
     if (zoom < MAP_ZOOM_MIN || zoom > MAP_ZOOM_MAX) return NULL;
     int span = 1 << zoom;
     if (tile_y < 0 || tile_y >= span) return NULL;
@@ -376,7 +375,7 @@ pax_buf_t* map_tile_get(int zoom, int tile_x, int tile_y) {
     int hit = cache_find(zoom, tile_x, tile_y);
     if (hit >= 0) {
         s_cache[hit].last_use_seq = ++s_seq;
-        return &s_cache[hit].buf;
+        return s_cache[hit].px;
     }
     // Cache miss — enqueue an async load. Queue is bounded; if it's full
     // (e.g. user zoomed twice in a row before the loader caught up) we
@@ -413,15 +412,15 @@ static void loader_task(void* arg) {
 
         // Slow path: SD read + lodepng decode + RGB565 conversion happen
         // OUTSIDE the cache mutex so the render task isn't blocked.
-        pax_buf_t fresh;
-        if (!load_tile_from_sd(req.zoom, req.tile_x, req.tile_y, &fresh)) continue;
+        uint16_t* fresh = load_tile_from_sd(req.zoom, req.tile_x, req.tile_y);
+        if (!fresh) continue;
 
         // Install — re-check the cache because another loader iteration
         // (or render) may have already added this tile while we decoded.
         xSemaphoreTake(s_cache_mutex, portMAX_DELAY);
         if (cache_find(req.zoom, req.tile_x, req.tile_y) >= 0) {
             xSemaphoreGive(s_cache_mutex);
-            pax_buf_destroy(&fresh);
+            heap_caps_free(fresh);
             continue;
         }
         int slot                   = cache_pick_victim();
@@ -429,7 +428,7 @@ static void loader_task(void* arg) {
         s_cache[slot].zoom         = req.zoom;
         s_cache[slot].tile_x       = req.tile_x;
         s_cache[slot].tile_y       = req.tile_y;
-        s_cache[slot].buf          = fresh;  // ownership of fb_mem moves here
+        s_cache[slot].px           = fresh;  // ownership moves here
         s_cache[slot].last_use_seq = ++s_seq;
         xSemaphoreGive(s_cache_mutex);
     }

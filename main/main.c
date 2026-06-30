@@ -47,10 +47,6 @@
 #include "lora.h"
 #include "nvs.h"
 #include "nvs_flash.h"
-#include "pax_fonts.h"
-#include "pax_gfx.h"
-#include "pax_text.h"
-#include "pax_types.h"
 #include "qrcodegen.h"
 #include "radio_system_protocol_client.h"
 #include "tanmatsu_coprocessor.h"
@@ -63,7 +59,6 @@
 #include "app_config.h"
 #include "coverage.h"
 #include "diag.h"
-#include "emoji.h"
 #include "gps_task.h"
 #include "history.h"
 #include "input.h"
@@ -73,9 +68,11 @@
 
 static char const TAG[] = "main";
 
-// COL_* palette, FONT/TXT_* sizes, TAB_BAR_H / FOOTER_H / CHAT_* layout
-// constants, blit(), render(), and the display_h_res / display_v_res / fb
-// globals all live in render.c/h.
+// COL_* palette + TXT_* sizes, render(), and the display_h_res / display_v_res
+// globals live in render.c/h. The boot splash + per-view paint go through LVGL
+// (lvgl_ui.h); main.c stays free of lvgl.h via the void*-typed glue.
+#include "lvgl_port.h"
+#include "lvgl_ui.h"
 #include "render.h"
 
 static bsp_display_color_format_t display_color_format = 0;
@@ -204,7 +201,11 @@ void app_main(void) {
     const bsp_configuration_t bsp_cfg = {
         .display =
             {
-                .requested_color_format = BSP_DISPLAY_COLOR_FORMAT_24_888RGB,
+                // Request 16-bit 565RGB so the whole stack is uniformly 2 bytes/px.
+                // LVGL renders 16-bit (keeps the binary small); a 24-bit panel
+                // would feed LVGL's 2-byte buffer to a 3-byte flush -> stride
+                // corruption.
+                .requested_color_format = BSP_DISPLAY_COLOR_FORMAT_16_565RGB,
                 .num_fbs                = 1,
             },
     };
@@ -215,36 +216,15 @@ void app_main(void) {
     }
 
     res = bsp_display_get_parameters(&display_h_res, &display_v_res, &display_color_format, &display_data_endian);
-    if (res != ESP_ERR_NOT_SUPPORTED && res == ESP_OK) {
-        pax_buf_type_t fmt = PAX_BUF_24_888RGB;
-        switch (display_color_format) {
-            case BSP_DISPLAY_COLOR_FORMAT_16_565RGB:
-                fmt = PAX_BUF_16_565RGB;
-                break;
-            case BSP_DISPLAY_COLOR_FORMAT_32_8888ARGB:
-                fmt = PAX_BUF_32_8888ARGB;
-                break;
-            default:
-                break;
+    if (res == ESP_OK) {
+        // Bring LVGL up on the panel with its native geometry / format /
+        // rotation. LVGL owns the panel outright now (PAX was retired in the
+        // LVGL-only cleanup); every view and the boot splash paint through it.
+        esp_err_t lv_res = lvgl_port_init(display_h_res, display_v_res, display_color_format, display_data_endian,
+                                          bsp_display_get_default_rotation());
+        if (lv_res != ESP_OK) {
+            ESP_LOGE(TAG, "LVGL init failed: %d", lv_res);
         }
-        bsp_display_rotation_t rot = bsp_display_get_default_rotation();
-        pax_orientation_t      ori = PAX_O_UPRIGHT;
-        switch (rot) {
-            case BSP_DISPLAY_ROTATION_90:
-                ori = PAX_O_ROT_CCW;
-                break;
-            case BSP_DISPLAY_ROTATION_180:
-                ori = PAX_O_ROT_HALF;
-                break;
-            case BSP_DISPLAY_ROTATION_270:
-                ori = PAX_O_ROT_CW;
-                break;
-            default:
-                break;
-        }
-        pax_buf_init(&fb, NULL, display_h_res, display_v_res, fmt);
-        pax_buf_reversed(&fb, display_data_endian == BSP_DISPLAY_ENDIAN_BIG);
-        pax_buf_set_orientation(&fb, ori);
     }
 
     ESP_ERROR_CHECK(bsp_input_get_queue(&input_event_queue));
@@ -254,33 +234,26 @@ void app_main(void) {
     chat_init();
     channels_init();
     identity_init();
-    emoji_init();
 
-    // Splash header is title (TXT_TITLE=24) + attribution (TXT_SMALL=16).
-    // Start diag output below both so they don't overlap.
-    int diag_y    = 74;
-    int diag_line = 22;
-#define DIAG(col, fmt, ...)                                           \
-    do {                                                              \
-        char _buf[80];                                                \
-        snprintf(_buf, sizeof(_buf), fmt, ##__VA_ARGS__);             \
-        ESP_LOGI(TAG, "%s", _buf);                                    \
-        pax_draw_text(&fb, (col), FONT, TXT_SMALL, 14, diag_y, _buf); \
-        diag_y += diag_line;                                          \
-        blit();                                                       \
+    // Boot splash + incremental init readout, painted through LVGL (which is
+    // already up). lvgl_splash_line() appends one status row per DIAG and
+    // reflushes so the user watches init progress just as the PAX splash did.
+#define DIAG(col, fmt, ...)                               \
+    do {                                                  \
+        char _buf[80];                                    \
+        snprintf(_buf, sizeof(_buf), fmt, ##__VA_ARGS__); \
+        ESP_LOGI(TAG, "%s", _buf);                        \
+        lvgl_splash_line((col), _buf);                    \
     } while (0)
 
-    pax_background(&fb, COL_BG);
     {
         const esp_app_desc_t* desc = esp_app_get_description();
         char                  title[48];
         snprintf(title, sizeof(title), "MeshCore %s", (desc && desc->version[0]) ? desc->version : "?");
-        pax_draw_text(&fb, COL_AMBER, FONT, TXT_TITLE, 14, 16, title);
-        // Boot-splash attribution so users see at a glance this is the
-        // community app, not the official MeshCore iOS/Android client.
-        pax_draw_text(&fb, COL_AMBER, FONT, TXT_SMALL, 14, 16 + TXT_TITLE + 4, "Community app by CJ van Soest");
+        // Attribution so users see at a glance this is the community app, not
+        // the official MeshCore iOS/Android client.
+        lvgl_splash_begin(title, "Community app by CJ van Soest");
     }
-    blit();
     vTaskDelay(pdMS_TO_TICKS(1500));
 
     // CET/CEST with EU DST: last Sun Mar 02:00 -> CEST(+2), last Sun Oct 03:00 -> CET(+1)
@@ -293,14 +266,14 @@ void app_main(void) {
     // tanmatsu-lora rides on top of. We keep this call but skip the actual
     // connect step (wifi_connect_try_all) — the badge runs as a LoRa node,
     // not a WiFi client, so no scan / associate / DHCP / SNTP wastes air.
-    DIAG(COL_GRAY, "wifi_connection_init_stack...");
+    DIAG(COL_WHITE, "wifi_connection_init_stack...");
     res = wifi_connection_init_stack();
     DIAG(res == ESP_OK ? COL_GREEN : COL_YELLOW, "  wifi init: %s (%d)", res == ESP_OK ? "OK" : "FAIL", res);
 
     // Time comes from the C6 coprocessor RTC (set by launcher/firmware SNTP
     // at boot). bsp_rtc_update_time pulls that value into the P4 system
     // clock — no app-side SNTP needed. Per Nicolai's hint.
-    DIAG(COL_GRAY, "bsp_rtc_update_time...");
+    DIAG(COL_WHITE, "bsp_rtc_update_time...");
     esp_err_t rtc_res = bsp_rtc_update_time();
     if (rtc_res == ESP_OK) {
         identity_mark_time_synced();
@@ -331,6 +304,7 @@ void app_main(void) {
     load_antenna_gain();
     load_gps_coords();
     load_ble_enabled();
+    load_ble_pin();
     load_ble_gps_pref();
     load_advert_loc_policy();
     load_wifi();
@@ -370,7 +344,7 @@ void app_main(void) {
     diag_init();      // Toolbox packet-log ring — before the radio tasks start capturing
     coverage_init();  // Toolbox coverage-test result store + ACK matcher
 
-    DIAG(COL_GRAY, "SD mount...");
+    DIAG(COL_WHITE, "SD mount...");
     history_init(node_prv_key);
     DIAG(history_is_ready() ? COL_GREEN : COL_YELLOW, "  SD: %s", history_status());
     // sounds_init runs before the SD mount, so its first sounds_refresh_list()
@@ -396,7 +370,7 @@ void app_main(void) {
         nodes_start_save_task();
     }
 
-    DIAG(COL_GRAY, "lora_init_remote(16)...");
+    DIAG(COL_WHITE, "lora_init_remote(16)...");
     res = lora_init_remote(&lora_handle, 16);
     DIAG(res == ESP_OK ? COL_GREEN : COL_RED, "  lora_init_remote: %s (%d)", res == ESP_OK ? "OK" : "FAIL", res);
 
@@ -420,7 +394,7 @@ void app_main(void) {
         // older firmware the call NACKs/times-out and render.c falls back to
         // the hand-maintained TANMATSU_RADIO_FW_LABEL.
         radio_fw_app_version[0] = '\0';
-        DIAG(COL_GRAY, "sys_proto get_information...");
+        DIAG(COL_WHITE, "sys_proto get_information...");
         if (radio_system_protocol_init() == ESP_OK) {
             radio_system_protocol_information_t info = {0};
             if (radio_system_protocol_get_information(&info) == ESP_OK) {
@@ -435,7 +409,7 @@ void app_main(void) {
         } else {
             DIAG(COL_YELLOW, "  fw: init failed - hardcoded fallback");
         }
-        DIAG(COL_GRAY, "lora_get_config from C6...");
+        DIAG(COL_WHITE, "lora_get_config from C6...");
         lora_protocol_config_params_t c6_cfg  = {0};
         esp_err_t                     cfg_res = lora_get_config(&lora_handle, &c6_cfg);
         if (cfg_res == ESP_OK) {
@@ -451,7 +425,7 @@ void app_main(void) {
             }
 
             // Set RX mode and start background task
-            DIAG(COL_GRAY, "lora_set_mode(RX)...");
+            DIAG(COL_WHITE, "lora_set_mode(RX)...");
             esp_err_t mode_res = lora_set_mode(&lora_handle, LORA_PROTOCOL_MODE_RX);
             if (mode_res == ESP_OK) {
                 lora_rx_ok = true;

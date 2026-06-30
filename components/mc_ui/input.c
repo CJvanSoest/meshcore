@@ -16,7 +16,7 @@
 #include "contacts.h"
 #include "coverage.h"
 #include "diag.h"
-#include "emoji.h"
+#include "emoji_table.h"  // EMOJI_SET / emoji_entry_t (picker selection)
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "gps.h"
@@ -67,6 +67,29 @@ static void open_home_tile(int idx) {
         settings_category_cursor    = 0;
         settings_category_list_mode = false;
         selected                    = FIELD_FLOOD_ADVERT_INT;
+        current_view                = VIEW_SETTINGS;
+        return;
+    }
+
+    // WiFi / Bluetooth tiles: drill straight into the matching Settings
+    // category. Unlike Advert (a hidden category), these are visible tiles, so
+    // park the category cursor on their visible slot -- ESC-back then lands on
+    // the right Settings tile instead of slot 0.
+    if (action == HOME_ACTION_OPEN_WIFI || action == HOME_ACTION_OPEN_BLUETOOTH) {
+        int field = (action == HOME_ACTION_OPEN_WIFI) ? FIELD_WIFI_SSID : FIELD_BLE_ENABLED;
+        int cat   = settings_category_for_field(field);
+        if (cat < 0) cat = 0;
+        int slot = 0;  // fallback if the category isn't found in the visible list
+        for (int s = 0, n = settings_visible_category_count(); s < n; s++) {
+            if (settings_visible_category_real_idx(s) == cat) {
+                slot = s;
+                break;
+            }
+        }
+        settings_category_active    = cat;
+        settings_category_cursor    = slot;
+        settings_category_list_mode = false;
+        selected                    = field;
         current_view                = VIEW_SETTINGS;
         return;
     }
@@ -386,6 +409,11 @@ static void settings_begin_text_edit(field_t f) {
     } else if (f == FIELD_GPS_LON) {
         if (gps_position_valid) snprintf(numbuf, sizeof(numbuf), "%.6f", (double)gps_lon_e6 / 1e6);
         src = numbuf;
+    } else if (f == FIELD_BLE_PIN) {
+        // Prefill with the current 6-digit code (leading zeros included) so the
+        // user edits in place rather than retyping from scratch.
+        snprintf(numbuf, sizeof(numbuf), "%06lu", (unsigned long)ble_pin);
+        src = numbuf;
     }
     strncpy(field_edit_buf, src, sizeof(field_edit_buf) - 1);
     field_edit_buf[sizeof(field_edit_buf) - 1] = '\0';
@@ -433,6 +461,12 @@ static void settings_commit_text_edit(field_t f) {
             }
         }
         save_gps_coords();
+    } else if (f == FIELD_BLE_PIN) {
+        // Digits-only buffer (enforced on input); empty stays 0. strtoul clamps
+        // safely and the explicit modulo keeps it inside 0..999999.
+        unsigned long v = strtoul(field_edit_buf, NULL, 10);
+        ble_pin         = (uint32_t)(v % 1000000ul);
+        save_ble_pin();
     }
     field_editing_text = false;
 }
@@ -444,7 +478,7 @@ static void settings_commit_text_edit(field_t f) {
 // taken by the time these run, so they only see directional keys + RETURN.
 
 static void nav_home(uint32_t key) {
-    int cols = 3;  // mirrors HOME_TILE_COLS in render_home.c
+    int cols = 4;  // mirrors HOME_TILE_COLS in render_home.c
     if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
         if (home_cursor - cols >= 0) home_cursor -= cols;
     } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
@@ -724,7 +758,7 @@ static void nav_settings(uint32_t key) {
             if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
             edit_mode = true;
             if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME || selected == FIELD_REGION_SCOPE ||
-                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
+                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON || selected == FIELD_BLE_PIN) {
                 settings_begin_text_edit(selected);
             }
         } else {
@@ -1111,7 +1145,7 @@ void handle_nav(uint32_t key) {
 // `<>,.`/D, previously a long `else if (current_view == VIEW_X)` cascade.
 
 static void key_home(char c) {
-    const int cols  = 3;  // mirrors HOME_TILE_COLS in render_home.c
+    const int cols  = 4;  // mirrors HOME_TILE_COLS in render_home.c
     const int total = home_tile_count();
     if (c == 'w' || c == 'W') {
         if (home_cursor - cols >= 0) home_cursor -= cols;
@@ -1294,7 +1328,7 @@ static void key_settings(char c) {
             if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
             edit_mode = true;
             if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME || selected == FIELD_REGION_SCOPE ||
-                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON) {
+                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON || selected == FIELD_BLE_PIN) {
                 settings_begin_text_edit(selected);
             }
         } else {
@@ -1425,6 +1459,10 @@ void handle_key(char c) {
                 if (c >= 'A' && c <= 'Z') c = c - 'A' + 'a';
                 bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
                 if (!ok) return;
+            }
+            // BLE pairing code: digits only, capped at 6 characters.
+            if (selected == FIELD_BLE_PIN) {
+                if (c < '0' || c > '9' || field_edit_len >= 6) return;
             }
             field_edit_buf[field_edit_len++] = c;
             field_edit_buf[field_edit_len]   = '\0';
