@@ -45,13 +45,6 @@ typedef enum {
     FIELD_WIFI_STATUS,   // Read-only: "Disconnected" / "Connecting..." / "IP: x.x.x.x"
     FIELD_WIFI_NETWORK,  // Picker: cycles launcher-stored slots (idx + SSID)
     FIELD_WIFI_ENABLED,  // Toggle: On = wifi_connection_connect, Off = disconnect
-    // ── HTTPS server (own category — MeshMapper /ping endpoint) ──
-    FIELD_HTTP_URL,          // Read-only: https://<ip>:8443/ping (for MeshMapper config)
-    FIELD_HTTP_API_KEY,      // Read-only: 64 hex chars (paste into MeshMapper)
-    FIELD_HTTP_KEY_REGEN,    // Action row: press OK to roll a new API key
-    FIELD_HTTPS_CERT_FP,     // Read-only: SHA-256 fingerprint of the on-device cert
-    FIELD_HTTPS_CERT_REGEN,  // Action row: wipe NVS cert + regenerate self-signed
-    FIELD_HTTP_QR,           // Action row: open QR overlay with /ping URL + key for iPhone capture
     // ── Bluetooth (own category) ──
     FIELD_BLE_ENABLED,  // Toggle: BLE companion radio on/off (takes effect on next app start)
     FIELD_BLE_PIN,      // 6-digit fixed NimBLE pairing passkey (0..999999, shown as %06u)
@@ -99,12 +92,9 @@ extern bool time_from_nvs;
 extern bool lora_ready;
 
 // QR overlay payload mode. CONTACT encodes the badge's own meshcore://contact/add
-// URL (the original use); OWNTRACKS encodes the HTTPS /ping URL + API key so the
-// user can scan it with the iPhone Camera app and paste into OwnTracks /
-// Shortcuts / MeshMapper without typing 64 hex chars by hand.
+// URL (the original use); CHANNEL encodes a channel share link.
 typedef enum {
     QR_MODE_CONTACT = 0,
-    QR_MODE_OWNTRACKS,
     QR_MODE_CHANNEL,  // meshcore://channel/add?name=..&secret=.. for channels[qr_channel_idx]
 } qr_mode_t;
 extern qr_mode_t qr_overlay_mode;
@@ -122,11 +112,6 @@ extern int home_cursor;
 // nodes view). When true, closing the overlay returns to VIEW_HOME instead of
 // leaving the user stranded on the nodes list.
 extern bool qr_from_home;
-
-// QR overlay was opened from a Settings → Network row (currently the OwnTracks
-// QR action). When true, closing the overlay leaves the user in VIEW_SETTINGS
-// on the same drilldown row instead of bouncing to nodes/home.
-extern bool qr_from_settings;
 
 // QR overlay was opened from the Channel list (share / create-private flow).
 // When true, closing the overlay returns to VIEW_CHANNEL's channel list.

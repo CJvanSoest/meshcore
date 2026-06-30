@@ -1466,7 +1466,7 @@ static void render_emoji_picker_overlay_lvgl(lv_obj_t* scr, int w, int h) {
     }
 }
 
-// ── QR overlay (contact / owntracks / channel) ───────────────────────────────
+// ── QR overlay (contact / channel) ───────────────────────────────────────────
 // Full-screen overlay drawn on top of the Nodes/Channel base view. Pixel-matched
 // port of render_qr_overlay() in render_nodes.c. The qrcodegen module produces a
 // module bitmap; we wrap it at module resolution into an lv_image_dsc_t and
@@ -1493,20 +1493,7 @@ static void render_qr_overlay_lvgl(void) {
     const char* title_label  = NULL;
     char        subtitle[96] = {0};
 
-    if (qr_overlay_mode == QR_MODE_OWNTRACKS) {
-        const char* host         = "tanmatsu.local";
-        char        host_buf[24] = {0};
-        if (wifi_connection_is_connected()) {
-            esp_netif_ip_info_t* ip = wifi_get_ip_info();
-            if (ip && ip->ip.addr) {
-                snprintf(host_buf, sizeof(host_buf), IPSTR, IP2STR(&ip->ip));
-                host = host_buf;
-            }
-        }
-        snprintf(url, sizeof(url), "https://%s:8443/ping?key=%s", host, http_api_key[0] ? http_api_key : "(unset)");
-        title_label = "Scan for OwnTracks";
-        snprintf(subtitle, sizeof(subtitle), "https://%s:8443/ping", host);
-    } else if (qr_overlay_mode == QR_MODE_CHANNEL) {
+    if (qr_overlay_mode == QR_MODE_CHANNEL) {
         const channel_t* ch =
             (qr_channel_idx >= 0 && qr_channel_idx < channel_count) ? &channels[qr_channel_idx] : NULL;
         char hex_key[2 * CHANNEL_SECRET_LEN + 1] = {0};
@@ -1559,7 +1546,7 @@ static void render_qr_overlay_lvgl(void) {
 
     static uint8_t     qr_data[qrcodegen_BUFFER_LEN_MAX];
     static uint8_t     tmp_buf[qrcodegen_BUFFER_LEN_MAX];
-    enum qrcodegen_Ecc ecc = (qr_overlay_mode == QR_MODE_OWNTRACKS) ? qrcodegen_Ecc_LOW : qrcodegen_Ecc_MEDIUM;
+    enum qrcodegen_Ecc ecc = qrcodegen_Ecc_MEDIUM;
     bool ok = qrcodegen_encodeText(url, tmp_buf, qr_data, ecc, qrcodegen_VERSION_MIN, 15, qrcodegen_Mask_AUTO, true);
 
     if (!ok) {
@@ -1609,12 +1596,7 @@ static void render_qr_overlay_lvgl(void) {
     add_label_centered(scr, w, qr_y + qr_px + margin + 6, TXT_SMALL, COL_GRAY, subtitle);
 
     int next_y = qr_y + qr_px + margin + 6 + TXT_SMALL + 6;
-    if (qr_overlay_mode == QR_MODE_OWNTRACKS && http_api_key[0]) {
-        char key_preview[40];
-        snprintf(key_preview, sizeof(key_preview), "key %.8s...%.4s", http_api_key, http_api_key + 60);
-        add_label_centered(scr, w, next_y, TXT_SMALL, COL_GRAY, key_preview);
-        next_y += TXT_SMALL + 6;
-    } else if (qr_overlay_mode == QR_MODE_CHANNEL) {
+    if (qr_overlay_mode == QR_MODE_CHANNEL) {
         const channel_t* ch =
             (qr_channel_idx >= 0 && qr_channel_idx < channel_count) ? &channels[qr_channel_idx] : NULL;
         if (ch) {
@@ -2282,19 +2264,6 @@ static void cat_icon_wifi_lv(lv_obj_t* s, int cx, int cy, int sz, uint32_t col) 
     add_circle(s, cx, oy, sz / 12, col, -1, 0);
 }
 
-// HTTPS: a globe (outline circle + one meridian + two parallels).
-static void cat_icon_https_lv(lv_obj_t* s, int cx, int cy, int sz, uint32_t col) {
-    int r = sz / 2;
-    add_circle(s, cx, cy, r, -1, col, 2);
-    // Vertical meridian + a narrow ellipse approximated by an inner arc pair.
-    add_line(s, cx, cy - r, cx, cy + r, 2, col);
-    add_circle(s, cx, cy, r / 2, -1, col, 2);  // squashed look stands in for a meridian curve
-    // Two parallels.
-    add_line(s, cx - r * 9 / 10, cy - r / 3, cx + r * 9 / 10, cy - r / 3, 2, col);
-    add_line(s, cx - r, cy, cx + r, cy, 2, col);
-    add_line(s, cx - r * 9 / 10, cy + r / 3, cx + r * 9 / 10, cy + r / 3, 2, col);
-}
-
 // Bluetooth: the runic glyph (vertical spine + two crossed bowties).
 static void cat_icon_bluetooth_lv(lv_obj_t* s, int cx, int cy, int sz, uint32_t col) {
     int half = sz / 2;
@@ -2365,8 +2334,8 @@ typedef void (*cat_icon_lv_fn)(lv_obj_t*, int, int, int, uint32_t);
 // including the hidden-from-grid Advert slot).
 static const cat_icon_lv_fn s_cat_icons_lv[] = {
     cat_icon_identity_lv,   cat_icon_regulatory_lv, cat_icon_radio_lv,     cat_icon_advert_lv,
-    cat_icon_wifi_lv,       cat_icon_https_lv,      cat_icon_bluetooth_lv, cat_icon_region_lv,
-    cat_icon_brightness_lv, cat_icon_sounds_lv,     cat_icon_toolbox_lv,
+    cat_icon_wifi_lv,       cat_icon_bluetooth_lv,  cat_icon_region_lv,    cat_icon_brightness_lv,
+    cat_icon_sounds_lv,     cat_icon_toolbox_lv,
 };
 #define S_CAT_ICONS_LV_N ((int)(sizeof(s_cat_icons_lv) / sizeof(s_cat_icons_lv[0])))
 
@@ -3146,7 +3115,6 @@ bool lvgl_view_active(app_view_t v) {
         case VIEW_TOOLBOX_LOG:
             return true;
         case VIEW_SETTINGS:
-            // Settings + its OwnTracks QR overlay both render through LVGL now.
             return true;
         case VIEW_NODES:
             // Nodes + its QR overlay both render through LVGL now.
@@ -3165,11 +3133,7 @@ bool lvgl_view_active(app_view_t v) {
 void lvgl_view_render(app_view_t v) {
     switch (v) {
         case VIEW_SETTINGS:
-            if (qr_overlay_active && qr_overlay_mode == QR_MODE_OWNTRACKS) {
-                render_qr_overlay_lvgl();
-            } else {
-                render_settings_lvgl();
-            }
+            render_settings_lvgl();
             break;
         case VIEW_ABOUT:
             render_about_lvgl();

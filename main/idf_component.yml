@@ -8,4 +8,3 @@ dependencies:
   # tanmatsu-radio v3.2.0). The CJ fork is no longer needed — drop the
   # local git: redirect and track upstream directly.
   nicolaielectronics/tanmatsu-lora: "^0.3.0"
-  espressif/mdns: "^1.2.0"

@@ -16,8 +16,6 @@
 #include "wifi_connection.h"
 #include "wifi_settings.h"  // wifi_settings_get/set, slot-0 persistence
 
-#define NVS_HTTP_API_KEY "http.api_key"
-
 // ── NVS keys — same namespace/keys as launcher so settings are shared ────────
 #define NVS_LORA_FREQ       "lora.freq"
 #define NVS_LORA_SF         "lora.sf"
@@ -186,7 +184,6 @@ bool                   ble_gps_pref          = true;  // iPhone "GPS Mode = Enab
 uint8_t                advert_loc_policy     = 0;     // ADVERT_LOC_NONE
 char                   wifi_ssid[33]         = {0};
 char                   wifi_password[65]     = {0};
-char                   http_api_key[65]      = {0};
 char                   country_code[4]       = "--";
 int8_t                 antenna_gain_dbi      = 0;
 uint8_t                display_brightness    = UI_DEF_DISP_BL;
@@ -437,54 +434,6 @@ void save_ble_pin(void) {
         ESP_LOGI(TAG, "BLE pairing code saved: %06lu", (unsigned long)ble_pin);
     }
     nvs_close(handle);
-}
-
-// ── HTTP API key (shared secret for the /ping endpoint) ─────────────────────
-static void fill_random_hex(char* out_64chars_plus_nul) {
-    uint8_t raw[32];
-    esp_fill_random(raw, sizeof(raw));
-    static const char hex[] = "0123456789abcdef";
-    for (size_t i = 0; i < sizeof(raw); i++) {
-        out_64chars_plus_nul[2 * i]     = hex[raw[i] >> 4];
-        out_64chars_plus_nul[2 * i + 1] = hex[raw[i] & 0x0F];
-    }
-    out_64chars_plus_nul[64] = '\0';
-}
-
-void load_or_init_http_api_key(void) {
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) {
-        // NVS dead -- generate ephemeral so /ping isn't open
-        fill_random_hex(http_api_key);
-        ESP_LOGW(TAG, "NVS open failed; using ephemeral API key");
-        return;
-    }
-    size_t    len = sizeof(http_api_key);
-    esp_err_t r   = nvs_get_str(handle, NVS_HTTP_API_KEY, http_api_key, &len);
-    if (r != ESP_OK || http_api_key[0] == '\0') {
-        fill_random_hex(http_api_key);
-        nvs_set_str(handle, NVS_HTTP_API_KEY, http_api_key);
-        nvs_commit(handle);
-        ESP_LOGI(TAG, "HTTP API key auto-generated + persisted");
-    } else {
-        ESP_LOGI(TAG, "HTTP API key loaded from NVS");
-    }
-    nvs_close(handle);
-    // Dev convenience: emit the full key on boot so testers can grab it
-    // for curl / MeshMapper config without poking around Settings. Acceptable
-    // because the serial console is local-only on these dev boards; a
-    // production build should drop this line.
-    ESP_LOGI(TAG, "HTTP API key (full): %s", http_api_key);
-}
-
-void regenerate_http_api_key(void) {
-    fill_random_hex(http_api_key);
-    nvs_handle_t handle;
-    if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
-    nvs_set_str(handle, NVS_HTTP_API_KEY, http_api_key);
-    nvs_commit(handle);
-    nvs_close(handle);
-    ESP_LOGI(TAG, "HTTP API key regenerated + persisted");
 }
 
 // ── BLE GPS preference (iPhone companion-app GPS Mode toggle) ───────────────

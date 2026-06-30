@@ -54,9 +54,9 @@ For the build-level view — which `mc_*` component each module lives in, the
 
 The diagram is the core message path. Several subsystems are left out to keep
 it readable: `gps.c`/`gps_task.c` (PA1010D + live fix), `companion_transport.c`
-+ `ble_companion.c` (companion-radio link), `http_server.c` + `cert_gen.c`
-(on-device HTTPS `/ping`), `wifi_keepalive.c`, `sounds.c`, `map.c` (slippy-map
-tiles), `emoji.c`, `channels.c`, and `radio_system_protocol_client.c`.
++ `ble_companion.c` (companion-radio link), `wifi_keepalive.c`, `sounds.c`,
+`map.c` (slippy-map tiles), `emoji.c`, `channels.c`, and
+`radio_system_protocol_client.c`.
 
 ## Tasks and synchronisation
 

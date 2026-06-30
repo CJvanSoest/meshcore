@@ -43,7 +43,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "http_server.h"
 #include "lora.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -136,7 +135,6 @@ bool      field_editing_text          = false;
 int       settings_scroll             = 0;
 int       home_cursor                 = 0;  // VIEW_HOME tile-grid focus (0..HOME_TILE_COUNT-1)
 bool      qr_from_home                = false;
-bool      qr_from_settings            = false;
 bool      qr_from_channel             = false;
 char      toast_text[64]              = {0};
 uint32_t  toast_duration_ms           = 2000;
@@ -310,7 +308,6 @@ void app_main(void) {
     load_wifi();
     load_wifi_prefs();     // enabled toggle + chosen slot
     wifi_slots_refresh();  // populate the picker cache from launcher slots
-    load_or_init_http_api_key();
     // Auto-connect to the saved WiFi network at boot when WiFi is enabled.
     // We honour the user-chosen slot explicitly (instead of try_all) so
     // toggling the picker behaves predictably.
@@ -329,7 +326,6 @@ void app_main(void) {
     // hotspots from suspending, but stricter networks (or future iOS
     // changes) might need explicit packets.
     wifi_keepalive_supervisor_start();
-    http_server_supervisor_start();
     companion_transport_init();
     if (ble_enabled) {
         ble_companion_init();

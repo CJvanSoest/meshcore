@@ -38,9 +38,9 @@ Twemoji bitmaps, kept verbatim from upstream with their own licence headers. Not
 first-party: do not restyle it or "fix" its TODOs.
 
 ### `mc_io` — platform I/O (L1)
-NVS key/value helpers, the GPS UART/I2C reader, and device-certificate
-generation. Sits just above the pure cores: it pulls in ESP-IDF drivers but
-exposes only small, behaviour-neutral helpers.
+NVS key/value helpers and the GPS UART/I2C reader. Sits just above the pure
+cores: it pulls in ESP-IDF drivers but exposes only small, behaviour-neutral
+helpers.
 
 ### `mc_domain` — application domain (L1/L2)
 The stateful core: `identity`, `contacts`, `channels`, `chat`, `nodes`,
@@ -61,9 +61,9 @@ builds no MeshCore payloads and touches no domain message state — that lives i
 `mc_rx`. Only reads LoRa/region config from `settings_nvs`.
 
 ### `mc_net` — connectivity + peripherals (L4)
-The HTTPS config server, BLE companion link, serial companion transport, WiFi
-keepalive, the GPS task, and the map renderer. These read settings and feed the
-domain, so they sit above it.
+The BLE companion link, serial companion transport, WiFi keepalive, the GPS
+task, and the map renderer. These read settings and feed the domain, so they sit
+above it.
 
 ### `mc_ui` — presentation (L4)
 The LVGL 9 UI: the central widget tree (`lvgl_ui.c`) and the display glue
