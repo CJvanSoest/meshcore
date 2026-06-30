@@ -510,7 +510,7 @@ static void render_settings_drilldown(int w, int h) {
         hint = "Up/Down or W/S: adjust   Enter: save   ";
         back = ": cancel";
     } else if (!c6_available) {
-        hint     = "NVS only — update radio via Launcher: Tools > Firmware update";
+        hint     = "NVS only -- update radio via Launcher: Tools > Firmware update";
         hint_col = COL_AMBER;
     } else if (selected == FIELD_ANTENNA_GAIN) {
         hint = "Antenna gain raises ERP; editable once Country is set.";
@@ -523,7 +523,7 @@ static void render_settings_drilldown(int w, int h) {
             const regulatory_subband_t* sb   = region_match_subband(rc, (float)lora_cfg.frequency / 1000000.0f);
             const char*                 unit = (rc->power_unit == POWER_UNIT_EIRP) ? "EIRP" : "ERP";
             if (!sb) {
-                snprintf(hintbuf, sizeof(hintbuf), "%s: %.3f MHz off-band — pick a frequency in an allowed sub-band.",
+                snprintf(hintbuf, sizeof(hintbuf), "%s: %.3f MHz off-band -- pick a frequency in an allowed sub-band.",
                          rc->display_name, (double)lora_cfg.frequency / 1e6);
             } else {
                 snprintf(hintbuf, sizeof(hintbuf), "%s %s: %.2f-%.2f MHz, max %d dBm %s, %u.%u%% duty cycle.",
@@ -711,7 +711,7 @@ void settings_field_value(field_t f, char* out, size_t cap) {
             // saved yet — the user should add one via the launcher first.
             int n = wifi_slots_count();
             if (n == 0) {
-                snprintf(out, cap, "(no slots — use launcher)");
+                snprintf(out, cap, "(no slots -- use launcher)");
                 break;
             }
             int pos = 0;
