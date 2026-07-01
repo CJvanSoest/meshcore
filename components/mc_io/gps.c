@@ -7,6 +7,8 @@
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "gps_parser.h"
 
 static const char* TAG = "gps";
@@ -27,10 +29,23 @@ static const char* TAG = "gps";
 // them to NMEA via UBX-CFG-PRT first, or send a one-shot config here.
 #define GPS_I2C_ADDR 0x10
 
+// Consecutive receive NACKs after which we conclude no module is present on
+// the QWIIC bus and stop reading for this poll. A present PA1010D ACKs its
+// address on every read (it streams NMEA, or returns padding when idle), so a
+// short streak of NACKs reliably means "nothing there". Bailing early avoids
+// spinning the full timeout window hammering the bus, which otherwise floods
+// the console with i2c.master NACK errors on badges without a QWIIC GPS.
+#define GPS_NACK_STREAK_MAX 3
+
 // Last status from gps_read_status(), exposed via gps_last_status() so the
 // Settings UI can keep showing sats / HDOP after the search toast fades.
 static gps_status_t s_last;
 static bool         s_last_valid = false;
+
+// Rate-limits the "no PA1010D" warning to once per absent streak (a fresh
+// warning only after a module has answered again), so a badge without a QWIIC
+// GPS logs one line instead of one per poll.
+static bool s_absent_logged = false;
 
 bool gps_read_status(int timeout_ms, gps_status_t* out) {
     if (!out) return false;
@@ -68,13 +83,35 @@ bool gps_read_status(int timeout_ms, gps_status_t* out) {
     size_t  line_len = 0;
     int64_t start_us = esp_timer_get_time();
     uint8_t chunk[64];
+    int     nack_streak = 0;
+
+    // A missing module NACKs every read, and the i2c.master driver logs each
+    // NACK at ERROR level -- on a badge without a QWIIC GPS that alone floods
+    // the console. We detect absence ourselves (nack_streak) and log one clean
+    // line, so mute the driver's own NACK errors for the read and restore the
+    // level afterwards.
+    esp_log_level_t prev_i2c_level = esp_log_level_get("i2c.master");
+    esp_log_level_set("i2c.master", ESP_LOG_NONE);
 
     while (1) {
         int64_t elapsed_ms = (esp_timer_get_time() - start_us) / 1000;
         if (elapsed_ms > timeout_ms) break;
         if (out->fix_valid) break;  // got a fix, no need to keep reading
 
-        if (i2c_master_receive(dev, chunk, sizeof(chunk), 200) != ESP_OK) continue;
+        if (i2c_master_receive(dev, chunk, sizeof(chunk), 200) != ESP_OK) {
+            if (++nack_streak >= GPS_NACK_STREAK_MAX) {
+                if (!s_absent_logged) {
+                    ESP_LOGW(TAG, "no PA1010D on QWIIC (0x%02X): %d consecutive NACKs, stopping read", GPS_I2C_ADDR,
+                             nack_streak);
+                    s_absent_logged = true;
+                }
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(5));  // brief pause; a booting module may ACK shortly
+            continue;
+        }
+        nack_streak     = 0;      // any successful read means the module is present
+        s_absent_logged = false;  // re-arm the warning for a future disconnect
 
         for (size_t i = 0; i < sizeof(chunk); i++) {
             uint8_t b = chunk[i];
@@ -93,6 +130,8 @@ bool gps_read_status(int timeout_ms, gps_status_t* out) {
             }
         }
     }
+
+    esp_log_level_set("i2c.master", prev_i2c_level);
 
     i2c_master_bus_rm_device(dev);
     i2c_del_master_bus(bus);

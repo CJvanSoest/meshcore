@@ -16,6 +16,13 @@ static const char* TAG = "gps_task";
 // seconds) doesn't put the chip to sleep for half a day.
 #define GPS_HEARTBEAT_MAX_S 30
 
+// When no module answers, back off to this slow cadence after this many
+// consecutive empty polls -- keeps an absent QWIIC GPS from re-probing the bus
+// every few seconds, while still re-checking often enough to pick up a module
+// plugged in later. Any poll that yields data resets the cadence immediately.
+#define GPS_ABSENT_BACKOFF_POLLS 3
+#define GPS_ABSENT_INTERVAL_S    60
+
 // Profile-default poll intervals (seconds between PA1010D reads).
 static const uint16_t s_profile_interval_s[GPS_PROFILE_COUNT] = {
     [GPS_PROFILE_WALKING] = 10,
@@ -118,6 +125,7 @@ static void publish(const gps_status_t* st) {
 static void task_loop(void* arg) {
     (void)arg;
     ESP_LOGI(TAG, "starting (profile=%s)", gps_profile_label(gps_profile));
+    int empty_polls = 0;  // consecutive polls with no NMEA -> triggers backoff
     while (1) {
         uint16_t interval_s = effective_interval_s();
         if (interval_s == 0) {
@@ -131,6 +139,9 @@ static void task_loop(void* arg) {
         // refresh SAT / HDOP for the status strip.
         uint16_t sleep_s = interval_s;
         if (sleep_s > GPS_HEARTBEAT_MAX_S) sleep_s = GPS_HEARTBEAT_MAX_S;
+        // No module answering after a few tries: drop to the slow cadence so we
+        // stop touching the bus at the profile rate. Reset happens below.
+        if (empty_polls >= GPS_ABSENT_BACKOFF_POLLS) sleep_s = GPS_ABSENT_INTERVAL_S;
         vTaskDelay(pdMS_TO_TICKS((uint32_t)sleep_s * 1000));
 
         gps_status_t st = {0};
@@ -139,6 +150,12 @@ static void task_loop(void* arg) {
         // path uses a much longer timeout for cold-start fixes.
         gps_read_status(1500, &st);
         publish(&st);
+
+        if (st.sentences_seen == 0) {
+            if (empty_polls < GPS_ABSENT_BACKOFF_POLLS) empty_polls++;
+        } else {
+            empty_polls = 0;  // module is answering -> back to profile cadence
+        }
 
         if (!st.fix_valid) continue;
 
