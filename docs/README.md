@@ -58,7 +58,8 @@ The docs are grouped into four folders.
 - **[Module overview](architecture/Overview.md)** — the modules and how they interact
 - **[Components](architecture/Components.md)** — the component map, dependency graph, constants
 
-### `guides/` — building and contributing
+### `guides/` — using, building and contributing
+- **[Getting started](guides/Getting-Started.md)** — first run: set your Owner + Advert name, then get on the air
 - **[Build / Deploy](guides/Build-Deploy.md)** — IDF env, badgelink upload, launcher dependency, partition layout
 - **[Map tiles via MOBAC](guides/Map-Tiles-MOBAC.md)** — download map tiles onto the SD card without Docker
 - **[Contributing](guides/CONTRIBUTING.md)** — the contributor checklist and code rules

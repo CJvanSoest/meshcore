@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- VIEW_SETTINGS (drilled into Identity category, Owner name in edit mode) — landscape 800×480 at half-scale. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240">
+  <defs>
+    <style type="text/css"><![CDATA[
+      text { font-family: 'Saira', 'Helvetica Neue', sans-serif; }
+    ]]></style>
+  </defs>
+
+  <rect width="400" height="240" fill="#0E141B" rx="4"/>
+  <rect x="0.5" y="0.5" width="399" height="239" fill="none" stroke="#16161E" stroke-width="1" rx="4"/>
+
+  <!-- Tab bar with [EDIT] indicator on right -->
+  <rect x="0" y="0" width="400" height="22" fill="#0E141B"/>
+  <rect x="0" y="21" width="400" height="1" fill="#FAA61A"/>
+  <text x="6" y="15" fill="#FAA61A" font-size="11" font-weight="600">Settings</text>
+  <text x="216" y="15" fill="#FAA61A" font-size="9" font-weight="500">[EDIT]</text>
+  <text x="296" y="15" fill="#9ECE6A" font-size="10">RX:42</text>
+  <text x="334" y="15" fill="#C0C8D0" font-size="10">TX:0.4%</text>
+  <text x="370" y="15" fill="#9ECE6A" font-size="10">87%+</text>
+
+  <!-- Drilldown title -->
+  <text x="9" y="38" fill="#FAA61A" font-size="13" font-weight="600">Identity</text>
+  <line x1="9" y1="42" x2="391" y2="42" stroke="#FAA61A" stroke-width="0.5"/>
+
+  <!-- Field rows. Each row ≈ 16 px tall. Label left, value right. -->
+  <g font-size="10">
+    <!-- Radio ID (read-only — dim value) -->
+    <text x="12" y="60" fill="#C0C8D0">Radio ID</text>
+    <text x="388" y="60" text-anchor="end" fill="#565F89">SX1262</text>
+
+    <!-- Radio firmware (read-only — dim value) -->
+    <text x="12" y="76" fill="#C0C8D0">Radio firmware</text>
+    <text x="388" y="76" text-anchor="end" fill="#565F89">v3.2.0</text>
+
+    <!-- Owner name (focused / editing — amber highlight + cursor) -->
+    <rect x="6" y="80" width="388" height="17" fill="#1A1F26"/>
+    <text x="12" y="92" fill="#FAA61A" font-weight="500">Owner name</text>
+    <text x="388" y="92" text-anchor="end" fill="#FAA61A" font-weight="500">Alex&#8203;|</text>
+
+    <!-- Advert name -->
+    <text x="12" y="108" fill="#C0C8D0">Advert name</text>
+    <text x="388" y="108" text-anchor="end" fill="#9ECE6A">NL-EHV-Alex</text>
+
+    <!-- Role -->
+    <text x="12" y="124" fill="#C0C8D0">Role</text>
+    <text x="388" y="124" text-anchor="end" fill="#9ECE6A">Chat</text>
+  </g>
+
+  <!-- Callout: do this first -->
+  <text x="12" y="156" fill="#565F89" font-size="9">Set these two first — the Advert name is what</text>
+  <text x="12" y="168" fill="#565F89" font-size="9">everyone else sees for you on the mesh.</text>
+
+  <!-- Footer with key hint -->
+  <rect x="0" y="200" width="400" height="40" fill="#16161E"/>
+  <rect x="0" y="200" width="400" height="1" fill="#FAA61A"/>
+  <text x="6" y="213" fill="#565F89" font-size="8">Enter: edit / commit    type to change    Backspace: delete    red X: cancel</text>
+  <text x="6" y="225" fill="#565F89" font-size="8">W/S: row    ESC: back to categories</text>
+  <text x="394" y="234" text-anchor="end" fill="#565F89" font-size="8">saved to NVS on Enter</text>
+</svg>
