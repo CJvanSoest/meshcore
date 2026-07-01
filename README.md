@@ -50,13 +50,14 @@ Everything beyond this page lives in [`docs/`](docs/README.md).
 
 | Page | About |
 |---|---|
+| [Getting started](docs/guides/Getting-Started.md) | First run: set your Owner + Advert name, then get on the air |
 | [Blueprint](docs/architecture/Blueprint.md) | Design rationale and how to program in this project |
 | [Architecture](docs/architecture/Architecture.md) | The enforced layers, forbidden includes, wire boundary |
 | [Overview](docs/architecture/Overview.md) | The `mc_*` components and how they interact |
 | [Protocol](docs/reference/MeshCore-Protocol.md) | Packet types, encryption, ACK |
 | [UI / UX](docs/features/UI-UX.md) | Views, key bindings, edit-mode state machine |
 | [Settings / NVS](docs/reference/Settings-NVS.md) | Persistent keys, defaults, regulatory tables |
-| [GPS sources](docs/features/GPS-Sources.md) | The five input paths and how to wire them |
+| [GPS sources](docs/features/GPS-Sources.md) | The four input paths and how to wire them |
 | [Maps](docs/features/Maps.md) · [Sounds](docs/features/Sounds.md) · [SD layout](docs/reference/SD-Card-Layout.md) | Feature detail |
 | [C6 radio](docs/reference/C6-Radio.md) · [Build / Deploy](docs/guides/Build-Deploy.md) | Hardware and toolchain |
 
