@@ -562,6 +562,12 @@ static void nav_chat(uint32_t key) {
             }
             return;
         }
+        if (!chat_typing && !dm_inbox_mode) {
+            // Open DM conversation (not the inbox): RETURN starts composing;
+            // a second RETURN sends. Mirrors the keyboard Enter behaviour.
+            chat_typing = true;
+            return;
+        }
         if (chat_typing && chat_input_len > 0) {
             if (dm_target_set) {
                 uint8_t ack_crc[4] = {0};
@@ -630,6 +636,12 @@ static void nav_channel(uint32_t key) {
                 ch_select_channel(channel_list_cursor);
                 channel_list_mode = false;
             }
+            return;
+        }
+        if (!chat_typing) {
+            // Open channel view: RETURN starts composing; a second RETURN
+            // sends. Mirrors the keyboard Enter behaviour.
+            chat_typing = true;
             return;
         }
         if ((current_view == VIEW_CHANNEL) && chat_typing && chat_input_len > 0) {
@@ -1451,7 +1463,8 @@ void handle_key(char c) {
             if (dm_inbox_cursor < upper) dm_inbox_cursor++;
             return;
         }
-        // T to type only works inside the chat view; here we ignore it.
+        // Typing is Enter-triggered inside an open conversation, not in the
+        // inbox; swallow a stray T here so it does nothing.
         if (c == 't' || c == 'T') return;
         // Tab falls through (ESC is handled at the top of handle_key).
     }
@@ -1619,11 +1632,16 @@ void handle_key(char c) {
             }
             return;
         } else {
-            if (c == 't' || c == 'T') {
+            // Enter starts composing; a second Enter (handled above, while
+            // typing) sends. Deliberate two-step so a stray key can't type or
+            // send by accident. Only in an open conversation -- in the DM inbox
+            // Enter opens the selected conversation (handled downstream), so
+            // fall through there instead of swallowing it.
+            if (c == '\r' || c == '\n') {
                 if (current_view == VIEW_CHANNEL || (current_view == VIEW_CHAT && !dm_inbox_mode)) {
                     chat_typing = true;
+                    return;
                 }
-                return;
             }
             if (c == 'w' || c == 'W') {
                 if (current_view == VIEW_CHANNEL) {

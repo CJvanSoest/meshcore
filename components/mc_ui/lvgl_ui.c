@@ -1670,7 +1670,7 @@ static int msg_wrap_lvgl(const char* text, int max_w, char out[][MAX_MSG_TEXT], 
 static void render_msg_list_lvgl(lv_obj_t* scr, int w, int list_y0, int list_h, chat_msg_t* msgs, int head, int count,
                                  int* scroll_p, bool is_channel) {
     if (count == 0) {
-        add_label(scr, 14, list_y0 + 10, TXT_BODY, COL_GRAY, "No messages yet. Press T to type.");
+        add_label(scr, 14, list_y0 + 10, TXT_BODY, COL_GRAY, "No messages yet. Press Enter to type.");
         return;
     }
     int sc = *scroll_p;
@@ -1939,7 +1939,7 @@ static void render_chat_lvgl(void) {
         snprintf(ctr, sizeof(ctr), "%d/%d", chat_input_len, MAX_INPUT_LEN);
         add_label(scr, w - text_w(ctr, TXT_SMALL) - 10, iy + (CHAT_INPUT_H - TXT_SMALL) / 2, TXT_SMALL, COL_GRAY, ctr);
     } else {
-        add_label(scr, 10, iy + (CHAT_INPUT_H - TXT_SMALL) / 2, TXT_SMALL, COL_AMBER, "T: type message");
+        add_label(scr, 10, iy + (CHAT_INPUT_H - TXT_SMALL) / 2, TXT_SMALL, COL_AMBER, "Enter: type message");
     }
 
     int fy = h - FOOTER_H;
@@ -1957,7 +1957,7 @@ static void render_chat_lvgl(void) {
         add_circle(scr, icon_x + 6, icon_y, 6, -1, COL_GREEN, 2);
         add_label(scr, icon_x + 18, hint_ty, TXT_SMALL, COL_HINT, ": emoji");
     } else {
-        const char* hint = "T: type   W/S: scroll   Tab: next tab   ";
+        const char* hint = "Enter: type   W/S: scroll   Tab: next tab   ";
         add_label(scr, 10, hint_ty, TXT_SMALL, COL_HINT, hint);
         add_back_hint(scr, 10 + text_w(hint, TXT_SMALL), hint_ty, ": back to inbox", TXT_SMALL);
     }
@@ -2149,7 +2149,7 @@ static void render_channel_lvgl(void) {
         add_circle(scr, icon_x + 6, icon_y, 6, -1, COL_GREEN, 2);
         add_label(scr, icon_x + 18, hint_ty, TXT_SMALL, COL_HINT, ": emoji");
     } else {
-        const char* hint = "T: type   W/S: scroll   R: clear   Tab: next   ";
+        const char* hint = "Enter: type   W/S: scroll   R: clear   Tab: next   ";
         add_label(scr, 10, hint_ty, TXT_SMALL, COL_HINT, hint);
         add_back_hint(scr, 10 + text_w(hint, TXT_SMALL), hint_ty, ": list", TXT_SMALL);
     }

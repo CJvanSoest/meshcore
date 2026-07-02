@@ -329,7 +329,7 @@ void settings_field_value(field_t f, char* out, size_t cap) {
         }
         case FIELD_SEND_FLOOD_NOW:
         case FIELD_SEND_DIRECT_NOW:
-            snprintf(out, cap, "press OK");
+            snprintf(out, cap, "press ENTER");
             break;
 
         // ── Network ──
