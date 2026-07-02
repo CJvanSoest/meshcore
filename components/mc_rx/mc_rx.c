@@ -463,7 +463,9 @@ typedef struct {
     uint8_t hashes[];
 } adv_direct_args_t;
 
-static void send_advert_internal(bool direct_route, const uint8_t* dst_hash, uint8_t bph) {
+// async=true enqueues the TX (UI-thread callers, never blocks); async=false
+// runs radio_tx_message directly (background callers that pace their own sends).
+static void send_advert_internal(bool direct_route, const uint8_t* dst_hash, uint8_t bph, bool async) {
     if (!c6_available || !identity_is_ready()) return;
 
     meshcore_advert_t advert = {0};
@@ -513,7 +515,8 @@ static void send_advert_internal(bool direct_route, const uint8_t* dst_hash, uin
     }
     msg.payload_length = payload_len;
     memcpy(msg.payload, payload, payload_len);
-    if (radio_tx_message(&msg)) {
+    bool ok = async ? radio_tx_enqueue(&msg) : radio_tx_message(&msg);
+    if (ok) {
         last_advert_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
         ESP_LOGI(TAG, "ADVERT sent (%s) pub=%02X%02X%02X%02X", advert.name_valid ? advert.name : "(no name)",
                  node_pub_key[0], node_pub_key[1], node_pub_key[2], node_pub_key[3]);
@@ -521,22 +524,29 @@ static void send_advert_internal(bool direct_route, const uint8_t* dst_hash, uin
 }
 
 void send_advert(void) {
-    send_advert_internal(false, NULL, 0);
+    // UI-thread entry (Settings "Send flood now" + periodic task): enqueue so
+    // the caller never blocks on the radio.
+    send_advert_internal(false, NULL, 0, true);
 }
+
+// Set while a send_advert_direct_task is running so overlapping calls (fast
+// presses / a periodic tick landing mid-run) can't spawn a second task.
+static volatile bool s_adv_direct_in_flight = false;
 
 static void send_advert_direct_task(void* arg) {
     adv_direct_args_t* a = (adv_direct_args_t*)arg;
     if (a->n == 0) {
-        send_advert_internal(true, NULL, 0);
+        send_advert_internal(true, NULL, 0, false);
     } else {
         for (int i = 0; i < a->n; i++) {
-            send_advert_internal(true, a->hashes + i * 32, a->bph);
+            send_advert_internal(true, a->hashes + i * 32, a->bph, false);
             // 250 ms gap — a bit more generous than the flood path's 150 ms
             // so 16 sequential TXs stay under ~1 % of the 1-hour duty budget.
             vTaskDelay(pdMS_TO_TICKS(250));
         }
     }
     free(a);
+    s_adv_direct_in_flight = false;
     vTaskDelete(NULL);
 }
 
@@ -550,6 +560,10 @@ static void send_advert_direct_task(void* arg) {
 // tenths of a percent duty-cycle hit.
 void send_advert_direct(void) {
     if (!c6_available || !identity_is_ready()) return;
+    // Overlap guard: this run spawns a task that can take ~5 s (16 contacts ×
+    // 250 ms). Without it, mashing "Send direct now" (or a periodic tick landing
+    // mid-run) spawned unbounded 4 KB-stack tasks -> heap/stack exhaustion crash.
+    if (s_adv_direct_in_flight) return;
     uint8_t bph = path_hash_size ? path_hash_size : 1;
 
     // Worst case MAX_CONTACTS × 32-byte hashes = 512 B. Allocate from heap
@@ -559,7 +573,7 @@ void send_advert_direct(void) {
     if (!a) {
         // OOM — fall back to the single no-dst direct so the user still
         // gets feedback (toast is set by the caller after this returns).
-        send_advert_internal(true, NULL, 0);
+        send_advert_internal(true, NULL, 0, true);
         return;
     }
     a->n   = 0;
@@ -571,10 +585,12 @@ void send_advert_direct(void) {
         }
         xSemaphoreGive(node_mutex);
     }
-    BaseType_t r = xTaskCreate(send_advert_direct_task, "adv_direct", 4096, a, 3, NULL);
+    s_adv_direct_in_flight = true;
+    BaseType_t r           = xTaskCreate(send_advert_direct_task, "adv_direct", 4096, a, 3, NULL);
     if (r != pdPASS) {
+        s_adv_direct_in_flight = false;
         free(a);
-        send_advert_internal(true, NULL, 0);
+        send_advert_internal(true, NULL, 0, true);
     }
 }
 
@@ -649,7 +665,9 @@ bool send_dm_message(const char* text, const uint8_t* target_pub, uint8_t ack_cr
     msg.payload[3]         = mac[1];
     memcpy(&msg.payload[4], cipher, padded);
     msg.payload_length = (uint8_t)(4 + padded);
-    return radio_tx_message(&msg);
+    // ack_crc_out is already computed above, so enqueuing (non-blocking) keeps
+    // the UI responsive; the caller arms ACK detection on a successful queue.
+    return radio_tx_enqueue(&msg);
 }
 
 // ── Coverage test: ping a repeater N times and record reachability ───────────
@@ -811,15 +829,17 @@ bool send_chat_message(const char* text, uint8_t out_fp[4]) {
     msg.path_length        = 0;
     msg.payload_length     = payload_len;
     memcpy(msg.payload, payload, payload_len);
-    bool ok = radio_tx_message(&msg);
-    if (ok) {
-        ESP_LOGI(TAG, "Chat sent: %s", prefixed);
-        if (out_fp) {
-            int n = payload_len < 4 ? payload_len : 4;
-            memset(out_fp, 0, 4);
-            memcpy(out_fp, payload, n);
-        }
+    // Fingerprint (first 4 payload bytes) lets the RX path recognise the
+    // repeater echo of our own flood as a relay confirmation. Compute it before
+    // handing off to TX so the caller can arm relay detection even though the
+    // actual send now happens asynchronously on the TX worker.
+    if (out_fp) {
+        int n = payload_len < 4 ? payload_len : 4;
+        memset(out_fp, 0, 4);
+        memcpy(out_fp, payload, n);
     }
+    bool ok = radio_tx_enqueue(&msg);
+    if (ok) ESP_LOGI(TAG, "Chat queued: %s", prefixed);
     return ok;
 }
 

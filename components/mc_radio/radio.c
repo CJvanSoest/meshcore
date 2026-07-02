@@ -6,6 +6,7 @@
 #include <string.h>
 #include "diag.h"
 #include "esp_log.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
 #include "mc_crypto.h"
 #include "meshcore/packet.h"
@@ -277,6 +278,38 @@ bool radio_tx_message(meshcore_message_t* msg) {
     return ok;
 }
 
+// ── UI-safe TX: queue + worker ──────────────────────────────────────────────
+// radio_tx_message blocks up to ~2 s on the C6 ACK. Running it on the app_main
+// (UI) thread froze the whole app on every send. The worker task drains this
+// queue so the UI thread only pays the cheap enqueue. Depth is small: sends are
+// human-paced and each queued message is a full meshcore_message_t (~256 B).
+#define TX_QUEUE_DEPTH 6
+static QueueHandle_t s_tx_q = NULL;
+
+static void tx_worker_task(void* arg) {
+    (void)arg;
+    ESP_LOGI(TAG, "TX worker task started");
+    meshcore_message_t msg;
+    while (1) {
+        if (xQueueReceive(s_tx_q, &msg, portMAX_DELAY) == pdTRUE) {
+            radio_tx_message(&msg);
+        }
+    }
+}
+
+bool radio_tx_enqueue(const meshcore_message_t* msg) {
+    if (msg == NULL) return false;
+    // Before the worker exists (early boot), fall back to a direct send so we
+    // never silently drop a frame. Callers on the UI thread only run after
+    // radio_start_tasks(), so this path is effectively boot-only.
+    if (s_tx_q == NULL) return radio_tx_message((meshcore_message_t*)msg);
+    if (xQueueSend(s_tx_q, msg, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "TX queue full; dropping frame");
+        return false;
+    }
+    return true;
+}
+
 static void lora_rx_task(void* arg) {
     (void)arg;
     ESP_LOGI(TAG, "LoRa RX task started");
@@ -340,8 +373,10 @@ static void lora_rx_task(void* arg) {
 void radio_start_tasks(void) {
     if (rx_mutex == NULL) rx_mutex = xSemaphoreCreateMutex();
     if (dc_mutex == NULL) dc_mutex = xSemaphoreCreateMutex();
+    if (s_tx_q == NULL) s_tx_q = xQueueCreate(TX_QUEUE_DEPTH, sizeof(meshcore_message_t));
     xTaskCreate(lora_rx_task, "lora_rx", 10240, NULL, 5, NULL);
     xTaskCreate(noise_floor_task, "noise_poll", 3072, NULL, 3, NULL);
+    xTaskCreate(tx_worker_task, "lora_tx", 4096, NULL, 5, NULL);
 }
 
 // ── LoRa config reconcile (moved from settings_nvs.c) ────────────────────────

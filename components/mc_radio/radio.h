@@ -92,9 +92,17 @@ void radio_set_rx_sink(radio_rx_sink_fn sink);
 
 // Finalize + transmit a composed message: apply region scope, serialize, gate
 // on the duty-cycle budget, then send over the C6. Returns false on a
-// serialize failure or an exhausted budget. Used by the TX paths and by the
-// RX ACK return in mc_rx.
+// serialize failure or an exhausted budget. BLOCKS up to ~2 s waiting for the
+// C6 -- call it only from a background task, never from the UI thread. Used by
+// the RX ACK return and by TX paths that already run on their own task.
 bool radio_tx_message(meshcore_message_t* msg);
+
+// Non-blocking TX: copy the composed message onto the TX worker's queue and
+// return immediately (true = queued, false = queue full or not yet started).
+// This is the UI-safe path -- the worker task runs radio_tx_message so the
+// caller (input/UI thread) never stalls on the radio. Falls back to a direct
+// radio_tx_message if called before radio_start_tasks().
+bool radio_tx_enqueue(const meshcore_message_t* msg);
 
 // Reconcile the LoRa config in NVS with the live C6 radio over lora_handle.
 // load_lora_config pulls from NVS then prefers/pushes against the C6; save
