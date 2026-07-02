@@ -33,3 +33,13 @@ void identity_mark_time_synced(void);
 // be rejected by RFC8032 verifiers and the mesh will silently drop us.
 extern bool ed25519_tv1_keypair_ok;
 extern bool ed25519_tv1_sign_ok;
+
+// Read the 32-byte identity seed from NVS into out_seed. Returns false if none
+// is stored. Used by the SD config backup so a node keeps its identity across
+// an NVS wipe.
+bool identity_export_seed(uint8_t out_seed[32]);
+
+// Overwrite the identity seed in NVS and re-derive the live keypair
+// (node_pub_key / node_prv_key) from it. Used by config-restore to bring back a
+// node's previous identity. Returns false if NVS could not be written.
+bool identity_import_seed(const uint8_t seed[32]);

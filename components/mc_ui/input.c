@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "app_config.h"
+#include "backup.h"
 #include "ble_companion.h"
 #include "bsp/device.h"
 #include "bsp/input.h"
@@ -18,6 +19,7 @@
 #include "diag.h"
 #include "emoji_table.h"  // EMOJI_SET / emoji_entry_t (picker selection)
 #include "esp_log.h"
+#include "esp_system.h"  // esp_restart (Storage Viewer factory reset)
 #include "freertos/FreeRTOS.h"
 #include "gps.h"
 #include "gps_task.h"
@@ -95,6 +97,7 @@ static void open_home_tile(int idx) {
 
     if (target == VIEW_HOME) return;
     current_view = target;
+    if (target == VIEW_ABOUT) about_scroll = 0;
     if (target == VIEW_CHAT) {
         dm_inbox_mode  = true;
         led_dm_pending = false;
@@ -781,8 +784,74 @@ static void open_toolbox_tile(void) {
     } else if (t == VIEW_TOOLBOX_COVERAGE) {
         toolbox_coverage_cursor = 0;
         coverage_session_reset();  // fresh SD log + cleared results for this area test
+    } else if (t == VIEW_TOOLBOX_STORAGE) {
+        toolbox_storage_cursor  = 0;
+        toolbox_storage_confirm = false;
     }
     current_view = t;
+}
+
+// Execute the armed Storage Viewer action. Feedback is a toast plus the live
+// info rows (backup size / counts) the view re-reads each frame.
+static void storage_run_action(void) {
+    switch (toolbox_storage_cursor) {
+        case 0: {  // Backup now
+            bool ok = backup_write();
+            snprintf(toast_text, sizeof(toast_text), ok ? "Backup written to SD" : "Backup failed (no SD?)");
+            break;
+        }
+        case 1: {  // Restore from backup (manual force-merge)
+            int n = backup_restore(true);
+            if (n < 0)
+                snprintf(toast_text, sizeof(toast_text), "No backup on SD");
+            else
+                snprintf(toast_text, sizeof(toast_text), "Restored %d item(s)", n);
+            break;
+        }
+        case 2:  // Factory reset (backup first) then reboot
+            backup_factory_reset();
+            esp_restart();  // no return
+            break;
+        default:
+            return;
+    }
+    toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+}
+
+// Storage Viewer: W/S move between the action rows; Enter arms a confirm, a
+// second Enter runs it. ESC (handled in the nav ESC branch) cancels the arm.
+static void nav_toolbox_storage(uint32_t key) {
+    if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
+        if (toolbox_storage_cursor > 0) toolbox_storage_cursor--;
+        toolbox_storage_confirm = false;
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
+        toolbox_storage_cursor++;  // render clamps to the action count
+        toolbox_storage_confirm = false;
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
+        if (toolbox_storage_confirm) {
+            toolbox_storage_confirm = false;
+            storage_run_action();
+        } else {
+            toolbox_storage_confirm = true;
+        }
+    }
+}
+
+static void key_toolbox_storage(char c) {
+    if (c == 'w' || c == 'W') {
+        if (toolbox_storage_cursor > 0) toolbox_storage_cursor--;
+        toolbox_storage_confirm = false;
+    } else if (c == 's' || c == 'S') {
+        toolbox_storage_cursor++;
+        toolbox_storage_confirm = false;
+    } else if (c == '\r' || c == '\n') {
+        if (toolbox_storage_confirm) {
+            toolbox_storage_confirm = false;
+            storage_run_action();
+        } else {
+            toolbox_storage_confirm = true;
+        }
+    }
 }
 
 // Ping the repeater under the coverage cursor (3x, GPS-stamped). Re-collects so
@@ -966,6 +1035,8 @@ static void channel_commit_add(void) {
     }
 }
 
+static void nav_about(uint32_t key);  // defined below, near key_about
+
 void handle_nav(uint32_t key) {
     if (qr_overlay_active) {
         // Overlay swallows all nav keys; the red X (F1) dismisses it. ESC is no
@@ -1076,7 +1147,10 @@ void handle_nav(uint32_t key) {
             settings_scroll             = 0;
         } else if (current_view == VIEW_TOOLBOX_LOG && toolbox_log_detail) {
             toolbox_log_detail = false;  // first ESC closes the detail breakdown
-        } else if (current_view == VIEW_TOOLBOX_LOG || current_view == VIEW_TOOLBOX_COVERAGE) {
+        } else if (current_view == VIEW_TOOLBOX_STORAGE && toolbox_storage_confirm) {
+            toolbox_storage_confirm = false;  // first ESC cancels the armed action
+        } else if (current_view == VIEW_TOOLBOX_LOG || current_view == VIEW_TOOLBOX_COVERAGE ||
+                   current_view == VIEW_TOOLBOX_STORAGE) {
             current_view = VIEW_TOOLBOX;  // back to the launcher
         } else if (current_view == VIEW_TOOLBOX) {
             // Toolbox was reached from the Settings grid — return there.
@@ -1093,6 +1167,9 @@ void handle_nav(uint32_t key) {
         switch (current_view) {
             case VIEW_HOME:
                 nav_home(key);
+                break;
+            case VIEW_ABOUT:
+                nav_about(key);
                 break;
             case VIEW_SETTINGS:
                 nav_settings(key);
@@ -1124,6 +1201,9 @@ void handle_nav(uint32_t key) {
             case VIEW_TOOLBOX_LOG:
                 nav_toolbox_log(key);
                 break;
+            case VIEW_TOOLBOX_STORAGE:
+                nav_toolbox_storage(key);
+                break;
             case VIEW_TOOLBOX_COVERAGE:
                 nav_toolbox_coverage(key);
                 break;
@@ -1152,6 +1232,26 @@ static void key_home(char c) {
         if (home_cursor < total - 1) home_cursor++;
     } else if (c == '\r' || c == '\n') {
         open_home_tile(home_cursor);
+    }
+}
+
+// About view scrolls its (now taller, with the node key) content. Render clamps
+// about_scroll to the max on the way down.
+#define ABOUT_SCROLL_STEP 32
+static void nav_about(uint32_t key) {
+    if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
+        about_scroll -= ABOUT_SCROLL_STEP;
+        if (about_scroll < 0) about_scroll = 0;
+    } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
+        about_scroll += ABOUT_SCROLL_STEP;
+    }
+}
+static void key_about(char c) {
+    if (c == 'w' || c == 'W') {
+        about_scroll -= ABOUT_SCROLL_STEP;
+        if (about_scroll < 0) about_scroll = 0;
+    } else if (c == 's' || c == 'S') {
+        about_scroll += ABOUT_SCROLL_STEP;
     }
 }
 
@@ -1691,6 +1791,9 @@ void handle_key(char c) {
 
     // All remaining keys (W/S/A/D/F/L/Q/Enter/R/`<>,.`/D) are view-specific.
     switch (current_view) {
+        case VIEW_ABOUT:
+            key_about(c);
+            break;
         case VIEW_HOME:
             key_home(c);
             break;
@@ -1714,6 +1817,9 @@ void handle_key(char c) {
             break;
         case VIEW_TOOLBOX_LOG:
             key_toolbox_log(c);
+            break;
+        case VIEW_TOOLBOX_STORAGE:
+            key_toolbox_storage(c);
             break;
         case VIEW_TOOLBOX_COVERAGE:
             key_toolbox_coverage(c);

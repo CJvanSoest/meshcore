@@ -48,7 +48,7 @@ SRC_TRACE       = ../components/mc_proto/trace.c
 
 .PHONY: all test clean
 
-all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share
+all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup
 
 test_ed25519: test_ed25519.c $(SRC_ED25519)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
@@ -141,7 +141,13 @@ test_trace: test_trace.c $(SRC_TRACE)
 test_channel_share: test_channel_share.c ../components/mc_domain/channel_share.c
 	$(CC) $(CFLAGS) -I../components/mc_domain -o $@ $^
 
-test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share
+# On-SD config backup codec. Pure-C, no libs. Guards the serialise/parse
+# round-trip + every rejection path (magic/version/CRC/range) that protects the
+# private-channel-secret restore after an NVS wipe.
+test_backup: test_backup.c ../components/mc_domain/backup_codec.c
+	$(CC) $(CFLAGS) -I../components/mc_domain -o $@ $^
+
+test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup
 	./test_ed25519
 	./test_gps_nmea
 	./test_companion_protocol
@@ -157,6 +163,7 @@ test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test
 	./test_diag_decode
 	./test_trace
 	./test_channel_share
+	./test_backup
 
 clean:
-	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup

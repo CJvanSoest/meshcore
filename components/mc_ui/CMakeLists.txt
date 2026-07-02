@@ -28,4 +28,6 @@ idf_component_register(
         vendor
         wifi-manager
         esp_app_format
+        nvs_flash
+        appfs
 )

@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "channels.h"
+#include <stdio.h>
 #include <string.h>
+#include "backup.h"  // backup_write — mirror channel changes to SD
 #include "esp_log.h"
 #include "esp_random.h"
+#include "locfs.h"  // internal FAT store (keeps channels off the shared NVS)
 #include "mbedtls/sha256.h"
 #include "nvs.h"
 
@@ -12,6 +15,7 @@ static const char* TAG = "channels";
 
 #define NVS_NAMESPACE "system"
 #define NVS_KEY       "mc.channels"
+#define CH_FILE       LOCFS_MOUNT "/mc_channels.bin"
 
 // Upstream MeshCore PUBLIC_GROUP_PSK ("izOH6cXN6mrJ5e26oRXNcg==" base64-decoded).
 // Hardcoded; same value lives in chat.c for backwards compat.
@@ -73,24 +77,7 @@ typedef struct __attribute__((packed)) {
     uint8_t secret[CHANNEL_SECRET_LEN];
 } stored_channel_t;
 
-static void load_from_nvs(void) {
-    nvs_handle_t h;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return;
-
-    size_t    blob_size = 0;
-    esp_err_t res       = nvs_get_blob(h, NVS_KEY, NULL, &blob_size);
-    if (res != ESP_OK || blob_size < 1) {
-        nvs_close(h);
-        return;
-    }
-    uint8_t buf[1 + (CHANNELS_MAX - 1) * sizeof(stored_channel_t)];
-    if (blob_size > sizeof(buf)) blob_size = sizeof(buf);
-    if (nvs_get_blob(h, NVS_KEY, buf, &blob_size) != ESP_OK) {
-        nvs_close(h);
-        return;
-    }
-    nvs_close(h);
-
+static void parse_channels(const uint8_t* buf, size_t blob_size) {
     uint8_t count = buf[0];
     if (count > CHANNELS_MAX - 1) count = CHANNELS_MAX - 1;
     stored_channel_t const* src = (stored_channel_t const*)(buf + 1);
@@ -107,10 +94,47 @@ static void load_from_nvs(void) {
     }
 }
 
-void channels_save_nvs(void) {
-    nvs_handle_t h;
-    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return;
+// Load channels from the internal FAT store when present, else from NVS. When
+// the store is available but the file doesn't exist yet, we read the legacy NVS
+// blob and migrate it (write the file + drop the NVS copy) to shrink our NVS
+// footprint. See locfs.c / issue #66.
+static void load_channels(void) {
+    uint8_t buf[1 + (CHANNELS_MAX - 1) * sizeof(stored_channel_t)];
 
+    if (locfs_ready()) {
+        FILE* f = fopen(CH_FILE, "rb");
+        if (f) {
+            size_t n = fread(buf, 1, sizeof(buf), f);
+            fclose(f);
+            if (n >= 1) {
+                parse_channels(buf, n);
+                return;
+            }
+        }
+    }
+
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return;
+    size_t blob_size = 0;
+    if (nvs_get_blob(h, NVS_KEY, NULL, &blob_size) != ESP_OK || blob_size < 1) {
+        nvs_close(h);
+        return;
+    }
+    if (blob_size > sizeof(buf)) blob_size = sizeof(buf);
+    if (nvs_get_blob(h, NVS_KEY, buf, &blob_size) != ESP_OK) {
+        nvs_close(h);
+        return;
+    }
+    nvs_close(h);
+    parse_channels(buf, blob_size);
+
+    if (locfs_ready()) {
+        ESP_LOGI(TAG, "migrating channels NVS -> %s", CH_FILE);
+        channels_save_nvs();  // writes the file + erases the NVS key
+    }
+}
+
+void channels_save_nvs(void) {
     uint8_t           buf[1 + (CHANNELS_MAX - 1) * sizeof(stored_channel_t)] = {0};
     uint8_t           count                                                  = 0;
     stored_channel_t* dst                                                    = (stored_channel_t*)(buf + 1);
@@ -122,11 +146,29 @@ void channels_save_nvs(void) {
     }
     buf[0]           = count;
     size_t blob_size = 1 + count * sizeof(stored_channel_t);
-    if (nvs_set_blob(h, NVS_KEY, buf, blob_size) == ESP_OK) {
-        nvs_commit(h);
+
+    if (locfs_ready()) {
+        FILE* f = fopen(CH_FILE, "wb");
+        if (f) {
+            fwrite(buf, 1, blob_size, f);
+            fclose(f);
+        }
+        nvs_handle_t h;  // drop the legacy NVS copy so it stops using the shared partition
+        if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+            nvs_erase_key(h, NVS_KEY);  // ignores not-found
+            nvs_commit(h);
+            nvs_close(h);
+        }
+        ESP_LOGI(TAG, "Saved %u user channels to %s", (unsigned)count, CH_FILE);
+    } else {
+        nvs_handle_t h;
+        if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+            if (nvs_set_blob(h, NVS_KEY, buf, blob_size) == ESP_OK) nvs_commit(h);
+            nvs_close(h);
+        }
+        ESP_LOGI(TAG, "Saved %u user channels to NVS", (unsigned)count);
     }
-    nvs_close(h);
-    ESP_LOGI(TAG, "Saved %u user channels to NVS", (unsigned)count);
+    backup_write();  // keep the SD mirror in sync (no-op if SD not ready)
 }
 
 void channels_init(void) {
@@ -134,7 +176,7 @@ void channels_init(void) {
     channel_count      = 0;
     active_channel_idx = 0;
     bootstrap_public();
-    load_from_nvs();
+    load_channels();
 
     for (int i = 0; i < channel_count; i++) {
         if (!channels[i].active) continue;

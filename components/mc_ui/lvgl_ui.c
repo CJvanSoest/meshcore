@@ -8,6 +8,8 @@
 #include <string.h>
 #include <time.h>
 #include "app_config.h"
+#include "appfs.h"
+#include "backup.h"
 #include "bsp/power.h"
 #include "channels.h"
 #include "chat.h"
@@ -21,11 +23,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "gps_task.h"
+#include "history.h"
 #include "identity.h"
+#include "locfs.h"
 #include "lvgl.h"
 #include "lvgl_port.h"
 #include "map.h"
 #include "nodes.h"
+#include "nvs_flash.h"
 #include "qrcodegen.h"
 #include "radio.h"
 #include "region_limits.h"
@@ -268,10 +273,8 @@ static void render_about_lvgl(void) {
     int       h   = (int)lvgl_port_height();
     lv_obj_t* scr = begin_screen(COL_PAGER_BG);
 
-    // Header strip + accent underline + title.
-    add_rect(scr, 0, 0, w, ABOUT_HEADER_H, COL_PAGER_BG);
-    add_rect(scr, 0, ABOUT_HEADER_H - 1, w, 1, COL_PAGER_ACCENT);
-    add_label(scr, 12, (ABOUT_HEADER_H - TXT_TAB) / 2, TXT_TAB, COL_PAGER_TEXT, "About");
+    // Header + footer are drawn AFTER the (scrollable) content below, so
+    // scrolled-up lines are covered by the header strip instead of overlapping it.
 
     const esp_app_desc_t* desc    = esp_app_get_description();
     const char*           ver     = (desc && desc->version[0]) ? desc->version : "?";
@@ -282,6 +285,11 @@ static void render_about_lvgl(void) {
     snprintf(ver_line, sizeof(ver_line), "MeshCore  %s", ver);
     static char build_line[96];
     snprintf(build_line, sizeof(build_line), "Built %s  %s", built_d, built_t);
+
+    // Node public key (identity), split over two lines of 16 bytes each.
+    static char pk_hi[40], pk_lo[40];
+    for (int i = 0; i < 16; i++) snprintf(pk_hi + i * 2, 3, "%02x", node_pub_key[i]);
+    for (int i = 0; i < 16; i++) snprintf(pk_lo + i * 2, 3, "%02x", node_pub_key[16 + i]);
 
     about_line_t lines[] = {
         {COL_PAGER_ACCENT, TXT_TITLE, ver_line, 6},
@@ -295,6 +303,10 @@ static void render_about_lvgl(void) {
         {COL_GRAY, TXT_SMALL, "MeshCore  by  Ripple Radios", 2},
         {COL_GRAY, TXT_SMALL, "Tanmatsu  by  Nicolai Electronics", 16},
 
+        {COL_PAGER_TEXT, TXT_BODY, "Node public key", 4},
+        {COL_GREEN, TXT_SMALL, pk_hi, 2},
+        {COL_GREEN, TXT_SMALL, pk_lo, 16},
+
         {COL_PAGER_TEXT, TXT_BODY, "License", 4},
         {COL_GRAY, TXT_SMALL, "MIT (see LICENSE in the repo)", 16},
 
@@ -306,18 +318,38 @@ static void render_about_lvgl(void) {
     };
     const int n_lines = (int)(sizeof(lines) / sizeof(lines[0]));
 
+    // Clamp the scroll to the content height, then draw the visible band.
+    int total = 0;
+    for (int i = 0; i < n_lines; i++) total += lines[i].font_size + 4 + lines[i].space_after;
+    int top_y      = ABOUT_HEADER_H + 12;
+    int bot_y      = h - ABOUT_FOOTER_H;
+    int max_scroll = total - (bot_y - top_y);
+    if (max_scroll < 0) max_scroll = 0;
+    if (about_scroll > max_scroll) about_scroll = max_scroll;
+    if (about_scroll < 0) about_scroll = 0;
+
     int x = 28;
-    int y = ABOUT_HEADER_H + 24;
+    int y = top_y - about_scroll;
     for (int i = 0; i < n_lines; i++) {
-        add_label(scr, x, y, lines[i].font_size, lines[i].col, lines[i].text);
-        y += lines[i].font_size + 4 + lines[i].space_after;
+        int lh = lines[i].font_size;
+        if (y + lh > ABOUT_HEADER_H && y < bot_y)  // only lines within the content band
+            add_label(scr, x, y, lines[i].font_size, lines[i].col, lines[i].text);
+        y += lh + 4 + lines[i].space_after;
     }
 
-    // Footer strip + back hint.
+    // Header strip + accent underline + title, over any scrolled-up content.
+    add_rect(scr, 0, 0, w, ABOUT_HEADER_H, COL_PAGER_BG);
+    add_rect(scr, 0, ABOUT_HEADER_H - 1, w, 1, COL_PAGER_ACCENT);
+    add_label(scr, 12, (ABOUT_HEADER_H - TXT_TAB) / 2, TXT_TAB, COL_PAGER_TEXT, "About");
+
+    // Footer strip + scroll/back hints.
     int fy = h - ABOUT_FOOTER_H;
     add_rect(scr, 0, fy, w, ABOUT_FOOTER_H, COL_HEADER);
     add_rect(scr, 0, fy, w, 1, COL_PAGER_ACCENT);
-    add_back_hint(scr, 10, fy + (ABOUT_FOOTER_H - TXT_SMALL) / 2, ": home", TXT_SMALL);
+    int         ty   = fy + (ABOUT_FOOTER_H - TXT_SMALL) / 2;
+    const char* hint = (max_scroll > 0) ? "WS: scroll   " : "";
+    add_label(scr, 10, ty, TXT_SMALL, COL_HINT, hint);
+    add_back_hint(scr, 10 + text_w(hint, TXT_SMALL), ty, ": home", TXT_SMALL);
 }
 
 // ── VIEW_HOME ────────────────────────────────────────────────────────────────
@@ -643,6 +675,7 @@ typedef struct {
 static const tb_meta_t tb_meta[] = {
     {"Packet Log", "Live RX/TX frames, hex dump + dissector", true},
     {"Coverage Test", "Ping repeaters, log reachability to SD", true},
+    {"Storage Viewer", "NVS/SD usage + backup / restore", true},
 };
 #define TB_COUNT ((int)(sizeof(tb_meta) / sizeof(tb_meta[0])))
 
@@ -3102,6 +3135,179 @@ static void render_map_lvgl(void) {
     map_state_tick();
 }
 
+// ── VIEW_TOOLBOX_STORAGE ─────────────────────────────────────────────────────
+// Read-only NVS/SD/app-data usage plus the manual backup/restore/factory-reset
+// actions. The actions are the user-facing test path for the SD backup mirror
+// (see backup.c / issue #66). Destructive actions require a second Enter.
+
+#define ST_HEADER_H 50
+#define ST_FOOTER_H 38
+#define ST_ROW_H    30
+
+#define STORAGE_ACTION_COUNT 3
+static const char* const storage_actions[STORAGE_ACTION_COUNT] = {
+    "Backup now",
+    "Restore from backup",
+    "Factory reset (backup first)",
+};
+
+typedef struct {
+    char ns[16];
+    int  count;
+} st_ns_t;
+
+// Per-namespace NVS entry counts (logical keys, like badgelink `nvs list`),
+// sorted by count desc. The partition is shared by all apps + firmware, so this
+// is the honest granularity — namespaces don't map 1:1 to apps ("system" is
+// shared by the launcher, firmware and us).
+static int st_nvs_ns_counts(st_ns_t* out, int max) {
+    nvs_iterator_t it  = NULL;
+    esp_err_t      err = nvs_entry_find("nvs", NULL, NVS_TYPE_ANY, &it);
+    int            n   = 0;
+    while (err == ESP_OK && it != NULL) {
+        nvs_entry_info_t info;
+        nvs_entry_info(it, &info);
+        int f = -1;
+        for (int i = 0; i < n; i++)
+            if (strcmp(out[i].ns, info.namespace_name) == 0) {
+                f = i;
+                break;
+            }
+        if (f < 0 && n < max) {
+            f = n++;
+            strncpy(out[f].ns, info.namespace_name, sizeof(out[f].ns) - 1);
+            out[f].ns[sizeof(out[f].ns) - 1] = '\0';
+            out[f].count                     = 0;
+        }
+        if (f >= 0) out[f].count++;
+        err = nvs_entry_next(&it);
+    }
+    nvs_release_iterator(it);
+    for (int i = 0; i < n; i++)  // selection sort by count desc (n is tiny)
+        for (int j = i + 1; j < n; j++)
+            if (out[j].count > out[i].count) {
+                st_ns_t t = out[i];
+                out[i]    = out[j];
+                out[j]    = t;
+            }
+    return n;
+}
+
+static void render_toolbox_storage_lvgl(void) {
+    int       w   = (int)lvgl_port_width();
+    int       h   = (int)lvgl_port_height();
+    lv_obj_t* scr = begin_screen(COL_PAGER_BG);
+    pt_reset();
+
+    add_rect(scr, 0, 0, w, ST_HEADER_H, COL_PAGER_BG);
+    add_rect(scr, 0, ST_HEADER_H - 1, w, 1, COL_PAGER_ACCENT);
+    add_label(scr, 12, (ST_HEADER_H - TXT_TAB) / 2, TXT_TAB, COL_PAGER_TEXT, "Storage");
+
+    int  x = 16;
+    int  y = ST_HEADER_H + 8;
+    char line[112];
+
+    nvs_stats_t st;
+    if (nvs_get_stats(NULL, &st) == ESP_OK) {
+        int pct = st.total_entries > 0 ? (int)((st.used_entries * 100) / st.total_entries) : 0;
+        snprintf(line, sizeof(line), "NVS: %d/%d entries (%d%%) - shared by all apps", (int)st.used_entries,
+                 (int)st.total_entries, pct);
+    } else {
+        snprintf(line, sizeof(line), "NVS: stats unavailable");
+    }
+    add_label(scr, x, y, TXT_BODY, COL_PAGER_TEXT, line);
+    y += TXT_BODY + 4;
+
+    // Per-namespace breakdown, two columns of TXT_SMALL rows.
+    st_ns_t ns[12];
+    int     nns  = st_nvs_ns_counts(ns, 12);
+    int     colw = (w - 2 * x) / 2;
+    for (int i = 0; i < nns && i < 8; i++) {
+        int col  = i % 2;
+        int rowy = y + (i / 2) * (TXT_SMALL + 3);
+        snprintf(line, sizeof(line), "%-12s %d", ns[i].ns, ns[i].count);
+        add_label(scr, x + col * colw, rowy, TXT_SMALL, (i == 0) ? COL_AMBER : COL_GRAY, line);
+    }
+    y += ((nns < 8 ? nns : 8) + 1) / 2 * (TXT_SMALL + 3) + 8;
+
+    // RAM + PSRAM (like WadaMesh's memory view) — runtime heap, not persistence.
+    unsigned long ram_f = (unsigned long)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
+    unsigned long ram_t = (unsigned long)(heap_caps_get_total_size(MALLOC_CAP_INTERNAL) / 1024);
+    unsigned long ps_f  = (unsigned long)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
+    unsigned long ps_t  = (unsigned long)(heap_caps_get_total_size(MALLOC_CAP_SPIRAM) / 1024);
+    snprintf(line, sizeof(line), "RAM: %lu/%lu KB free   PSRAM: %lu/%lu KB free", ram_f, ram_t, ps_f, ps_t);
+    add_label(scr, x, y, TXT_BODY, COL_PAGER_TEXT, line);
+    y += TXT_BODY + 4;
+
+    // AppFS free/total (the 8 MB app partition) — same appfsGetFreeMem/
+    // appfsGetTotalMem API the launcher shows under its Apps tile. appfsInit is
+    // lazy + tried once (our process has its own appfs state, separate from the
+    // launcher that loaded us).
+    static int s_appfs = 0;  // 0 = untried, 1 = ok, -1 = failed
+    if (s_appfs == 0) s_appfs = (appfsInit(APPFS_PART_TYPE, APPFS_PART_SUBTYPE) == ESP_OK) ? 1 : -1;
+    uint64_t sd_cap = history_sd_capacity_bytes();
+    char     sdpart[24];
+    if (sd_cap > 0)
+        snprintf(sdpart, sizeof(sdpart), "%lu MB", (unsigned long)(sd_cap / (1024 * 1024)));
+    else
+        snprintf(sdpart, sizeof(sdpart), "none");
+    if (s_appfs == 1)
+        snprintf(line, sizeof(line), "AppFS: %lu/%lu KB free   SD: %s", (unsigned long)(appfsGetFreeMem() / 1024),
+                 (unsigned long)(appfsGetTotalMem() / 1024), sdpart);
+    else
+        snprintf(line, sizeof(line), "AppFS: n/a   SD: %s", sdpart);
+    add_label(scr, x, y, TXT_BODY, COL_PAGER_TEXT, line);
+    y += TXT_BODY + 4;
+
+    int uch = 0;
+    for (int i = 1; i < channel_count && i < CHANNELS_MAX; i++)
+        if (channels[i].active) uch++;
+    // Where channels/contacts actually live (locfd internal FAT vs shared NVS)
+    // + when the SD backup was last written.
+    long bmt       = backup_file_mtime();
+    char bdate[24] = "none";
+    if (bmt > 0) {
+        time_t    t = (time_t)bmt;
+        struct tm tmv;
+        localtime_r(&t, &tmv);
+        strftime(bdate, sizeof(bdate), "%Y-%m-%d %H:%M", &tmv);
+    }
+    snprintf(line, sizeof(line), "Store: %s   Last backup: %s", locfs_ready() ? "locfd" : "NVS", bdate);
+    add_label(scr, x, y, TXT_BODY, backup_exists() ? COL_GREEN : COL_PAGER_TEXT, line);
+    y += TXT_BODY + 4;
+
+    char pk[9];  // first 4 bytes of the node public key — enough to eyeball an identity restore
+    for (int i = 0; i < 4; i++) snprintf(pk + i * 2, 3, "%02x", node_pub_key[i]);
+    snprintf(line, sizeof(line), "Channels: %d   Contacts: %d   Node: %s...", uch, contact_count, pk);
+    add_label(scr, x, y, TXT_BODY, COL_PAGER_TEXT, line);
+    y += TXT_BODY + 10;
+
+    add_label(scr, x, y, TXT_SMALL, COL_AMBER, "Actions");
+    y += TXT_SMALL + 6;
+    if (toolbox_storage_cursor < 0) toolbox_storage_cursor = 0;
+    if (toolbox_storage_cursor >= STORAGE_ACTION_COUNT) toolbox_storage_cursor = STORAGE_ACTION_COUNT - 1;
+    int rw = w - 2 * x;
+    for (int i = 0; i < STORAGE_ACTION_COUNT; i++) {
+        bool foc = (i == toolbox_storage_cursor);
+        add_rect(scr, x, y, rw, ST_ROW_H, foc ? COL_PAGER_ACCENT : COL_PAGER_TILE);
+        add_label(scr, x + 12, y + (ST_ROW_H - TXT_BODY) / 2, TXT_BODY, foc ? COL_HEADER : COL_PAGER_TEXT,
+                  storage_actions[i]);
+        y += ST_ROW_H + 6;
+    }
+
+    int fy = h - ST_FOOTER_H;
+    add_rect(scr, 0, fy, w, ST_FOOTER_H, COL_HEADER);
+    add_rect(scr, 0, fy, w, 1, COL_PAGER_ACCENT);
+    int ty = fy + (ST_FOOTER_H - TXT_SMALL) / 2;
+    if (toolbox_storage_confirm) {
+        add_label(scr, 10, ty, TXT_SMALL, COL_RED, "Confirm?  Enter = do it   ESC = cancel");
+    } else {
+        const char* hint = "WS: nav   Enter: run   ";
+        add_label(scr, 10, ty, TXT_SMALL, COL_HINT, hint);
+        add_back_hint(scr, 10 + text_w(hint, TXT_SMALL), ty, ": toolbox", TXT_SMALL);
+    }
+}
+
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
 bool lvgl_view_active(app_view_t v) {
@@ -3112,6 +3318,7 @@ bool lvgl_view_active(app_view_t v) {
         case VIEW_TOOLBOX:
         case VIEW_TOOLBOX_COVERAGE:
         case VIEW_TOOLBOX_LOG:
+        case VIEW_TOOLBOX_STORAGE:
             return true;
         case VIEW_SETTINGS:
             return true;
@@ -3151,6 +3358,9 @@ void lvgl_view_render(app_view_t v) {
             break;
         case VIEW_TOOLBOX_LOG:
             render_toolbox_log_lvgl();
+            break;
+        case VIEW_TOOLBOX_STORAGE:
+            render_toolbox_storage_lvgl();
             break;
         case VIEW_NODES:
             if (qr_overlay_active) {

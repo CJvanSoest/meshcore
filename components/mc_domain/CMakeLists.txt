@@ -7,6 +7,9 @@ idf_component_register(
         "contacts.c"
         "channels.c"
         "channel_share.c"
+        "backup_codec.c"
+        "backup.c"
+        "locfs.c"
         "chat.c"
         "nodes.c"
         "coverage.c"
@@ -27,6 +30,7 @@ idf_component_register(
         mbedtls
         esp_hw_support
         fatfs
+        wear_levelling
         esp_driver_sdmmc
         sdmmc
         badge-bsp

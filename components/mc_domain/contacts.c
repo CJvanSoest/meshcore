@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 #include "contacts.h"
+#include <stdio.h>
 #include <string.h>
+#include "backup.h"  // backup_write — mirror contact changes to SD
 #include "esp_log.h"
+#include "locfs.h"  // internal FAT store (keeps contacts off the shared NVS)
 #include "nvs.h"
 
 #define NVS_CONTACTS_BLOB "mc.contacts"
+#define CT_FILE           LOCFS_MOUNT "/mc_contacts.bin"
 
 static const char* TAG = "contacts";
 
@@ -17,6 +21,21 @@ int       contact_unread[MAX_CONTACTS] = {0};
 void contacts_load(void) {
     contact_count = 0;
     memset(contacts, 0, sizeof(contacts));
+
+    // Prefer the internal FAT store; fall back to (and migrate off) NVS. Same
+    // scheme as channels — see locfs.c / issue #66.
+    if (locfs_ready()) {
+        FILE* f = fopen(CT_FILE, "rb");
+        if (f) {
+            size_t n = fread(contacts, 1, sizeof(contacts), f);
+            fclose(f);
+            contact_count = (int)(n / sizeof(contact_t));
+            if (contact_count > MAX_CONTACTS) contact_count = MAX_CONTACTS;
+            ESP_LOGI(TAG, "Loaded %d contact(s) from %s", contact_count, CT_FILE);
+            return;
+        }
+    }
+
     nvs_handle_t handle;
     if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
     size_t blob_sz = sizeof(contacts);
@@ -27,9 +46,31 @@ void contacts_load(void) {
         ESP_LOGI(TAG, "Loaded %d contact(s) from NVS", contact_count);
     }
     nvs_close(handle);
+
+    if (locfs_ready() && contact_count > 0) {
+        ESP_LOGI(TAG, "migrating contacts NVS -> %s", CT_FILE);
+        contacts_save();  // writes the file + erases the NVS key
+    }
 }
 
 void contacts_save(void) {
+    if (locfs_ready()) {
+        FILE* f = fopen(CT_FILE, "wb");
+        if (f) {
+            if (contact_count > 0) fwrite(contacts, sizeof(contact_t), (size_t)contact_count, f);
+            fclose(f);
+        }
+        nvs_handle_t handle;  // drop the legacy NVS copy so it stops using the shared partition
+        if (nvs_open("system", NVS_READWRITE, &handle) == ESP_OK) {
+            nvs_erase_key(handle, NVS_CONTACTS_BLOB);  // ignores not-found
+            nvs_commit(handle);
+            nvs_close(handle);
+        }
+        ESP_LOGI(TAG, "Saved %d contact(s) to %s", contact_count, CT_FILE);
+        backup_write();
+        return;
+    }
+
     nvs_handle_t handle;
     if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) {
         ESP_LOGE(TAG, "NVS open for contacts write failed");
@@ -43,6 +84,7 @@ void contacts_save(void) {
     nvs_commit(handle);
     nvs_close(handle);
     ESP_LOGI(TAG, "Saved %d contact(s) to NVS", contact_count);
+    backup_write();  // keep the SD mirror in sync (no-op if SD not ready)
 }
 
 int contact_find(const uint8_t* pub) {

@@ -1,6 +1,9 @@
 dependencies:
   idf: ">=5.5.1"
   badgeteam/badge-bsp: "^0.9.9"
+  # AppFS metadata (free/total) for the Storage Viewer — same component + API
+  # (appfsGetFreeMem/appfsGetTotalMem) the launcher uses under its Apps tile.
+  badgeteam/appfs: "^1.0.2"
   nicolaielectronics/tanmatsu-wifi: "^1.1.2"
   # LVGL 9 — the sole UI toolkit (pax-gfx was retired in the LVGL-only cleanup).
   lvgl/lvgl: "^9.2.0"

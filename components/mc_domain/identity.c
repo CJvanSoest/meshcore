@@ -45,6 +45,29 @@ void identity_mark_time_synced(void) {
     }
 }
 
+bool identity_export_seed(uint8_t out_seed[32]) {
+    nvs_handle_t h;
+    if (nvs_open("system", NVS_READONLY, &h) != ESP_OK) return false;
+    size_t len = 32;
+    bool   ok  = (nvs_get_blob(h, NVS_IDENTITY_SEED, out_seed, &len) == ESP_OK && len == 32);
+    nvs_close(h);
+    return ok;
+}
+
+bool identity_import_seed(const uint8_t seed[32]) {
+    nvs_handle_t h;
+    if (nvs_open("system", NVS_READWRITE, &h) != ESP_OK) return false;
+    esp_err_t e = nvs_set_blob(h, NVS_IDENTITY_SEED, seed, 32);
+    if (e == ESP_OK) e = nvs_commit(h);
+    nvs_close(h);
+    if (e != ESP_OK) return false;
+    uint8_t s[32];
+    memcpy(s, seed, 32);  // ed25519_create_keypair takes a non-const seed
+    ed25519_create_keypair(node_pub_key, node_prv_key, s);
+    ESP_LOGI(TAG, "Identity restored from backup seed");
+    return true;
+}
+
 void identity_init(void) {
     uint8_t seed[32] = {0};
 
