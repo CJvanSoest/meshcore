@@ -46,6 +46,13 @@ int channels_add_by_name(const char* name);
 // share-link / hex import paths. Returns slot idx or -1.
 int channels_add_with_secret(const char* name, const uint8_t secret[CHANNEL_SECRET_LEN]);
 
+// Write a channel at an EXPLICIT slot index (1..CHANNELS_MAX-1). Unlike
+// channels_add_with_secret (which auto-picks a slot), this honours the caller's
+// index -- used by the companion protocol, where the iPhone app enumerates our
+// slots via GET_CHANNEL and then writes back to a specific one. idx 0 (Public)
+// is immutable; returns false on a bad index. Persists to NVS.
+bool channels_set_at(int idx, const char* name, const uint8_t secret[CHANNEL_SECRET_LEN]);
+
 // Create a private channel with a fresh random 16-byte secret (HW RNG) under the
 // given name. The key is NOT name-derived, so the channel stays private until its
 // secret is shared out-of-band (QR / link). Returns slot idx or -1.

@@ -10,6 +10,7 @@
 #include "companion-radio-protocol/mc_companion.h"
 #include "companion-radio-protocol/mc_companion_command_parser.h"
 #include "companion-radio-protocol/mc_companion_serial_interface.h"
+#include "contacts.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -17,6 +18,7 @@
 #include "freertos/task.h"
 #include "identity.h"  // node_pub_key for SELF_INFO
 #include "lora.h"
+#include "nodes.h"  // node_mutex guards contacts[]
 #include "settings_nvs.h"
 
 static const char* TAG = "comp-tx";
@@ -197,12 +199,48 @@ static void handle_get_device_time(void) {
 }
 
 static void handle_get_contacts(void) {
-    // Minimal: report zero contacts. Future PR will iterate contacts_get()
-    // and emit COMPANION_RESPONSE_CODE_CONTACT for each. iPhone tolerates an
-    // empty list -- handshake completes either way.
-    companion_resp_contacts_start_t start = {.count = 0};
+    // These handlers run INLINE on the small nimble_host task stack (BLE rx
+    // callback -> companion_dispatch_raw), so a big buffer in the stack frame
+    // overflows it -- a 928 B snapshot here blue-screened the device on sync.
+    // dispatch_locked serializes every dispatch via s_dispatch_mutex, so
+    // file-static scratch is safe (no re-entrancy) and keeps the frame small.
+    static contact_t           snap[MAX_CONTACTS];
+    static companion_contact_t rc;
+
+    // Snapshot contacts[] under node_mutex (shared with the RX sink), then emit
+    // outside the lock so the per-contact BLE notifies don't hold it.
+    int n = 0;
+    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        n = contact_count < MAX_CONTACTS ? contact_count : MAX_CONTACTS;
+        memcpy(snap, contacts, (size_t)n * sizeof(contact_t));
+        xSemaphoreGive(node_mutex);
+    }
+
+    uint32_t now = (uint32_t)time(NULL);
+
+    companion_resp_contacts_start_t start = {.count = (uint32_t)n};
     companion_send_response(COMPANION_RESPONSE_CODE_CONTACTS_START, &start, sizeof(start));
-    companion_resp_end_of_contacts_t end = {.since = (uint32_t)time(NULL)};
+    for (int i = 0; i < n; i++) {
+        memset(&rc, 0, sizeof(rc));
+        memcpy(rc.public_key, snap[i].pub_key, sizeof(rc.public_key));
+        rc.type         = snap[i].role;
+        rc.flags        = snap[i].flags;
+        rc.out_path_len = -1;  // no stored route -> flood
+        strncpy(rc.name, snap[i].alias, sizeof(rc.name) - 1);
+        // We don't track per-contact advert/modified times yet; stamp with the
+        // current time so the app doesn't treat them as stale and hide them.
+        rc.last_advert_timestamp = now;
+        rc.last_modified         = now;
+        // Send the FULL record (incl. the trailing gps/last_modified fields) --
+        // the app expects a complete contact.
+        companion_send_response(COMPANION_RESPONSE_CODE_CONTACT, &rc, sizeof(rc));
+        // Pace the burst: these notifies fire back-to-back from the BLE host
+        // task, and NimBLE's mbuf pool drops (rc!=0) when it fills faster than
+        // the transport drains it -- which silently lost contacts. A short
+        // delay lets the pool recover between notifies. Harmless on the CDC path.
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    companion_resp_end_of_contacts_t end = {.since = now};
     companion_send_response(COMPANION_RESPONSE_CODE_END_OF_CONTACTS, &end, sizeof(end));
 }
 
@@ -242,6 +280,102 @@ static void handle_get_channel(const companion_cmd_get_channel_args_t* a) {
         memcpy(info.channel_secret, ch->secret, sizeof(info.channel_secret));
     }
     companion_send_response(COMPANION_RESPONSE_CODE_CHANNEL_INFO, &info, sizeof(info));
+}
+
+static void send_err(uint8_t code) {
+    companion_resp_err_args_t err = {.error_code = code};
+    companion_send_response(COMPANION_RESPONSE_CODE_ERR, &err, sizeof(err));
+}
+
+static void handle_set_channel(const companion_cmd_set_channel_args_t* a) {
+    // The app enumerates our slots via GET_CHANNEL and writes back to a
+    // SPECIFIC channel_idx, so honour it. (Auto-slotting made the app read back
+    // the wrong slot -> "secret 000000" until a reconnect re-enumerated.)
+    // An empty name or an all-zero secret means "clear this slot" (delete).
+    uint8_t zero[CHANNEL_SECRET_LEN] = {0};
+    bool    is_delete = (a->channel_name[0] == '\0') || (memcmp(a->channel_secret, zero, sizeof(zero)) == 0);
+    if (is_delete) {
+        if (channels_remove(a->channel_idx)) {
+            ESP_LOGI(TAG, "SET_CHANNEL removed slot %u", a->channel_idx);
+            send_ok(0);
+        } else {
+            send_err(COMPANION_ERROR_CODE_ILLEGAL_ARG);  // idx 0 (Public) or already empty
+        }
+        return;
+    }
+    char name[CHANNEL_NAME_MAX_LEN + 1] = {0};
+    strncpy(name, (const char*)a->channel_name, sizeof(name) - 1);  // 32B field -> our 23B cap
+    if (!channels_set_at(a->channel_idx, name, a->channel_secret)) {
+        send_err(COMPANION_ERROR_CODE_ILLEGAL_ARG);  // idx 0 (Public) or out of range
+        return;
+    }
+    ESP_LOGI(TAG, "SET_CHANNEL '%s' -> slot %u", name, a->channel_idx);
+    send_ok(0);
+}
+
+static void handle_add_update_contact(const companion_contact_t* a) {
+    // contacts[] is shared with the RX sink -> hold node_mutex across the
+    // find/mutate/save. The contact_*() helpers don't lock themselves.
+    char alias[CONTACT_ALIAS_LEN] = {0};
+    strncpy(alias, a->name, sizeof(alias) - 1);  // 32B field -> our 24B cap
+    uint8_t code = COMPANION_ERROR_CODE_TABLE_FULL;
+    bool    ok   = false;
+    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        int idx = contact_find(a->public_key);
+        if (idx >= 0) {
+            // Update in place: contact_ensure() is add-only, so overwrite here.
+            strncpy(contacts[idx].alias, alias, CONTACT_ALIAS_LEN - 1);
+            contacts[idx].alias[CONTACT_ALIAS_LEN - 1] = '\0';
+            contacts[idx].role                         = a->type;
+            contacts_save();
+            ok = true;
+        } else {
+            ok = (contact_ensure(a->public_key, alias, a->type) > 0);  // -1 = table full
+        }
+        xSemaphoreGive(node_mutex);
+    } else {
+        code = COMPANION_ERROR_CODE_BAD_STATE;
+    }
+    if (ok) {
+        ESP_LOGI(TAG, "ADD_UPDATE_CONTACT '%s' role=%u", alias, a->type);
+        send_ok(0);
+    } else {
+        send_err(code);
+    }
+}
+
+static void handle_remove_contact(const companion_cmd_remove_contact_args_t* a) {
+    // Only remove a contact that exists -- contact_toggle() would otherwise
+    // ADD the unknown pubkey. Hold node_mutex like the add path.
+    bool    done = false;
+    uint8_t code = COMPANION_ERROR_CODE_NOT_FOUND;
+    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (contact_find(a->pub_key) >= 0) {
+            contact_toggle(a->pub_key, NULL, 0);  // removes existing + persists
+            done = true;
+        }
+        xSemaphoreGive(node_mutex);
+    } else {
+        code = COMPANION_ERROR_CODE_BAD_STATE;
+    }
+    if (done) {
+        ESP_LOGI(TAG, "REMOVE_CONTACT ok");
+        send_ok(0);
+    } else {
+        send_err(code);
+    }
+}
+
+static void handle_set_advert_name(const companion_cmd_set_advert_name_args_t* a) {
+    // Maps to the advert name (lora_advert_name), which shadows owner_name in
+    // adverts + SELF_INFO -- non-destructive to the on-device owner identity.
+    char name[sizeof(lora_advert_name)] = {0};
+    strncpy(name, a->advert_name, sizeof(name) - 1);  // 32B field, may be unterminated
+    strncpy(lora_advert_name, name, sizeof(lora_advert_name) - 1);
+    lora_advert_name[sizeof(lora_advert_name) - 1] = '\0';
+    save_lora_advert_name();
+    ESP_LOGI(TAG, "SET_ADVERT_NAME '%s'", lora_advert_name);
+    send_ok(0);
 }
 
 // Dispatch one fully parsed command. Source tag comes from s_current_source
@@ -294,16 +428,27 @@ static void on_command(companion_command_packet_t* cmd, mc_companion_command_par
             handle_set_other_params(&cmd->command_set_other_params_args);
             break;
 
-        // Write commands the iPhone may send during normal use that we don't
-        // implement yet -- ack OK so the app proceeds. This is a deliberate
-        // "polite stub" so the handshake completes; real handlers are a PR-2d
-        // follow-up if/when we want chat / contacts / advert-tx control.
+        // ── Import from the iPhone app (settings / channels / contacts) ──
+        case COMPANION_CMD_SET_CHANNEL:
+            handle_set_channel(&cmd->command_set_channel_args);
+            break;
+        case COMPANION_CMD_ADD_UPDATE_CONTACT:
+            handle_add_update_contact(&cmd->command_add_update_contact_args);
+            break;
+        case COMPANION_CMD_REMOVE_CONTACT:
+            handle_remove_contact(&cmd->command_remove_contact_args);
+            break;
         case COMPANION_CMD_SET_ADVERT_NAME:
+            handle_set_advert_name(&cmd->command_set_advert_name_args);
+            break;
+
+        // Write commands the iPhone may send during normal use that we don't
+        // implement yet -- ack OK so the app proceeds. Deliberate "polite stub"
+        // so the handshake completes; real handlers land in later PRs (clock,
+        // radio params).
         case COMPANION_CMD_SEND_SELF_ADVERT:
         case COMPANION_CMD_SET_DEVICE_TIME:
         case COMPANION_CMD_RESET_PATH:
-        case COMPANION_CMD_ADD_UPDATE_CONTACT:
-        case COMPANION_CMD_REMOVE_CONTACT:
         case COMPANION_CMD_SET_RADIO_PARAMS:
         case COMPANION_CMD_SET_RADIO_TX_POWER:
             ESP_LOGI(TAG, "stub-ack opcode %d", (int)cmd->command);
@@ -357,14 +502,20 @@ static void body_raw(const uint8_t* buf, size_t len) {
         // we'd ack anyway, recover the opcode from the raw buffer and
         // dispatch as if the parse succeeded.
         uint8_t op = buf[0];
+        // ONLY opcodes whose handler ignores its args may be recovered here:
+        // pkt.args is all-zero on a parse failure, so recovering an arg-bearing
+        // handler (e.g. ADD_UPDATE_CONTACT) would apply a zeroed payload -- an
+        // all-zero contact, a 0 clock, a nulled radio config. These three are
+        // all zero-effect (SEND_SELF_ADVERT takes none; SET_DEVICE_TIME /
+        // SET_RADIO_PARAMS are stub-acked and do nothing yet). Do NOT add a
+        // real arg-consuming handler to this list.
         if (op == COMPANION_CMD_SEND_SELF_ADVERT || op == COMPANION_CMD_SET_DEVICE_TIME ||
-            op == COMPANION_CMD_SET_RADIO_PARAMS || op == COMPANION_CMD_ADD_UPDATE_CONTACT) {
-            // These opcodes the iPhone sends with a wire layout the strict
-            // upstream parser doesn't accept (newer client struct than our
-            // vendored protocol header, or trailing padding). For opcodes
-            // we'd stub-ack anyway, recover the opcode from buf[0] and
-            // dispatch as if clean -- otherwise the iPhone toasts
-            // "illegal arg" on every loop because we returned ERR.
+            op == COMPANION_CMD_SET_RADIO_PARAMS) {
+            // The iPhone sends these with a wire layout the strict upstream
+            // parser rejects (newer client struct or trailing padding). Since
+            // we'd stub-ack them anyway, recover the opcode from buf[0] and
+            // dispatch as if clean -- otherwise the iPhone toasts "illegal arg"
+            // on every loop because we returned ERR.
             pkt.command = (companion_command_t)op;
             on_command(&pkt, COMPANION_COMMAND_PARSER_ERROR_NONE);
             return;
