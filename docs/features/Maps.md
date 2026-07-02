@@ -51,8 +51,9 @@ The ground resolution depends on latitude; the numbers below are for ~52°N
 
 The Tanmatsu's `MAP_ZOOM_MAX` is currently **17**. Going higher needs
 (a) tiles rendered at those zooms on the SD, and (b) a one-line change to
-`components/mc_net/map.h`. Note the disk cost climbs ~4× per zoom level (see
-the table above), so z16–17 over a large area is many GB. The cache size is
+`components/mc_net/map.h`. Note the disk cost climbs ~3× per zoom level raw
+(closer to 4× on the SD once the 4 KB cluster floor dominates — see the table
+below), so z16–17 over a large area is many GB. The cache size is
 independent of max zoom; 36 slots is plenty for a 5 × 5 visible window + ring +
 history.
 
@@ -97,31 +98,33 @@ style with no tiles just renders grey. No other code changes are required; the
 picker, the default, and the NVS clamp all read this list. (This section is
 mirrored to the project wiki "Map styles" page.)
 
-Tile count roughly quadruples each zoom level; PNG size grows faster
-still at high zoom as more detail packs into each tile. For the
-Netherlands bounding box (lon 3.10–7.25, lat 50.75–53.70) at one
-profile:
+Tile count roughly quadruples each zoom level, but the *average* PNG
+gets **smaller** at high zoom — fewer features fall inside each tile and
+PNG-8 compresses the near-empty ones hard (≈5.5 KB/tile at z15 down to
+≈2.7 KB/tile at z17). Net raw growth is therefore ~3× per level, not 4×.
+Measured for the Netherlands bounding box (lon 3.10–7.25, lat
+50.75–53.70) at one profile:
 
 | Zoom band | Tiles | Raw PNG | On the SD (FAT, 4 KB clusters) |
 |---|---|---|---|
-| 0 – 13 | 14 189 | ~ 90 MB | ~ 105 MB |
-| 14 | 41 769 | ~ 260 MB | ~ 300 MB |
-| 15 | ~ 170 000 | ~ 4 GB | ~ 4.6 GB |
-| 16 | ~ 670 000 | ~ 15 GB | ~ 17 GB |
-| 17 | ~ 2.7 M | ~ 50 GB | ~ 57 GB |
+| 0 – 13 | 14 189 | ~ 140 MB | ~ 185 MB |
+| 14 | 41 769 | ~ 300 MB | ~ 435 MB |
+| 15 | ~ 166 000 | ~ 950 MB | ~ 1.5 GB |
+| 16 | ~ 665 000 | ~ 2.6 GB | ~ 4.7 GB |
+| 17 | ~ 2.65 M | ~ 7 GB | ~ 15.5 GB |
 
 So a full **Carto z0–14** set — the practical everyday range — is about
-**350 MB raw / ~400 MB on the card**; the high zooms are where it
+**450 MB raw / ~620 MB on the card**; the high zooms are where it
 balloons.
 
-The right-hand column is what the card actually reports, and it tracks
-the raw size closely. The SD is formatted with **4 KB clusters**
-(`newfs_msdos -F 32 -c 8`), which adds only ~10–15 % over the raw PNG
-size — measured ≈1.14× on a 26 k-tile carto sample. The FAT *default* of
-32 KB clusters roughly doubled that (~2.2× on the same sample) by
-rounding every tiny sea / empty tile up to a full 32 KB cluster;
-reformatting to 4 KB clusters reclaims that waste without having to
-filter empty tiles out at render time.
+The SD is formatted with **4 KB clusters** (`newfs_msdos -F 32 -c 8`).
+How much overhead that 4 KB floor adds depends on tile size: at z0–14
+the tiles are big enough that it costs only ~30–40 %, but at z16–17 the
+*average* tile is already under 4 KB, so the floor roughly **doubles**
+the size (z17: ~7 GB raw → ~15.5 GB on card, ≈2.2×). The FAT *default*
+of 32 KB clusters is far worse — it rounds every tiny sea / empty tile
+up to a full 32 KB cluster — so 4 KB clusters are still the right call;
+they just don't make the high zooms cheap.
 
 ## Operation
 
@@ -297,7 +300,7 @@ For the Netherlands extract (≈ 1.4 GB PBF, 14 M ways, 200 M nodes):
 | **CPU** | 4 cores | 6–8 cores | renderd defaults to 6 worker threads. More cores = more parallel tile renders. No GPU benefit — Mapnik is fully CPU-bound. |
 | **RAM** | 8 GB | 16 GB | PostgreSQL `shared_buffers` (~1 GB), osm2pgsql import (4 GB), renderd workers (1–2 GB), `/dev/shm` (2 GB). |
 | **Disk (DB)** | 50 GB SSD | 80 GB NVMe | PostGIS DB after NL import is ~ 35 GB. Use SSD — HDD makes tile renders 10× slower at high zoom. |
-| **Disk (tiles)** | varies by zoom | see table above | z=0–14 NL ≈ 350 MB, z=15 ≈ 4 GB, z=16 ≈ 15 GB. |
+| **Disk (tiles)** | varies by zoom | see table above | z=0–14 NL ≈ 450 MB raw, z=15 ≈ 950 MB, z=16 ≈ 2.6 GB, z=17 ≈ 7 GB. |
 | **GPU** | none | none | Not used by Mapnik. |
 | **Network** | 100 Mbit | 1 Gbit | One-time PBF download (~ 1.4 GB), then internal only. |
 
