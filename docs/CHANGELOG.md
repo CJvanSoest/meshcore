@@ -21,6 +21,21 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-07-02
+
+### Added
+- **Configure the badge from the MeshCore phone app over BLE.** The companion app can import a channel (add or delete a slot), add, update or remove contacts, set the node advert name, and list the badge's contacts. (PR #63)
+- **Set the radio config and clock from the phone app.** Radio parameters (frequency, bandwidth, spreading factor, coding rate and tx power), tx power on its own, and the device time now take effect from the app; the radio reconfigure runs on a background worker so the app stays responsive while the C6 re enters RX. (PR #64)
+
+### Changed
+- **Enter starts and sends a chat message**, replacing the 'T' shortcut. In an open DM or channel the first Enter opens the composer and a second sends it; the deliberate two step keeps a stray key from typing or sending by accident. Works on both the keyboard and the D pad. (PR #57)
+- **The advert send rows read "press ENTER"** instead of "press OK", since the Tanmatsu has no OK key. (PR #57)
+
+### Fixed
+- **The UI no longer freezes when sending.** Radio transmit ran on the UI thread and blocked up to ~2 s waiting for the C6 acknowledgement, freezing the app on every send; transmits now run on a background worker task fed by a queue. (PR #58)
+- **Fast key presses no longer crash the app.** A rapid send spawned an unbounded number of background advert tasks; an in flight guard now prevents overlapping runs. (PR #58)
+- **A badge with no GPS no longer floods the console.** The QWIIC GPS read blind looped for the whole poll window when no module answered, so the i2c driver logged thousands of NACK errors; the read now bails after a few NACKs, mutes the driver NACK log for the read, and backs off the poll cadence while no module is present. (PR #52)
+
 ## [3.1.0] - 2026-07-01
 
 ### Removed
