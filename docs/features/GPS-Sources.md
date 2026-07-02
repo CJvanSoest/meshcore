@@ -14,7 +14,7 @@ NVS slot — whichever source writes last wins until the next push.
 | 1 | Manual entry | Settings → Region → GPS latitude / GPS longitude | ✅ Fully tested |
 | 2 | PA1010D module on QWIIC | Settings → Region → "Auto-fill from GPS" action row | 🟡 Partial — one-shot scan works; periodic auto-refresh on an interval is **not** implemented yet |
 | 3 | USB-CDC companion frame | Companion protocol `COMPANION_CMD_SET_ADVERT_LATLON` over USB CDC | 🟡 Preview — wire-format implemented, end-to-end roundtrip not verified |
-| 4 | BLE companion | Same companion opcode but over NimBLE GATT | 🟡 Preview — iPhone MeshCore app can pair (passkey UI works) but lat/lon write path needs roundtrip verification |
+| 4 | BLE companion | Same companion opcode but over NimBLE GATT | ✅ Confirmed — the iPhone MeshCore app pairs and pushes lat/lon over BLE (GPS source #4), verified on device |
 
 ## 1. Manual entry — ✅
 
@@ -86,12 +86,12 @@ from the iPhone MeshCore app. Position pushes from the app go through
 the same companion-protocol parser, so when it works it lands in NVS
 with source tag `GPS_SRC_BLE`.
 
-- **What works**: NimBLE service registration, SMP passkey display,
-  pair-done callback wiring.
-- **Not verified end-to-end**: the iPhone MeshCore app's actual
-  `SET_ADVERT_LATLON` write from a paired session has not been confirmed
-  to land in NVS. Likely needs the upstream firmware-side BLE branch
-  from Nicolai to be in sync. Treat as preview.
+- **Confirmed end-to-end**: the iPhone MeshCore app pairs (SMP passkey
+  display), writes `SET_ADVERT_LATLON` from the paired session, and the
+  position lands in NVS with source tag `GPS_SRC_BLE` (seen on device as
+  `LATLON src=4 accepted`). The same companion link now also imports
+  channels/contacts/name and sets the radio config + clock (see the
+  CHANGELOG for v3.2.0).
 
 ## Where the position is consumed
 
