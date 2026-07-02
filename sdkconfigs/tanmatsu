@@ -16,6 +16,11 @@ CONFIG_BT_NIMBLE_TRANSPORT_UART=n
 CONFIG_BT_NIMBLE_SM_SC=y
 CONFIG_BT_NIMBLE_SM_LEGACY=n
 CONFIG_BT_NIMBLE_NVS_PERSIST=y
+# Companion opcode dispatch runs inline on the NimBLE host task, and some
+# handlers (e.g. contact enumeration) have large stack frames. The IDF default
+# (~4 KB) overflowed on GET_CONTACTS; give it headroom so companion handlers
+# can't blow the host stack.
+CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=8192
 CONFIG_ESP_WIFI_IRAM_OPT=y
 CONFIG_ESP_WIFI_RX_IRAM_OPT=y
 CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_CMD_SLOT_1=16

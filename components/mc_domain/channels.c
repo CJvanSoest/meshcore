@@ -182,6 +182,22 @@ int channels_add_with_secret(const char* name, const uint8_t secret[CHANNEL_SECR
     return slot;
 }
 
+bool channels_set_at(int idx, const char* name, const uint8_t secret[CHANNEL_SECRET_LEN]) {
+    if (idx <= 0 || idx >= CHANNELS_MAX) return false;  // Public (0) is immutable
+    if (!name || !secret) return false;
+    channel_t* ch = &channels[idx];
+    ch->active    = true;
+    strncpy(ch->name, name, CHANNEL_NAME_MAX_LEN);
+    ch->name[CHANNEL_NAME_MAX_LEN] = '\0';
+    memcpy(ch->secret, secret, CHANNEL_SECRET_LEN);
+    compute_hash(ch);
+    channel_unread[idx] = 0;
+    if (idx + 1 > channel_count) channel_count = idx + 1;
+    channels_save_nvs();
+    ESP_LOGI(TAG, "Set channel[%d] %s hash=0x%02X", idx, ch->name, ch->hash);
+    return true;
+}
+
 int channels_add_by_name(const char* name) {
     if (!name || !name[0]) return -1;
     uint8_t secret[CHANNEL_SECRET_LEN];
