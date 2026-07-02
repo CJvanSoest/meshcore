@@ -20,6 +20,7 @@ idf_component_register(
         badge-bsp
     PRIV_REQUIRES
         mc_io
+        mc_radio
         mc_proto
         vendor
         tanmatsu-lora

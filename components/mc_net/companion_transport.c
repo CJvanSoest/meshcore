@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "companion_transport.h"
+#include <stddef.h>  // offsetof
 #include <stdio.h>
 #include <string.h>
+#include <sys/time.h>  // settimeofday for SET_DEVICE_TIME
 #include <time.h>
 #include <unistd.h>
+#include "bsp/rtc.h"  // bsp_rtc_set_time
 #include "channels.h"
 #include "companion-radio-protocol/mc_companion.h"
 #include "companion-radio-protocol/mc_companion_command_parser.h"
@@ -19,6 +22,7 @@
 #include "identity.h"  // node_pub_key for SELF_INFO
 #include "lora.h"
 #include "nodes.h"  // node_mutex guards contacts[]
+#include "radio.h"  // save_lora_config (apply radio params to the C6)
 #include "settings_nvs.h"
 
 static const char* TAG = "comp-tx";
@@ -27,9 +31,13 @@ static const char* TAG = "comp-tx";
 // s_dispatch_mutex so a BLE write and a CDC read can't interleave their
 // tags. Lazy-init in companion_dispatch_frame so callers don't need a
 // separate init step.
-static gps_source_t                s_current_source = GPS_SRC_NONE;
-static companion_response_sender_t s_current_sender = NULL;
-static SemaphoreHandle_t           s_dispatch_mutex = NULL;
+static gps_source_t                s_current_source   = GPS_SRC_NONE;
+static companion_response_sender_t s_current_sender   = NULL;
+static SemaphoreHandle_t           s_dispatch_mutex   = NULL;
+// Byte count of the in-flight command's args (opcode byte excluded). Lets a
+// handler read fields the iPhone appends beyond our vendored struct (e.g. the
+// tx_power field newer apps add to SET_RADIO_PARAMS). Set per BLE frame.
+static size_t                      s_current_args_len = 0;
 
 #define COMPANION_TASK_STACK 6144
 #define COMPANION_TASK_PRIO  3
@@ -378,6 +386,75 @@ static void handle_set_advert_name(const companion_cmd_set_advert_name_args_t* a
     send_ok(0);
 }
 
+static void handle_set_device_time(const companion_cmd_set_device_time_args_t* a) {
+    // Reject 0 / obviously-bad timestamps -- the boot path uses the same guard.
+    if (a->timestamp < 1000000000u) {
+        send_err(COMPANION_ERROR_CODE_ILLEGAL_ARG);
+        return;
+    }
+    struct timeval tv = {.tv_sec = (time_t)a->timestamp, .tv_usec = 0};
+    settimeofday(&tv, NULL);         // update the P4 system clock immediately
+    bsp_rtc_set_time(a->timestamp);  // persist into the C6 RTC (the boot source)
+    identity_mark_time_synced();     // treat time as authoritative
+    ESP_LOGI(TAG, "SET_DEVICE_TIME %lu", (unsigned long)a->timestamp);
+    send_ok(0);
+}
+
+// save_lora_config() blocks ~2 s on the C6 and drops RX, so never call it on the
+// dispatch (nimble_host) task. Apply on a short-lived worker; an in-flight guard
+// stops overlapping reconfigs when the app mashes settings.
+static volatile bool s_radio_apply_in_flight = false;
+
+static void radio_apply_task(void* arg) {
+    (void)arg;
+    save_lora_config();  // pushes lora_cfg to the C6 + persists to NVS
+    s_radio_apply_in_flight = false;
+    vTaskDelete(NULL);
+}
+
+static void schedule_radio_apply(void) {
+    if (s_radio_apply_in_flight) return;
+    s_radio_apply_in_flight = true;
+    if (xTaskCreate(radio_apply_task, "radio_apply", 4096, NULL, 3, NULL) != pdPASS) {
+        s_radio_apply_in_flight = false;
+        save_lora_to_nvs();  // couldn't spawn: at least persist; applies next boot
+    }
+}
+
+static void handle_set_radio_params(const companion_cmd_set_radio_params_args_t* a) {
+    // SF/CR round-trip verbatim via SELF_INFO; only freq/bandwidth need unit
+    // conversion (inverse of handle_app_start). Basic sanity checks -- the
+    // regulatory layer still clamps freq/power on apply.
+    if (a->frequency == 0 || a->bandwidth == 0 || a->spreading_factor < 5 || a->spreading_factor > 12 ||
+        a->coding_rate < 5 || a->coding_rate > 8) {
+        send_err(COMPANION_ERROR_CODE_ILLEGAL_ARG);
+        return;
+    }
+    lora_cfg.frequency        = a->frequency * 1000u;  // kHz -> Hz
+    lora_cfg.bandwidth        = a->bandwidth / 1000u;  // Hz  -> kHz
+    lora_cfg.spreading_factor = a->spreading_factor;
+    lora_cfg.coding_rate      = a->coding_rate;
+    // Newer iPhone builds append tx_power as an 11th byte (our vendored struct
+    // is the older 10-byte layout, so the app sends power via this command too).
+    // Apply it only when present and a sane dBm value, so a non-power trailing
+    // byte on some other client is ignored rather than nuking the power.
+    if (s_current_args_len >= 11) {
+        uint8_t p = ((const uint8_t*)a)[10];
+        if (p >= 2 && p <= 30) lora_cfg.power = p;
+    }
+    ESP_LOGI(TAG, "SET_RADIO_PARAMS f=%luHz bw=%ukHz sf=%u cr=%u pwr=%u", (unsigned long)lora_cfg.frequency,
+             lora_cfg.bandwidth, lora_cfg.spreading_factor, lora_cfg.coding_rate, lora_cfg.power);
+    send_ok(0);  // ack before the blocking apply
+    schedule_radio_apply();
+}
+
+static void handle_set_radio_tx_power(const companion_cmd_set_radio_tx_power_args_t* a) {
+    lora_cfg.power = a->tx_power;
+    ESP_LOGI(TAG, "SET_RADIO_TX_POWER %u", a->tx_power);
+    send_ok(0);
+    schedule_radio_apply();
+}
+
 // Dispatch one fully parsed command. Source tag comes from s_current_source
 // which the calling transport sets via companion_dispatch_frame() before
 // feeding bytes.
@@ -442,15 +519,22 @@ static void on_command(companion_command_packet_t* cmd, mc_companion_command_par
             handle_set_advert_name(&cmd->command_set_advert_name_args);
             break;
 
+        // ── Radio config + clock from the app ──
+        case COMPANION_CMD_SET_DEVICE_TIME:
+            handle_set_device_time(&cmd->command_set_device_time_args);
+            break;
+        case COMPANION_CMD_SET_RADIO_PARAMS:
+            handle_set_radio_params(&cmd->command_set_radio_params_args);
+            break;
+        case COMPANION_CMD_SET_RADIO_TX_POWER:
+            handle_set_radio_tx_power(&cmd->command_set_radio_tx_power_args);
+            break;
+
         // Write commands the iPhone may send during normal use that we don't
         // implement yet -- ack OK so the app proceeds. Deliberate "polite stub"
-        // so the handshake completes; real handlers land in later PRs (clock,
-        // radio params).
+        // so the handshake completes.
         case COMPANION_CMD_SEND_SELF_ADVERT:
-        case COMPANION_CMD_SET_DEVICE_TIME:
         case COMPANION_CMD_RESET_PATH:
-        case COMPANION_CMD_SET_RADIO_PARAMS:
-        case COMPANION_CMD_SET_RADIO_TX_POWER:
             ESP_LOGI(TAG, "stub-ack opcode %d", (int)cmd->command);
             send_ok(0);
             break;
@@ -490,36 +574,34 @@ static void body_framed(const uint8_t* buf, size_t len) {
     mc_companion_read_serial_command((uint8_t*)buf, len, on_command);
 }
 
+// Opcodes the iPhone sends with a wire layout the strict vendored parser
+// rejects on length (a newer/longer client struct, or trailing padding). Their
+// handlers validate their own args, so on a parse failure we copy the received
+// bytes verbatim (bounded) and dispatch anyway -- otherwise the app toasts
+// "illegal arg" on every loop. Do NOT add an opcode here whose handler does not
+// self-validate (a too-short frame is zero-padded).
+static bool opcode_lenient_recover(uint8_t op) {
+    return op == COMPANION_CMD_SEND_SELF_ADVERT ||  // zero-arg + padding
+           op == COMPANION_CMD_SET_DEVICE_TIME ||   // validates timestamp
+           op == COMPANION_CMD_SET_RADIO_PARAMS ||  // 11-byte app struct vs our 10; validates
+           op == COMPANION_CMD_SET_RADIO_TX_POWER;  // validates
+}
+
 static void body_raw(const uint8_t* buf, size_t len) {
     // BLE write boundary == command boundary. cmd[0] = opcode, cmd[1..] = args.
     if (len == 0) return;
+    s_current_args_len                      = len - 1;
     companion_command_packet_t          pkt = {0};
     mc_companion_command_parser_error_t err = mc_companion_parse_command((uint8_t*)buf, (uint16_t)len, &pkt);
-    if (err != COMPANION_COMMAND_PARSER_ERROR_NONE) {
-        // Upstream parser is strict about arg length and bails without
-        // setting pkt.command. iPhone sends opcodes 7 (SEND_SELF_ADVERT)
-        // with one byte of padding the parser doesn't expect. For opcodes
-        // we'd ack anyway, recover the opcode from the raw buffer and
-        // dispatch as if the parse succeeded.
-        uint8_t op = buf[0];
-        // ONLY opcodes whose handler ignores its args may be recovered here:
-        // pkt.args is all-zero on a parse failure, so recovering an arg-bearing
-        // handler (e.g. ADD_UPDATE_CONTACT) would apply a zeroed payload -- an
-        // all-zero contact, a 0 clock, a nulled radio config. These three are
-        // all zero-effect (SEND_SELF_ADVERT takes none; SET_DEVICE_TIME /
-        // SET_RADIO_PARAMS are stub-acked and do nothing yet). Do NOT add a
-        // real arg-consuming handler to this list.
-        if (op == COMPANION_CMD_SEND_SELF_ADVERT || op == COMPANION_CMD_SET_DEVICE_TIME ||
-            op == COMPANION_CMD_SET_RADIO_PARAMS) {
-            // The iPhone sends these with a wire layout the strict upstream
-            // parser rejects (newer client struct or trailing padding). Since
-            // we'd stub-ack them anyway, recover the opcode from buf[0] and
-            // dispatch as if clean -- otherwise the iPhone toasts "illegal arg"
-            // on every loop because we returned ERR.
-            pkt.command = (companion_command_t)op;
-            on_command(&pkt, COMPANION_COMMAND_PARSER_ERROR_NONE);
-            return;
-        }
+    if (err != COMPANION_COMMAND_PARSER_ERROR_NONE && opcode_lenient_recover(buf[0])) {
+        // Copy the real args (bounded by the union size) instead of leaving them
+        // zeroed, so a longer-than-expected frame still carries valid fields.
+        size_t cap  = sizeof(pkt) - offsetof(companion_command_packet_t, args);
+        size_t alen = s_current_args_len < cap ? s_current_args_len : cap;
+        memcpy(pkt.args, buf + 1, alen);
+        pkt.command = (companion_command_t)buf[0];
+        on_command(&pkt, COMPANION_COMMAND_PARSER_ERROR_NONE);
+        return;
     }
     on_command(&pkt, err);
 }
