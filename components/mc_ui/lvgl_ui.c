@@ -1951,11 +1951,6 @@ static void render_chat_lvgl(void) {
         char hdr[MESHCORE_MAX_NAME_SIZE + 24];
         snprintf(hdr, sizeof(hdr), "<  %s", dm_target_set ? dm_target_name : "(no target)");
         add_label(scr, 10, CHAT_Y0 + 4, TXT_BODY, COL_WHITE, hdr);
-        // Message-ring usage (loaded messages / ring capacity). The full history
-        // lives on SD; this counts what's currently in the in-RAM ring.
-        char cc[12];
-        snprintf(cc, sizeof(cc), "%d/%d", chat_count, MAX_CHAT_MSGS);
-        add_label(scr, w - text_w(cc, TXT_SMALL) - 10, CHAT_Y0 + 6, TXT_SMALL, COL_GRAY, cc);
     }
 
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -1984,7 +1979,12 @@ static void render_chat_lvgl(void) {
     int fy = h - FOOTER_H;
     add_rect(scr, 0, fy, w, FOOTER_H, COL_HEADER);
     add_rect(scr, 0, fy, w, 1, COL_PANEL);
-    int hint_ty = fy + (FOOTER_H - TXT_SMALL) / 2;
+    int  hint_ty = fy + (FOOTER_H - TXT_SMALL) / 2;
+    // Message-ring usage (in-RAM ring / capacity). Bottom-right, always shown;
+    // the full DM history lives on SD.
+    char dmcc[12];
+    snprintf(dmcc, sizeof(dmcc), "%d/%d", chat_count, MAX_CHAT_MSGS);
+    add_label(scr, w - text_w(dmcc, TXT_SMALL) - 10, hint_ty, TXT_SMALL, COL_GRAY, dmcc);
     if (chat_typing) {
         const char* hint = "Enter: send   Backspace: delete   ";
         add_label(scr, 10, hint_ty, TXT_SMALL, COL_HINT, hint);
@@ -2139,12 +2139,6 @@ static void render_channel_lvgl(void) {
                              : "(no channel)";
         add_label(scr, 12, CHAT_Y0 + 4, TXT_BODY, COL_WHITE, nm);
 
-        // Message-ring usage (loaded messages / ring capacity), mirroring the DM
-        // view. The full channel history lives on SD.
-        char cc[12];
-        snprintf(cc, sizeof(cc), "%d/%d", ch_count, MAX_CHAT_MSGS);
-        add_label(scr, w - text_w(cc, TXT_SMALL) - 12, CHAT_Y0 + 6, TXT_SMALL, COL_GRAY, cc);
-
         char sub[48];
         if (region_scope[0]) {
             snprintf(sub, sizeof(sub), "  Region: %s", region_scope);
@@ -2182,7 +2176,11 @@ static void render_channel_lvgl(void) {
     int fy = h - FOOTER_H;
     add_rect(scr, 0, fy, w, FOOTER_H, COL_HEADER);
     add_rect(scr, 0, fy, w, 1, COL_PANEL);
-    int hint_ty = fy + (FOOTER_H - TXT_SMALL) / 2;
+    int  hint_ty = fy + (FOOTER_H - TXT_SMALL) / 2;
+    // Channel-slot usage (active channels incl. Public / capacity). Bottom-right.
+    char chcc[12];
+    snprintf(chcc, sizeof(chcc), "%d/%d", channel_count, CHANNELS_MAX);
+    add_label(scr, w - text_w(chcc, TXT_SMALL) - 10, hint_ty, TXT_SMALL, COL_GRAY, chcc);
     if (chat_typing) {
         const char* hint = "Enter: send   Backspace: delete   ";
         add_label(scr, 10, hint_ty, TXT_SMALL, COL_HINT, hint);
