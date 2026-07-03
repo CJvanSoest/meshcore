@@ -3220,12 +3220,15 @@ static void st_conv_label(const history_conv_t* c, char* out, size_t cap) {
             }
         snprintf(out, cap, "DM %02x%02x%02x%02x", c->id[0], c->id[1], c->id[2], c->id[3]);
     } else {
-        for (int i = 1; i < channel_count && i < CHANNELS_MAX; i++)
+        // Include slot 0 (Public) so its history isn't shown as a raw hex id.
+        // Anything left unmatched is an orphaned log — a channel that was left or
+        // removed but whose history file remains (a prime target for delete).
+        for (int i = 0; i < channel_count && i < CHANNELS_MAX; i++)
             if (channels[i].active && memcmp(channels[i].secret, c->id, 8) == 0) {
                 snprintf(out, cap, "%s", channels[i].name);
                 return;
             }
-        snprintf(out, cap, "Ch %02x%02x%02x%02x", c->id[0], c->id[1], c->id[2], c->id[3]);
+        snprintf(out, cap, "Ch? %02x%02x%02x%02x", c->id[0], c->id[1], c->id[2], c->id[3]);
     }
 }
 
@@ -3496,8 +3499,19 @@ static void render_toolbox_storage_lvgl(void) {
     }
 
     // ── Detail views ──
+    // Footer hint reflects what Enter does on the focused row, so per-conversation
+    // delete is discoverable (vs the single "Clear all history" row).
     const char* hint = "ESC: back   ";
-    if (detail == ST_CAT_HISTORY || detail == ST_CAT_BACKUP) hint = "WS: nav   Enter: run   ";
+    if (detail == ST_CAT_BACKUP) {
+        hint = "WS: nav   Enter: run   ";
+    } else if (detail == ST_CAT_HISTORY) {
+        history_conv_t tmp[40];
+        int            hn  = history_list_conversations(tmp, 40, NULL);
+        int            sub = toolbox_storage_sub;
+        if (sub < 0) sub = 0;
+        if (sub > hn) sub = hn;  // hn == the "Clear all history" row
+        hint = (sub >= hn) ? "WS: nav   Enter: clear all   " : "WS: nav   Enter: delete this chat   ";
+    }
     st_chrome(scr, w, h, st_cat_name[detail], hint, ": storage");
 
     if (detail == ST_CAT_HISTORY)
