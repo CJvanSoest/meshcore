@@ -1309,7 +1309,7 @@ static void render_nodes_lvgl(void) {
     int  fx      = 10;
     int  fy_text = fy_base + 6;
     char counts[48];
-    snprintf(counts, sizeof(counts), "Nodes:%d  Contacts:%d", node_count, contact_count);
+    snprintf(counts, sizeof(counts), "Nodes:%d/%d  Contacts:%d/%d", node_count, MAX_NODES, contact_count, MAX_CONTACTS);
     add_label(scr, fx, fy_text, TXT_BODY, COL_WHITE, counts);
     fx += text_w(counts, TXT_BODY) + 20;
 
@@ -1940,6 +1940,11 @@ static void render_chat_lvgl(void) {
         int         ih_ty      = fy_base + (footer_h - TXT_SMALL) / 2;
         add_label(scr, 10, ih_ty, TXT_SMALL, COL_HINT, inbox_hint);
         add_back_hint(scr, 10 + text_w(inbox_hint, TXT_SMALL), ih_ty, ": home", TXT_SMALL);
+        // Saved DM conversations / limit (= contacts). Bottom-right, shown as
+        // soon as the DM tile opens.
+        char dmcc[12];
+        snprintf(dmcc, sizeof(dmcc), "%d/%d", contact_count, MAX_CONTACTS);
+        add_label(scr, w - text_w(dmcc, TXT_SMALL) - 10, ih_ty, TXT_SMALL, COL_GRAY, dmcc);
         return;
     }
 
@@ -2112,6 +2117,13 @@ static void render_channel_list_lvgl(lv_obj_t* scr, int w, int h) {
     int hint_ty = fy + (footer_h - TXT_SMALL) / 2;
     add_label(scr, 10, hint_ty, TXT_SMALL, COL_HINT, hint);
     add_back_hint(scr, 10 + text_w(hint, TXT_SMALL), hint_ty, channel_adding ? ": cancel" : ": home", TXT_SMALL);
+    // Channel-slot usage (active channels incl. Public / capacity). Bottom-right,
+    // shown as soon as the channel tile opens (hidden during the add wizard).
+    if (!channel_adding) {
+        char chcc[12];
+        snprintf(chcc, sizeof(chcc), "%d/%d", channel_count, CHANNELS_MAX);
+        add_label(scr, w - text_w(chcc, TXT_SMALL) - 10, hint_ty, TXT_SMALL, COL_GRAY, chcc);
+    }
 }
 
 static void render_channel_lvgl(void) {
@@ -2171,7 +2183,11 @@ static void render_channel_lvgl(void) {
     int fy = h - FOOTER_H;
     add_rect(scr, 0, fy, w, FOOTER_H, COL_HEADER);
     add_rect(scr, 0, fy, w, 1, COL_PANEL);
-    int hint_ty = fy + (FOOTER_H - TXT_SMALL) / 2;
+    int  hint_ty = fy + (FOOTER_H - TXT_SMALL) / 2;
+    // Channel-slot usage (active channels incl. Public / capacity). Bottom-right.
+    char chcc[12];
+    snprintf(chcc, sizeof(chcc), "%d/%d", channel_count, CHANNELS_MAX);
+    add_label(scr, w - text_w(chcc, TXT_SMALL) - 10, hint_ty, TXT_SMALL, COL_GRAY, chcc);
     if (chat_typing) {
         const char* hint = "Enter: send   Backspace: delete   ";
         add_label(scr, 10, hint_ty, TXT_SMALL, COL_HINT, hint);

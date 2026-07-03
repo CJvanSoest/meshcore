@@ -27,15 +27,22 @@ typedef struct {
                               // matched against the flood echo to confirm a relay.
 } chat_msg_t;
 
+// Byte size of one message ring. The rings live in PSRAM (allocated in
+// chat_init) rather than as static arrays, so `sizeof(chat_msgs)` is a pointer
+// -- use this macro for memset/clears instead.
+#define CHAT_RING_BYTES ((size_t)MAX_CHAT_MSGS * sizeof(chat_msg_t))
+
 // ── DM ring (per-peer; cleared + reloaded by dm_select_target) ───────────────
-extern chat_msg_t        chat_msgs[MAX_CHAT_MSGS];
+// PSRAM-allocated (MAX_CHAT_MSGS entries); chat_init must run before use.
+extern chat_msg_t*       chat_msgs;
 extern int               chat_head;
 extern int               chat_count;
 extern int               chat_scroll;
 extern SemaphoreHandle_t chat_mutex;
 
 // ── Channel ring (GRP_TXT public channel) ────────────────────────────────────
-extern chat_msg_t        ch_msgs[MAX_CHAT_MSGS];
+// PSRAM-allocated (MAX_CHAT_MSGS entries); chat_init must run before use.
+extern chat_msg_t*       ch_msgs;
 extern int               ch_head;
 extern int               ch_count;
 extern int               ch_scroll;

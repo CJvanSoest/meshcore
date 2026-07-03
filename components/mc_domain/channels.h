@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define CHANNELS_MAX         15
+#define CHANNELS_MAX         20
 #define CHANNEL_NAME_MAX_LEN 23  // 24 bytes incl. null; covers "#abcdefghijklmnopqrstuv"
 #define CHANNEL_SECRET_LEN   16  // MeshCore CIPHER_KEY_SIZE
 

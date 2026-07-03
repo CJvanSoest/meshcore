@@ -31,8 +31,8 @@
 #define BACKUP_HDR_LEN 12  // magic(4)+ver(2)+rsv(2)+crc(4)
 
 // Mirror the on-device limits (CHANNELS_MAX-1 user channels, MAX_CONTACTS).
-#define BACKUP_MAX_CHANNELS 14
-#define BACKUP_MAX_CONTACTS 16
+#define BACKUP_MAX_CHANNELS 19
+#define BACKUP_MAX_CONTACTS 40
 #define BACKUP_CH_NAME_LEN  24  // CHANNEL_NAME_MAX_LEN + 1
 #define BACKUP_SECRET_LEN   16
 #define BACKUP_PUB_LEN      32
