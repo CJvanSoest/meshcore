@@ -191,6 +191,13 @@ int channels_find_by_hash(uint8_t hash) {
     return -1;
 }
 
+int channels_find_by_secret_prefix(const uint8_t prefix[8]) {
+    for (int i = 0; i < channel_count && i < CHANNELS_MAX; i++) {
+        if (channels[i].active && memcmp(channels[i].secret, prefix, 8) == 0) return i;
+    }
+    return -1;
+}
+
 static int find_free_slot(void) {
     for (int i = 1; i < CHANNELS_MAX; i++) {
         if (!channels[i].active) return i;

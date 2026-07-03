@@ -793,8 +793,16 @@ static void open_toolbox_tile(void) {
     current_view = t;
 }
 
+// A conversation log is orphaned when it resolves to no current contact/channel
+// (a removed contact or a left/deleted channel). Mirrors st_conv_is_orphan in the
+// renderer so "Clear orphaned" clears exactly the rows flagged "DM?/Ch?".
+static bool storage_conv_is_orphan(const history_conv_t* c) {
+    return c->is_dm ? (contact_find_by_prefix(c->id) < 0) : (channels_find_by_secret_prefix(c->id) < 0);
+}
+
 // Number of selectable rows in the currently-open Storage detail (0 for the
-// read-only NVS/Memory/Storage views). History = conversations + a "Clear all".
+// read-only NVS/Memory/Storage views). History = conversations + two bulk-clear
+// rows ("Clear orphaned" + "Clear all"), or a single empty-note row when none.
 static int storage_sub_count(void) {
     switch (toolbox_storage_detail) {
         case ST_CAT_BACKUP:
@@ -802,7 +810,7 @@ static int storage_sub_count(void) {
         case ST_CAT_HISTORY: {
             history_conv_t tmp[40];
             int            n = history_list_conversations(tmp, 40, NULL);
-            return n + 1;  // + "Clear all history"
+            return n > 0 ? n + 2 : 1;
         }
         default:
             return 0;
@@ -837,14 +845,21 @@ static void storage_run_action(void) {
     } else if (toolbox_storage_detail == ST_CAT_HISTORY) {
         history_conv_t convs[40];
         int            n = history_list_conversations(convs, 40, NULL);
-        if (toolbox_storage_sub >= n) {  // the "Clear all history" row
-            int removed = history_clear_all();
-            snprintf(toast_text, sizeof(toast_text), "Cleared %d conversation(s)", removed);
-            toolbox_storage_sub = 0;
-        } else {
+        if (toolbox_storage_sub < n) {  // delete the selected conversation
             bool ok = history_delete_conversation(convs[toolbox_storage_sub].id, convs[toolbox_storage_sub].is_dm);
             snprintf(toast_text, sizeof(toast_text), ok ? "Conversation deleted" : "Delete failed");
             if (toolbox_storage_sub > 0) toolbox_storage_sub--;  // keep the cursor in range
+        } else if (n > 0 && toolbox_storage_sub == n) {          // "Clear orphaned (N)"
+            int removed = 0;
+            for (int i = 0; i < n; i++)
+                if (storage_conv_is_orphan(&convs[i]) && history_delete_conversation(convs[i].id, convs[i].is_dm))
+                    removed++;
+            snprintf(toast_text, sizeof(toast_text), "Cleared %d orphaned log(s)", removed);
+            toolbox_storage_sub = 0;
+        } else {  // "Clear all history"
+            int removed = history_clear_all();
+            snprintf(toast_text, sizeof(toast_text), "Cleared %d conversation(s)", removed);
+            toolbox_storage_sub = 0;
         }
     } else {
         return;

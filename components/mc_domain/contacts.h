@@ -31,6 +31,11 @@ void contacts_load(void);
 void contacts_save(void);
 
 int contact_find(const uint8_t* pub);
+
+// Find the contact whose pubkey starts with these 8 bytes (the on-SD DM history
+// filename prefix). Returns the contact idx or -1 — used by the Storage Viewer to
+// name/flag DM logs (a -1 means an orphaned log: no matching contact).
+int contact_find_by_prefix(const uint8_t prefix[8]);
 int contact_ensure(const uint8_t* pub, const char* name, uint8_t role);
 int contact_toggle(const uint8_t* pub, const char* name, uint8_t role);
 

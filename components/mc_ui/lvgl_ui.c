@@ -3209,26 +3209,31 @@ static void st_human_size(uint64_t b, char* out, size_t cap) {
     }
 }
 
+// True when a conversation log resolves to no current contact/channel — an
+// orphan left behind by a removed contact or a left/deleted channel. Public
+// (channel slot 0) always resolves, so it is never an orphan.
+static bool st_conv_is_orphan(const history_conv_t* c) {
+    return c->is_dm ? (contact_find_by_prefix(c->id) < 0) : (channels_find_by_secret_prefix(c->id) < 0);
+}
+
 // Map a conversation's on-disk id (8-byte filename prefix) to a human label: a
-// contact alias for DMs, the channel name for channels, else a hex fallback.
+// contact alias for DMs, the channel name for channels. Orphans (no match) get a
+// "DM?/Ch?" + hex marker so they stand out as clean-up candidates.
 static void st_conv_label(const history_conv_t* c, char* out, size_t cap) {
     if (c->is_dm) {
-        for (int i = 0; i < contact_count; i++)
-            if (memcmp(contacts[i].pub_key, c->id, 8) == 0 && contacts[i].alias[0]) {
-                snprintf(out, cap, "DM %s", contacts[i].alias);
-                return;
-            }
-        snprintf(out, cap, "DM %02x%02x%02x%02x", c->id[0], c->id[1], c->id[2], c->id[3]);
+        int idx = contact_find_by_prefix(c->id);
+        if (idx >= 0 && contacts[idx].alias[0])
+            snprintf(out, cap, "DM %s", contacts[idx].alias);
+        else if (idx >= 0)
+            snprintf(out, cap, "DM %02x%02x%02x%02x", c->id[0], c->id[1], c->id[2], c->id[3]);
+        else
+            snprintf(out, cap, "DM? %02x%02x%02x%02x", c->id[0], c->id[1], c->id[2], c->id[3]);
     } else {
-        // Include slot 0 (Public) so its history isn't shown as a raw hex id.
-        // Anything left unmatched is an orphaned log — a channel that was left or
-        // removed but whose history file remains (a prime target for delete).
-        for (int i = 0; i < channel_count && i < CHANNELS_MAX; i++)
-            if (channels[i].active && memcmp(channels[i].secret, c->id, 8) == 0) {
-                snprintf(out, cap, "%s", channels[i].name);
-                return;
-            }
-        snprintf(out, cap, "Ch? %02x%02x%02x%02x", c->id[0], c->id[1], c->id[2], c->id[3]);
+        int idx = channels_find_by_secret_prefix(c->id);  // includes slot 0 (Public)
+        if (idx >= 0)
+            snprintf(out, cap, "%s", channels[idx].name);
+        else
+            snprintf(out, cap, "Ch? %02x%02x%02x%02x", c->id[0], c->id[1], c->id[2], c->id[3]);
     }
 }
 
@@ -3388,8 +3393,17 @@ static void render_storage_detail_ro(lv_obj_t* scr, int w, int cat) {
     }
 }
 
-// History detail: per-conversation size list (cursor-selectable) + a "Clear all"
-// row at the end. Destructive rows are confirm-gated via toolbox_storage_confirm.
+// Row layout of the History detail (kept in sync with input.c):
+//   [0 .. hn-1]  conversations (delete one)
+//   [hn]         "Clear orphaned (N)"   (only when hn > 0)
+//   [hn+1]       "Clear all history"    (only when hn > 0)
+// When hn == 0 there is a single non-actionable "No stored conversations" row.
+static int history_total_rows(int hn) {
+    return hn > 0 ? hn + 2 : 1;
+}
+
+// History detail: per-conversation size list (cursor-selectable) + bulk-clear
+// rows. Destructive rows are confirm-gated via toolbox_storage_confirm.
 static void render_storage_detail_history(lv_obj_t* scr, int w, int h) {
     int  x = 16;
     int  y = ST_HEADER_H + 10;
@@ -3399,13 +3413,18 @@ static void render_storage_detail_history(lv_obj_t* scr, int w, int h) {
     uint64_t       htot = 0;
     int            hn   = history_list_conversations(convs, 40, &htot);
 
+    int orphans = 0;
+    for (int i = 0; i < hn; i++)
+        if (st_conv_is_orphan(&convs[i])) orphans++;
+
     char sz[24];
     st_human_size(htot, sz, sizeof(sz));
-    snprintf(line, sizeof(line), "Total: %s   (%d conversation%s)", sz, hn, hn == 1 ? "" : "s");
+    snprintf(line, sizeof(line), "Total: %s   (%d conv%s, %d orphan%s)", sz, hn, hn == 1 ? "" : "s", orphans,
+             orphans == 1 ? "" : "s");
     add_label(scr, x, y, TXT_SMALL, COL_AMBER, line);
     y += TXT_SMALL + 8;
 
-    int total_rows = hn + 1;  // conversations + "Clear all history"
+    int total_rows = history_total_rows(hn);
     if (toolbox_storage_sub < 0) toolbox_storage_sub = 0;
     if (toolbox_storage_sub >= total_rows) toolbox_storage_sub = total_rows - 1;
 
@@ -3425,12 +3444,19 @@ static void render_storage_detail_history(lv_obj_t* scr, int w, int h) {
             st_conv_label(&convs[r], lbl, sizeof(lbl));
             char csz[24];
             st_human_size(convs[r].bytes, csz, sizeof(csz));
-            add_label(scr, x + 12, y + (rowh - TXT_BODY) / 2, TXT_BODY, foc ? COL_HEADER : COL_PAGER_TEXT, lbl);
+            uint32_t col = foc ? COL_HEADER : (st_conv_is_orphan(&convs[r]) ? COL_GRAY : COL_PAGER_TEXT);
+            add_label(scr, x + 12, y + (rowh - TXT_BODY) / 2, TXT_BODY, col, lbl);
             add_label(scr, x + rw - 12 - text_w(csz, TXT_SMALL), y + (rowh - TXT_SMALL) / 2, TXT_SMALL,
                       foc ? COL_HEADER : COL_GRAY, csz);
+        } else if (hn == 0) {
+            add_label(scr, x + 12, y + (rowh - TXT_BODY) / 2, TXT_BODY, COL_GRAY, "No stored conversations");
+        } else if (r == hn) {
+            char orph[40];
+            snprintf(orph, sizeof(orph), "Clear orphaned (%d)", orphans);
+            add_label(scr, x + 12, y + (rowh - TXT_BODY) / 2, TXT_BODY, foc ? COL_HEADER : COL_AMBER, orph);
         } else {
             add_label(scr, x + 12, y + (rowh - TXT_BODY) / 2, TXT_BODY, foc ? COL_HEADER : COL_RED,
-                      hn > 0 ? "Clear all history" : "No stored conversations");
+                      "Clear all history");
         }
         y += rowh + 4;
     }
@@ -3506,11 +3532,17 @@ static void render_toolbox_storage_lvgl(void) {
         hint = "WS: nav   Enter: run   ";
     } else if (detail == ST_CAT_HISTORY) {
         history_conv_t tmp[40];
-        int            hn  = history_list_conversations(tmp, 40, NULL);
-        int            sub = toolbox_storage_sub;
+        int            hn    = history_list_conversations(tmp, 40, NULL);
+        int            total = history_total_rows(hn);
+        int            sub   = toolbox_storage_sub;
         if (sub < 0) sub = 0;
-        if (sub > hn) sub = hn;  // hn == the "Clear all history" row
-        hint = (sub >= hn) ? "WS: nav   Enter: clear all   " : "WS: nav   Enter: delete this chat   ";
+        if (sub >= total) sub = total - 1;
+        if (sub < hn)
+            hint = "WS: nav   Enter: delete this chat   ";
+        else if (hn > 0 && sub == hn)
+            hint = "WS: nav   Enter: clear orphaned   ";
+        else
+            hint = "WS: nav   Enter: clear all   ";
     }
     st_chrome(scr, w, h, st_cat_name[detail], hint, ": storage");
 
