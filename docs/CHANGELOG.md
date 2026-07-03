@@ -21,6 +21,19 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-07-03
+
+### Added
+- **Paired devices viewer** — Settings > Bluetooth shows live BLE status (radio up, advertising, connection) and the list of bonded phones, with a Clear bonds action to recover from a stale pairing that blocks re pairing (PR #74, GitHub issue #73).
+- **Limit counters** — the Nodes view footer shows nodes and contacts against their caps (x/200, x/40); the DM inbox shows saved conversations against the limit (x/40); the channel list and channel view show channel slot usage (x/20) (PR #75).
+
+### Changed
+- **Contacts limit raised to 40 and channels to 20** (from 16 and 15), with the SD backup mirror widened to match so backup and restore cover the full tables (PR #75).
+- **DM and channel message rings moved to PSRAM**, freeing about 19 KB of internal RAM; capacity stays at 50 messages per conversation with the full history on SD (PR #75).
+
+### Fixed
+- **BLE companion was not discoverable** in the phone app for any device name longer than about five characters; the advertising packet overflowed the 31 byte limit because the name shared it with the complete 128 bit service UUID, so advertising never started. The device name now goes in the scan response (PR #74, GitHub issue #73).
+
 ## [3.3.0] - 2026-07-03
 
 ### Added
