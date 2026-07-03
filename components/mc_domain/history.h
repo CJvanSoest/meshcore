@@ -35,3 +35,26 @@ void history_load_dm(const uint8_t peer_pub[32], history_ring_add_fn add);
 
 // Remove on-disk DM history file. No-op if SD is not mounted.
 void history_delete_dm(const uint8_t peer_pub[32]);
+
+// ── Storage Viewer enumeration (issue #70) ──────────────────────────────────
+// One on-disk conversation log. `id` is the 8-byte filename prefix (the channel
+// secret prefix for channels, the peer pubkey prefix for DMs) — enough to map
+// back to a channel/contact for a human label.
+typedef struct {
+    bool     is_dm;  // true = DM (dm/<pub-hex16>.bin), false = channel (ch/<secret-hex16>.bin)
+    uint8_t  id[8];  // 8-byte filename prefix
+    uint32_t bytes;  // file size on disk
+} history_conv_t;
+
+// Enumerate on-disk conversation logs (dm/ + ch/). Fills up to `max` entries,
+// sorted by size descending, and returns the count. `out_total`, if non-NULL,
+// receives the summed byte size of ALL logs (independent of `max`). Returns 0
+// when SD is not mounted.
+int history_list_conversations(history_conv_t* out, int max, uint64_t* out_total);
+
+// Delete one conversation log by its 8-byte filename prefix + kind. Returns
+// true if a file was removed.
+bool history_delete_conversation(const uint8_t id[8], bool is_dm);
+
+// Delete every conversation log (dm/ + ch/). Returns the number removed.
+int history_clear_all(void);

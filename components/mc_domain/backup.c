@@ -219,6 +219,48 @@ bool backup_factory_reset(void) {
 
     // 3. Drop the canonical mirror so the next boot's auto-restore stays quiet.
     remove(BACKUP_PATH);
+    // 4. Cap the accumulation of safety copies.
+    backup_prune_snapshots(5);
     ESP_LOGW(TAG, "factory reset done; safety copy at %s", ts_path);
     return true;
+}
+
+void backup_prune_snapshots(int keep) {
+    if (!history_is_ready() || keep < 0) return;
+    DIR* dir = opendir(BACKUP_DIR);
+    if (!dir) return;
+    typedef struct {
+        char   name[64];
+        time_t mt;
+    } snap_t;
+    snap_t         snaps[32];
+    int            cnt = 0;
+    struct dirent* e;
+    while ((e = readdir(dir)) != NULL && cnt < 32) {
+        if (strncmp(e->d_name, "backup-", 7) != 0) continue;
+        size_t L = strlen(e->d_name);
+        if (L < 12 || L > 60 || strcmp(e->d_name + L - 4, ".bin") != 0) continue;
+        char p[300];  // BACKUP_DIR + '/' + a full dirent name (keeps -Wformat-truncation happy)
+        snprintf(p, sizeof(p), "%s/%s", BACKUP_DIR, e->d_name);
+        struct stat st;
+        if (stat(p, &st) != 0) continue;
+        strncpy(snaps[cnt].name, e->d_name, sizeof(snaps[cnt].name) - 1);
+        snaps[cnt].name[sizeof(snaps[cnt].name) - 1] = '\0';
+        snaps[cnt].mt                                = st.st_mtime;
+        cnt++;
+    }
+    closedir(dir);
+    for (int i = 0; i < cnt; i++)  // selection sort by mtime desc (cnt is tiny)
+        for (int j = i + 1; j < cnt; j++)
+            if (snaps[j].mt > snaps[i].mt) {
+                snap_t t = snaps[i];
+                snaps[i] = snaps[j];
+                snaps[j] = t;
+            }
+    for (int i = keep; i < cnt; i++) {
+        char p[300];
+        snprintf(p, sizeof(p), "%s/%s", BACKUP_DIR, snaps[i].name);
+        remove(p);
+        ESP_LOGI(TAG, "pruned old snapshot %s", snaps[i].name);
+    }
 }

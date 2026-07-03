@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "history.h"
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -271,4 +272,118 @@ void history_delete_dm(const uint8_t peer_pub[32]) {
     dm_path(peer_pub, path, sizeof(path));
     remove(path);
     xSemaphoreGive(s_mutex);
+}
+
+// ── Storage Viewer enumeration (issue #70) ──────────────────────────────────
+
+// Parse a "<16-hex>.bin" log filename back into its 8-byte prefix. Returns false
+// for anything that isn't exactly that shape (skips ".", "..", stray files).
+static bool parse_hex8(const char* name, uint8_t out[8]) {
+    if (strnlen(name, 32) != 20) return false;  // 16 hex + ".bin"
+    for (int i = 0; i < 16; i++) {
+        char c = name[i];
+        int  v;
+        if (c >= '0' && c <= '9')
+            v = c - '0';
+        else if (c >= 'a' && c <= 'f')
+            v = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F')
+            v = c - 'A' + 10;
+        else
+            return false;
+        if (i & 1)
+            out[i / 2] |= (uint8_t)v;
+        else
+            out[i / 2] = (uint8_t)(v << 4);
+    }
+    return strcmp(name + 16, ".bin") == 0;
+}
+
+// Rebuild a log path from an 8-byte prefix. Branch on kind so the format string
+// takes a literal directory (keeps -Wformat-truncation quiet on a fixed buffer).
+static void prefix_path(const uint8_t id[8], bool is_dm, char* out, size_t cap) {
+    if (is_dm)
+        snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin", HISTORY_DM_DIR, id[0], id[1], id[2], id[3], id[4],
+                 id[5], id[6], id[7]);
+    else
+        snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin", HISTORY_CH_DIR, id[0], id[1], id[2], id[3], id[4],
+                 id[5], id[6], id[7]);
+}
+
+static int scan_dir(const char* dir, bool is_dm, history_conv_t* out, int max, int n, uint64_t* total) {
+    DIR* d = opendir(dir);
+    if (!d) return n;
+    struct dirent* e;
+    while ((e = readdir(d)) != NULL) {
+        uint8_t id[8];
+        if (!parse_hex8(e->d_name, id)) continue;
+        char p[300];  // dir + '/' + a full dirent name (keeps -Wformat-truncation happy)
+        snprintf(p, sizeof(p), "%s/%s", dir, e->d_name);
+        struct stat st;
+        if (stat(p, &st) != 0) continue;
+        if (total) *total += (uint64_t)st.st_size;
+        if (out && n < max) {
+            out[n].is_dm = is_dm;
+            memcpy(out[n].id, id, 8);
+            out[n].bytes = (uint32_t)st.st_size;
+            n++;
+        }
+    }
+    closedir(d);
+    return n;
+}
+
+int history_list_conversations(history_conv_t* out, int max, uint64_t* out_total) {
+    if (out_total) *out_total = 0;
+    if (!s_ready) return 0;
+    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(300)) != pdTRUE) return 0;
+    int n = 0;
+    n     = scan_dir(HISTORY_DM_DIR, true, out, max, n, out_total);
+    n     = scan_dir(HISTORY_CH_DIR, false, out, max, n, out_total);
+    if (out) {  // selection sort by size desc (n is tiny — max 31 logs)
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                if (out[j].bytes > out[i].bytes) {
+                    history_conv_t t = out[i];
+                    out[i]           = out[j];
+                    out[j]           = t;
+                }
+    }
+    xSemaphoreGive(s_mutex);
+    return n;
+}
+
+bool history_delete_conversation(const uint8_t id[8], bool is_dm) {
+    if (!s_ready || id == NULL) return false;
+    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(200)) != pdTRUE) return false;
+    char path[64];
+    prefix_path(id, is_dm, path, sizeof(path));
+    bool ok = (remove(path) == 0);
+    xSemaphoreGive(s_mutex);
+    return ok;
+}
+
+int history_clear_all(void) {
+    if (!s_ready) return 0;
+    int removed = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        bool        is_dm = (pass == 0);
+        const char* dir   = is_dm ? HISTORY_DM_DIR : HISTORY_CH_DIR;
+        // Snapshot the ids first — removing entries while walking the dir is
+        // unsafe on FAT. 40 comfortably covers the 15 channels + 16 contacts max.
+        uint8_t     ids[40][8];
+        int         cnt = 0;
+        if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(300)) != pdTRUE) return removed;
+        DIR* d = opendir(dir);
+        if (d) {
+            struct dirent* e;
+            while ((e = readdir(d)) != NULL && cnt < 40)
+                if (parse_hex8(e->d_name, ids[cnt])) cnt++;
+            closedir(d);
+        }
+        xSemaphoreGive(s_mutex);
+        for (int i = 0; i < cnt; i++)
+            if (history_delete_conversation(ids[i], is_dm)) removed++;
+    }
+    return removed;
 }
