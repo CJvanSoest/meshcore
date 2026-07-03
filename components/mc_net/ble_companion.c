@@ -44,6 +44,13 @@ static uint16_t s_tx_attr_handle;
 #define BLE_CONN_INVALID 0xFFFF
 static uint16_t s_active_conn = BLE_CONN_INVALID;
 
+// Diagnostics flags surfaced via ble_companion_get_status() for the
+// Paired-devices viewer. s_initialized flips true once the host stack is up;
+// s_advertising tracks whether the last adv_start succeeded (and no peer has
+// connected since -- NimBLE auto-stops advertising on connect).
+static bool s_initialized = false;
+static bool s_advertising = false;
+
 // Forward declarations
 static int gap_event(struct ble_gap_event* event, void* arg);
 static int rx_chr_access(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt* ctxt, void* arg);
@@ -144,6 +151,15 @@ static int tx_chr_access(uint16_t conn_handle, uint16_t attr_handle, struct ble_
 
 // ── GAP advertising ────────────────────────────────────────────────────────
 static void advertise(void) {
+    s_advertising = false;
+
+    // The primary adv packet is capped at 31 bytes. Flags (3) + TX power (3) +
+    // the complete 128-bit service UUID (18) already spend 24, leaving room for
+    // only a ~5-char name. Putting a longer owner_name here made
+    // ble_gap_adv_set_fields() fail with BLE_HS_EMSGSIZE, so the badge silently
+    // never advertised (issue #73). Keep the primary packet to flags+pwr+UUID
+    // and move the device name into the scan response, which has its own 31-byte
+    // budget -- the phone still shows the name in its pairing list.
     struct ble_hs_adv_fields fields = {0};
     fields.flags                    = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
     fields.tx_pwr_lvl_is_present    = 1;
@@ -151,15 +167,25 @@ static void advertise(void) {
     fields.uuids128                 = (ble_uuid128_t*)&kSvcUuid;
     fields.num_uuids128             = 1;
     fields.uuids128_is_complete     = 1;
-    // Advertise the device name from settings (owner_name) so the iPhone
-    // shows it in the pairing list. Falls back to "Tanmatsu" if not set yet.
-    const char* name                = (owner_name[0] && owner_name[0] != '(') ? owner_name : "Tanmatsu";
-    fields.name                     = (uint8_t*)name;
-    fields.name_len                 = (uint8_t)strlen(name);
-    fields.name_is_complete         = 1;
     int rc                          = ble_gap_adv_set_fields(&fields);
     if (rc != 0) {
         ESP_LOGE(TAG, "adv_set_fields rc=%d", rc);
+        return;
+    }
+
+    // Device name from settings (owner_name), in the scan response. Falls back
+    // to "Tanmatsu" if not set yet. The scan-rsp name field is a length-type-
+    // value triplet, so cap the name at 29 bytes to stay inside 31.
+    const char* name     = (owner_name[0] && owner_name[0] != '(') ? owner_name : "Tanmatsu";
+    size_t      name_len = strlen(name);
+    if (name_len > 29) name_len = 29;
+    struct ble_hs_adv_fields rsp_fields = {0};
+    rsp_fields.name                     = (uint8_t*)name;
+    rsp_fields.name_len                 = (uint8_t)name_len;
+    rsp_fields.name_is_complete         = (name_len == strlen(name));
+    rc                                  = ble_gap_adv_rsp_set_fields(&rsp_fields);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "adv_rsp_set_fields rc=%d", rc);
         return;
     }
 
@@ -174,10 +200,12 @@ static void advertise(void) {
     params.itvl_min                  = 1600;
     params.itvl_max                  = 1600;
     rc = ble_gap_adv_start(s_own_addr_type, NULL, BLE_HS_FOREVER, &params, gap_event, NULL);
-    if (rc != 0)
+    if (rc != 0) {
         ESP_LOGE(TAG, "adv_start rc=%d", rc);
-    else
+    } else {
+        s_advertising = true;
         ESP_LOGI(TAG, "advertising as \"%s\"", name);
+    }
 }
 
 // ── GAP event handler ──────────────────────────────────────────────────────
@@ -188,6 +216,7 @@ static int gap_event(struct ble_gap_event* event, void* arg) {
             ESP_LOGI(TAG, "connect status=%d handle=%u", event->connect.status, event->connect.conn_handle);
             if (event->connect.status == 0) {
                 s_active_conn = event->connect.conn_handle;
+                s_advertising = false;  // NimBLE auto-stops advertising on connect
             } else {
                 advertise();  // re-advertise on fail
             }
@@ -269,6 +298,54 @@ static void host_task(void* arg) {
     nimble_port_freertos_deinit();
 }
 
+// ── Diagnostics API (backing VIEW_BLE_DEVICES) ──────────────────────────────
+// NimBLE keeps bonds in the "our sec" store; ble_store_util_bonded_peers walks
+// it and returns identity addresses. Bonds survive reboots (persisted to NVS),
+// so this reflects every phone that has completed pairing, not just the live
+// connection.
+int ble_companion_bonded_peers(ble_peer_t* out, int max) {
+    if (!s_initialized || max <= 0) return 0;
+    ble_addr_t addrs[8];
+    int        n   = 0;
+    int        cap = max < (int)(sizeof(addrs) / sizeof(addrs[0])) ? max : (int)(sizeof(addrs) / sizeof(addrs[0]));
+    int        rc  = ble_store_util_bonded_peers(addrs, &n, cap);
+    if (rc != 0) {
+        ESP_LOGW(TAG, "bonded_peers rc=%d", rc);
+        return 0;
+    }
+    if (n > max) n = max;
+    for (int i = 0; i < n && out; i++) {
+        // NimBLE stores the address little-endian (val[0] = LSB); reverse into
+        // display order so the UI prints AA:BB:CC:DD:EE:FF left-to-right.
+        for (int b = 0; b < 6; b++) out[i].addr[b] = addrs[i].val[5 - b];
+        out[i].addr_type = addrs[i].type;
+    }
+    return n;
+}
+
+void ble_companion_get_status(ble_status_t* out) {
+    if (!out) return;
+    out->initialized = s_initialized;
+    out->connected   = (s_active_conn != BLE_CONN_INVALID);
+    out->advertising = s_advertising && !out->connected;
+    out->bond_count  = ble_companion_bonded_peers(NULL, 8);
+}
+
+void ble_companion_clear_bonds(void) {
+    if (!s_initialized) return;
+    ble_addr_t addrs[8];
+    int        n  = 0;
+    int        rc = ble_store_util_bonded_peers(addrs, &n, sizeof(addrs) / sizeof(addrs[0]));
+    if (rc != 0) {
+        ESP_LOGW(TAG, "clear_bonds enumerate rc=%d", rc);
+        return;
+    }
+    for (int i = 0; i < n; i++) {
+        rc = ble_gap_unpair(&addrs[i]);
+        ESP_LOGI(TAG, "unpair peer %d rc=%d", i, rc);
+    }
+}
+
 // ── Public init ────────────────────────────────────────────────────────────
 bool ble_companion_init(void) {
     // BT controller lives on the C6 via esp-hosted. Bring it up before NimBLE.
@@ -321,6 +398,7 @@ bool ble_companion_init(void) {
     ble_store_config_init();
 
     nimble_port_freertos_init(host_task);
+    s_initialized = true;
     ESP_LOGI(TAG, "init OK (name=\"%s\")", name);
     return true;
 }

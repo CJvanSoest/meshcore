@@ -48,6 +48,7 @@ typedef enum {
     // ── Bluetooth (own category) ──
     FIELD_BLE_ENABLED,  // Toggle: BLE companion radio on/off (takes effect on next app start)
     FIELD_BLE_PIN,      // 6-digit fixed NimBLE pairing passkey (0..999999, shown as %06u)
+    FIELD_BLE_DEVICES,  // Action: opens VIEW_BLE_DEVICES (status + paired-devices viewer)
     // ── Region & location ──
     FIELD_REGION_SCOPE,
     FIELD_GPS_LAT,
@@ -142,6 +143,11 @@ extern int  toolbox_storage_cursor;   // selected category row on the Storage su
 extern int  toolbox_storage_detail;   // -1 = summary; else the open category (ST_CAT_*)
 extern int  toolbox_storage_sub;      // cursor within the open detail (action / conversation)
 extern bool toolbox_storage_confirm;  // armed: next Enter runs the selected action
+
+// BLE Paired-devices viewer (VIEW_BLE_DEVICES) state. cursor selects a row in
+// the paired-device list (the "Clear bonds" action row sits at the tail).
+extern int  ble_devices_cursor;   // selected row in the paired-devices list
+extern bool ble_devices_confirm;  // armed: next Enter runs Clear bonds
 
 // Number of actions in the Storage Viewer's Backup detail (Backup / Restore /
 // Factory-reset). Shared so input.c can bound its cursor to the same count.
