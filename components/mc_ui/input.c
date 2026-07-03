@@ -1606,7 +1606,7 @@ static void key_chat(char c) {
             strncpy(target_name, dm_target_name, sizeof(target_name) - 1);
             target_name[sizeof(target_name) - 1] = '\0';
             dm_target_set                        = false;
-            memset(chat_msgs, 0, sizeof(chat_msgs));
+            memset(chat_msgs, 0, CHAT_RING_BYTES);
             chat_head = chat_count = chat_scroll = 0;
         }
         // contacts[] is shared with the RX task; resolve the slot + shift it out
@@ -1646,7 +1646,7 @@ static void key_channel(char c) {
     if (!((c == 'r' || c == 'R') && !chat_typing && !channel_list_mode)) return;
 
     if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        memset(ch_msgs, 0, sizeof(ch_msgs));
+        memset(ch_msgs, 0, CHAT_RING_BYTES);
         ch_head   = 0;
         ch_count  = 0;
         ch_scroll = 0;

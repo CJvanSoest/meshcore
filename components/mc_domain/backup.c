@@ -10,6 +10,7 @@
 #include "backup_codec.h"
 #include "channels.h"
 #include "contacts.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "history.h"       // history_is_ready
 #include "identity.h"      // identity_export_seed / identity_import_seed
@@ -57,37 +58,56 @@ static void snapshot(backup_data_t* d) {
     d->have_location = gps_position_valid ? 1 : 0;
 }
 
+// BACKUP_MAX_BYTES is ~3 KB after the 40-contact / 19-channel bump. Keep this
+// encode/decode scratch off the stack (PSRAM): write_file runs via backup_write
+// on the LoRa RX task (contact auto-add) where stack is already deep.
 static bool write_file(const char* path, const backup_data_t* d) {
-    uint8_t buf[BACKUP_MAX_BYTES];
-    size_t  n = backup_encode(d, buf, sizeof(buf));
-    if (n == 0) return false;
+    uint8_t* buf = heap_caps_malloc(BACKUP_MAX_BYTES, MALLOC_CAP_SPIRAM);
+    if (!buf) return false;
+    size_t n = backup_encode(d, buf, BACKUP_MAX_BYTES);
+    if (n == 0) {
+        heap_caps_free(buf);
+        return false;
+    }
     mkdir(BACKUP_DIR, 0775);  // ignores EEXIST
     FILE* f = fopen(path, "wb");
     if (!f) {
         ESP_LOGW(TAG, "fopen(%s) failed", path);
+        heap_caps_free(buf);
         return false;
     }
     size_t w = fwrite(buf, 1, n, f);
     fclose(f);
+    heap_caps_free(buf);
     return w == n;
 }
 
 bool backup_write(void) {
     if (!history_is_ready() || s_suspend_write) return false;
-    backup_data_t d;
-    snapshot(&d);
-    bool ok = write_file(BACKUP_PATH, &d);
-    if (ok) ESP_LOGI(TAG, "mirror updated: %d channel(s), %d contact(s)", d.n_channels, d.n_contacts);
+    // Snapshot on the heap too: backup_data_t is ~3.4 KB and this path runs on
+    // the RX task, so a stack copy plus write_file's buffer would risk overflow.
+    backup_data_t* d = heap_caps_malloc(sizeof(*d), MALLOC_CAP_SPIRAM);
+    if (!d) return false;
+    snapshot(d);
+    bool ok = write_file(BACKUP_PATH, d);
+    if (ok) ESP_LOGI(TAG, "mirror updated: %d channel(s), %d contact(s)", d->n_channels, d->n_contacts);
+    heap_caps_free(d);
     return ok;
 }
 
 static bool read_path(const char* path, backup_data_t* out) {
     FILE* f = fopen(path, "rb");
     if (!f) return false;
-    uint8_t buf[BACKUP_MAX_BYTES];
-    size_t  n = fread(buf, 1, sizeof(buf), f);
+    uint8_t* buf = heap_caps_malloc(BACKUP_MAX_BYTES, MALLOC_CAP_SPIRAM);
+    if (!buf) {
+        fclose(f);
+        return false;
+    }
+    size_t n = fread(buf, 1, BACKUP_MAX_BYTES, f);
     fclose(f);
-    return backup_decode(buf, n, out) == BACKUP_OK;
+    bool ok = backup_decode(buf, n, out) == BACKUP_OK;
+    heap_caps_free(buf);
+    return ok;
 }
 
 // Newest /sd/meshcore/backup-<unix>.bin (the timestamped copies factory reset

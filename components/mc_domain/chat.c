@@ -9,6 +9,7 @@
 #include "channels.h"
 #include "contacts.h"
 #include "emoji_table.h"  // codepoint lookup + utf8_decode (pax-free; no UI dep)
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/task.h"
 #include "history.h"
@@ -18,13 +19,16 @@
 static const char* TAG = "chat";
 
 // ── State ────────────────────────────────────────────────────────────────────
-chat_msg_t        chat_msgs[MAX_CHAT_MSGS];
+// The two message rings live in PSRAM (allocated in chat_init), not as static
+// arrays, so they don't spend ~19 KB of scarce internal RAM. Access via
+// chat_msgs[i] / ch_msgs[i] is unchanged; sizeof-based clears use CHAT_RING_BYTES.
+chat_msg_t*       chat_msgs   = NULL;
 int               chat_head   = 0;
 int               chat_count  = 0;
 int               chat_scroll = 0;
 SemaphoreHandle_t chat_mutex  = NULL;
 
-chat_msg_t        ch_msgs[MAX_CHAT_MSGS];
+chat_msg_t*       ch_msgs   = NULL;
 int               ch_head   = 0;
 int               ch_count  = 0;
 int               ch_scroll = 0;
@@ -86,6 +90,14 @@ void chat_init(void) {
     if (chat_mutex == NULL) chat_mutex = xSemaphoreCreateMutex();
     if (ch_mutex == NULL) ch_mutex = xSemaphoreCreateMutex();
 
+    // Allocate the two message rings in PSRAM (zero-initialised). Done once at
+    // boot before any task touches the rings. calloc so `active` starts false.
+    if (chat_msgs == NULL) chat_msgs = heap_caps_calloc(MAX_CHAT_MSGS, sizeof(chat_msg_t), MALLOC_CAP_SPIRAM);
+    if (ch_msgs == NULL) ch_msgs = heap_caps_calloc(MAX_CHAT_MSGS, sizeof(chat_msg_t), MALLOC_CAP_SPIRAM);
+    if (chat_msgs == NULL || ch_msgs == NULL) {
+        ESP_LOGE(TAG, "PSRAM alloc for chat rings failed (%u B each)", (unsigned)CHAT_RING_BYTES);
+    }
+
     uint8_t digest[32];
     mbedtls_sha256(PUBLIC_CHANNEL_KEY, sizeof(PUBLIC_CHANNEL_KEY), digest, 0);
     channel_hash = digest[0];
@@ -142,7 +154,7 @@ void dm_select_target(const uint8_t pub[32], const char* name) {
     contact_clear_unread(pub);  // opening a conversation clears its unread
     update_notification_led();  // turn LED off once nothing remains unread
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
-        memset(chat_msgs, 0, sizeof(chat_msgs));
+        memset(chat_msgs, 0, CHAT_RING_BYTES);
         chat_head   = 0;
         chat_count  = 0;
         chat_scroll = 0;
@@ -207,7 +219,7 @@ void ch_select_channel(int idx) {
     channel_unread[idx] = 0;                    // opening a channel clears its unread
     update_notification_led();                  // turn LED off once nothing remains unread
     if (xSemaphoreTake(ch_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
-        memset(ch_msgs, 0, sizeof(ch_msgs));
+        memset(ch_msgs, 0, CHAT_RING_BYTES);
         ch_head   = 0;
         ch_count  = 0;
         ch_scroll = 0;

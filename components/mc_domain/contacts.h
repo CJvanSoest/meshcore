@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include "meshcore/packet.h"  // MESHCORE_PUB_KEY_SIZE
 
-#define MAX_CONTACTS      16
+#define MAX_CONTACTS      40
 #define CONTACT_ALIAS_LEN 24
 
 typedef struct __attribute__((packed)) {
