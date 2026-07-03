@@ -15,5 +15,7 @@ void field_adjust(int field, int delta);
 // BSP navigation key (arrow / ESC / F1 / RETURN).
 void handle_nav(uint32_t key);
 
-// Printable / control character from the keyboard.
-void handle_key(char c);
+// Printable / control character from the keyboard. `utf8` is the BSP event's
+// UTF-8 string (may be NULL); it carries AltGr / dead-key characters that have
+// no ASCII form, so text-input paths can insert umlauts/accents directly.
+void handle_key(char c, const char* utf8);

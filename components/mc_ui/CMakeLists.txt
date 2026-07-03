@@ -22,6 +22,7 @@ idf_component_register(
         freertos
         esp_timer
     PRIV_REQUIRES
+        mc_fonts
         mc_io
         mc_proto
         mc_rx

@@ -30,6 +30,7 @@
 #include "lvgl.h"
 #include "lvgl_port.h"
 #include "map.h"
+#include "mc_fonts.h"  // extended Montserrat faces (umlauts, accents, °, €, …)
 #include "nodes.h"
 #include "nvs_flash.h"
 #include "qrcodegen.h"
@@ -38,6 +39,7 @@
 #include "render.h"  // COL_* palette + TXT_* sizes (shared with the PAX views)
 #include "render_internal.h"
 #include "settings_nvs.h"
+#include "special_table.h"  // special_font_covers (draw umlauts instead of '?')
 #include "ui_state.h"
 #include "wifi_connection.h"
 
@@ -48,22 +50,24 @@ static inline lv_color_t mc_col(uint32_t argb) {
     return lv_color_make((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF);
 }
 
-// Map the app's TXT_* point sizes onto the built-in Montserrat faces enabled in
-// sdkconfig. TXT_TINY (13) has no 13 px face; 14 is the closest.
+// Map the app's TXT_* point sizes onto our extended Montserrat faces (ASCII +
+// Latin-1 + euro/dashes) so umlauts and accents in received messages and the F5
+// picker render real glyphs instead of the missing-glyph box. TXT_TINY (13) has
+// no 13 px face; 14 is the closest.
 static const lv_font_t* mc_font(int sz) {
     switch (sz) {
         case TXT_TINY:
-            return &lv_font_montserrat_14;
+            return &lv_font_montserrat_14_ext;
         case TXT_SMALL:
-            return &lv_font_montserrat_16;
+            return &lv_font_montserrat_16_ext;
         case TXT_BODY:
-            return &lv_font_montserrat_20;
+            return &lv_font_montserrat_20_ext;
         case TXT_TAB:
-            return &lv_font_montserrat_22;
+            return &lv_font_montserrat_22_ext;
         case TXT_TITLE:
-            return &lv_font_montserrat_24;
+            return &lv_font_montserrat_24_ext;
         default:
-            return &lv_font_montserrat_16;
+            return &lv_font_montserrat_16_ext;
     }
 }
 
@@ -227,6 +231,20 @@ static void add_circle(lv_obj_t* p, int cx, int cy, int r, int64_t fill, int64_t
         lv_obj_set_style_border_width(o, bw, 0);
         lv_obj_set_style_border_opa(o, LV_OPA_COVER, 0);
     }
+}
+
+// A small "cloud" glyph — three overlapping lobes matching the blue F5 key
+// symbol on the Tanmatsu (and the launcher's cyan cloud next to "Settings"). The
+// footer affordance for the special-character picker, so the hint echoes the
+// physical key the user presses.
+static void add_cloud(lv_obj_t* p, int cx, int cy, int r, uint32_t col) {
+    // Three hollow rings in a trefoil (one up, two down), overlapping in the
+    // centre — the exact shape printed on the blue F5 key. fill=-1 → outline only.
+    int lobe = (r + 1) / 2;                                   // ring radius
+    int off  = r / 2;                                         // spread from centre
+    add_circle(p, cx, cy - off, lobe, -1, col, 1);            // top
+    add_circle(p, cx - off, cy + off - 1, lobe, -1, col, 1);  // bottom-left
+    add_circle(p, cx + off, cy + off - 1, lobe, -1, col, 1);  // bottom-right
 }
 
 // Static arc stroke from start_deg to end_deg (LVGL angles: 0 deg = 3 o'clock,
@@ -1418,7 +1436,15 @@ static int emoji_text(lv_obj_t* parent, int x, int y, int size, uint32_t col, co
             continue;
         }
         if (cp >= 0x80) {
-            if (run_len < (int)sizeof(run) - 1) run[run_len++] = '?';
+            // Non-emoji, non-ASCII: pass the raw UTF-8 bytes into the text run so
+            // the extended font draws the glyph (umlauts, accents, °, €, …). Only
+            // genuinely undrawable codepoints collapse to '?'.
+            if (special_font_covers(cp) && run_len + adv < (int)sizeof(run) - 1) {
+                memcpy(&run[run_len], &text[i], (size_t)adv);
+                run_len += adv;
+            } else if (run_len < (int)sizeof(run) - 1) {
+                run[run_len++] = '?';
+            }
             i += adv;
             continue;
         }
@@ -1448,45 +1474,67 @@ static void emoji_image(lv_obj_t* parent, int idx, int cx, int cy, int d) {
     lv_obj_set_pos(im, cx - d / 2, cy - d / 2);
 }
 
-// Paged 4x5 emoji-picker overlay drawn on top of the Chat/Channel base view
-// while typing. Pixel-matched port of render_emoji_picker_overlay() in render.c.
+// Draw a special-character bank entry as a centred font glyph (the F5 bank is
+// plain UTF-8, rendered from the extended Montserrat display font, unlike the
+// emoji bank which is bitmap art).
+static void special_glyph(lv_obj_t* parent, int idx, int cx, int cy) {
+    const emoji_entry_t* e = picker_entry(idx);  // active bank == PICKER_SPECIAL here
+    if (!e) {
+        return;
+    }
+    int gw = text_w(e->utf8, TXT_TITLE);
+    add_label(parent, cx - gw / 2, cy - TXT_TITLE / 2 - 2, TXT_TITLE, COL_WHITE, e->utf8);
+}
+
+// Paged 4x5 character-picker overlay drawn on top of the Chat/Channel base view
+// while typing. Serves both banks: F4 emoji (bitmaps) and F5 special characters
+// (font glyphs). Pixel-matched port of render_emoji_picker_overlay() in render.c.
 static void render_emoji_picker_overlay_lvgl(lv_obj_t* scr, int w, int h) {
-    const int cols     = 4;
-    const int vis_rows = 5;
-    const int per_page = cols * vis_rows;
-    const int cell     = 48;
-    const int pad      = 14;
-    const int panel_w  = cols * cell + 2 * pad;
-    const int panel_h  = vis_rows * cell + 2 * pad + TXT_SMALL + 6;
-    int       panel_x  = (w - panel_w) / 2;
-    int       panel_y  = h - CHAT_INPUT_H - FOOTER_H - panel_h - 4;
-    if (panel_y < TAB_BAR_H + 4) panel_y = TAB_BAR_H + 4;
+    const bool special  = (emoji_picker_mode == PICKER_SPECIAL);
+    const int  count    = picker_count();
+    const int  cols     = 4;
+    const int  vis_rows = 5;
+    const int  per_page = cols * vis_rows;
+    const int  cell     = 48;
+    const int  pad      = 14;
+    const int  grid_w   = cols * cell;  // width of the glyph grid itself
+    const int  panel_h  = vis_rows * cell + 2 * pad + TXT_SMALL + 6;
 
     if (emoji_picker_cursor < 0) emoji_picker_cursor = 0;
-    if (emoji_picker_cursor >= EMOJI_COUNT) emoji_picker_cursor = EMOJI_COUNT - 1;
-    int pages = (EMOJI_COUNT + per_page - 1) / per_page;
+    if (emoji_picker_cursor >= count) emoji_picker_cursor = count - 1;
+    int pages = (count + per_page - 1) / per_page;
     int page  = emoji_picker_cursor / per_page;
     int start = page * per_page;
+
+    // Header: title (left) + scroll hint (right). Size the panel so the two never
+    // overlap — widen past the grid when the header text needs the room.
+    const char* what = special ? "Pick character" : "Pick emoji";
+    char        title[40];
+    if (pages > 1) {
+        snprintf(title, sizeof(title), "%s  %d/%d", what, page + 1, pages);
+    } else {
+        snprintf(title, sizeof(title), "%s", what);
+    }
+    const char* nav       = "W/S: scroll";
+    int         header_w  = text_w(title, TXT_SMALL) + (pages > 1 ? 16 + text_w(nav, TXT_SMALL) : 0);
+    int         content_w = (grid_w > header_w) ? grid_w : header_w;
+    int         panel_w   = content_w + 2 * pad;
+    int         panel_x   = (w - panel_w) / 2;
+    int         panel_y   = h - CHAT_INPUT_H - FOOTER_H - panel_h - 4;
+    if (panel_y < TAB_BAR_H + 4) panel_y = TAB_BAR_H + 4;
 
     add_rect(scr, panel_x, panel_y, panel_w, panel_h, COL_HEADER);
     add_rect(scr, panel_x, panel_y, panel_w, 2, COL_ACCENT);
 
-    char title[40];
-    if (pages > 1) {
-        snprintf(title, sizeof(title), "Pick emoji  %d/%d", page + 1, pages);
-    } else {
-        snprintf(title, sizeof(title), "Pick emoji");
-    }
     add_label(scr, panel_x + pad, panel_y + 4, TXT_SMALL, COL_AMBER, title);
     if (pages > 1) {
-        const char* nav = "W/S: scroll";
-        add_label(scr, panel_x + panel_w - text_w(nav, TXT_SMALL) - 6, panel_y + 4, TXT_SMALL, COL_GRAY, nav);
+        add_label(scr, panel_x + panel_w - text_w(nav, TXT_SMALL) - pad, panel_y + 4, TXT_SMALL, COL_GRAY, nav);
     }
 
-    int grid_x = panel_x + pad;
+    int grid_x = panel_x + (panel_w - cols * cell) / 2;  // centre the grid in the panel
     int grid_y = panel_y + 6 + TXT_SMALL;
 
-    for (int i = start; i < start + per_page && i < EMOJI_COUNT; i++) {
+    for (int i = start; i < start + per_page && i < count; i++) {
         int  local = i - start;
         int  r     = local / cols;
         int  c     = local % cols;
@@ -1496,7 +1544,11 @@ static void render_emoji_picker_overlay_lvgl(lv_obj_t* scr, int w, int h) {
         if (sel) {
             add_rect(scr, cx - cell / 2 + 2, cy - cell / 2 + 2, cell - 4, cell - 4, COL_PANEL);
         }
-        emoji_image(scr, i, cx, cy, 2 * (cell / 2 - 6));
+        if (special) {
+            special_glyph(scr, i, cx, cy);
+        } else {
+            emoji_image(scr, i, cx, cy, 2 * (cell / 2 - 6));
+        }
     }
 }
 
@@ -1995,6 +2047,9 @@ static void render_chat_lvgl(void) {
         int icon_y = fy + FOOTER_H / 2;
         add_circle(scr, icon_x + 6, icon_y, 6, -1, COL_GREEN, 2);
         add_label(scr, icon_x + 18, hint_ty, TXT_SMALL, COL_HINT, ": emoji");
+        int icon2_x = icon_x + 18 + text_w(": emoji   ", TXT_SMALL);
+        add_cloud(scr, icon2_x + 6, icon_y, 6, COL_BLUE);
+        add_label(scr, icon2_x + 18, hint_ty, TXT_SMALL, COL_HINT, ": chars");
     } else {
         const char* hint = "Enter: type   W/S: scroll   Tab: next tab   ";
         add_label(scr, 10, hint_ty, TXT_SMALL, COL_HINT, hint);
@@ -2198,6 +2253,9 @@ static void render_channel_lvgl(void) {
         int icon_y = fy + FOOTER_H / 2;
         add_circle(scr, icon_x + 6, icon_y, 6, -1, COL_GREEN, 2);
         add_label(scr, icon_x + 18, hint_ty, TXT_SMALL, COL_HINT, ": emoji");
+        int icon2_x = icon_x + 18 + text_w(": emoji   ", TXT_SMALL);
+        add_cloud(scr, icon2_x + 6, icon_y, 6, COL_BLUE);
+        add_label(scr, icon2_x + 18, hint_ty, TXT_SMALL, COL_HINT, ": chars");
     } else {
         const char* hint = "Enter: type   W/S: scroll   R: clear   Tab: next   ";
         add_label(scr, 10, hint_ty, TXT_SMALL, COL_HINT, hint);
