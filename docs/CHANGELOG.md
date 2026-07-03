@@ -21,6 +21,14 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-07-03
+
+### Added
+- **Special characters** — receive, display and type European characters: umlauts (ä ö ü ß), accents (é à ñ ç …), and symbols like ° and €. An extended Montserrat display font renders them, an F5 "blue cloud" picker inserts the 40 most used characters, and the AltGr keyboard layer types them directly in chats and free text settings fields (PR #78).
+
+### Fixed
+- **Umlauts and accents displayed as `?`** — incoming and typed non ASCII characters were collapsed to `?` because both the receive side sanitiser and the on screen text renderer only passed emoji through; they now draw any character the extended display font covers (PR #78).
+
 ## [3.4.0] - 2026-07-03
 
 ### Added
