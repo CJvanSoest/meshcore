@@ -165,6 +165,7 @@ static const field_def_t s_fields[FIELD_COUNT] = {
     // ── Bluetooth ──
     [FIELD_BLE_ENABLED]        = {"BLE companion", save_ble_enabled},
     [FIELD_BLE_PIN]            = {"Pairing code", save_ble_pin},
+    [FIELD_BLE_DEVICES]        = {"Paired devices", NULL},
     // ── Region & Location ──
     [FIELD_REGION_SCOPE]       = {"Region scope", save_region_scope},
     [FIELD_GPS_LAT]            = {"GPS latitude", save_gps_coords},
@@ -461,6 +462,12 @@ void settings_field_value(field_t f, char* out, size_t cap) {
             // Always 6 digits with leading zeros (e.g. "012345") so it matches
             // exactly what the phone prompts for.
             snprintf(out, cap, "%06lu", (unsigned long)ble_pin);
+            break;
+        case FIELD_BLE_DEVICES:
+            // Action row: Enter opens VIEW_BLE_DEVICES. Keep it cheap -- don't
+            // walk the bond store on every settings frame; the viewer shows the
+            // count.
+            snprintf(out, cap, "press ENTER");
             break;
 
         // ── Brightness ──

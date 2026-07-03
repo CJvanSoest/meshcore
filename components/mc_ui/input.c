@@ -606,6 +606,9 @@ static void nav_chat(uint32_t key) {
 static void channel_commit_add(void);
 static void channel_wizard_reset(void);
 static void channel_wizard_menu_select(void);
+// Opens VIEW_BLE_DEVICES from the Settings > Bluetooth field list; defined
+// with the other view-open helpers below.
+static void open_ble_devices(void);
 
 static void nav_channel(uint32_t key) {
     if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
@@ -752,6 +755,8 @@ static void nav_settings(uint32_t key) {
             save_ble_enabled();
             snprintf(toast_text, sizeof(toast_text), "BLE %s on next start", ble_enabled ? "ON" : "OFF");
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        } else if (selected == FIELD_BLE_DEVICES) {
+            open_ble_devices();
         } else if (!edit_mode) {
             // Refresh the cached launcher-slot list right before letting
             // the user cycle through it, so newly added networks land.
@@ -922,6 +927,65 @@ static void key_toolbox_storage(char c) {
         storage_move(+1);
     else if (c == '\r' || c == '\n')
         storage_enter();
+}
+
+// ── BLE Paired-devices viewer (VIEW_BLE_DEVICES) input ──────────────────────
+// Rows: one display-only row per bonded peer, then a single "Clear bonds"
+// action row at the tail. Only the action row responds to Enter (two-Enter
+// confirm, mirroring the Storage viewer). Bond count is read fresh each move --
+// there are at most a handful of bonds so walking the store is cheap.
+static void open_ble_devices(void) {
+    ble_devices_cursor  = 0;
+    ble_devices_confirm = false;
+    current_view        = VIEW_BLE_DEVICES;
+}
+
+static bool ble_devices_on_action_row(void) {
+    ble_status_t st;
+    ble_companion_get_status(&st);
+    return ble_devices_cursor >= st.bond_count;  // tail row is Clear bonds
+}
+
+static void ble_devices_move(int dir) {
+    ble_status_t st;
+    ble_companion_get_status(&st);
+    int n = st.bond_count + 1;  // +1 for the Clear-bonds action row
+    int c = ble_devices_cursor + dir;
+    if (c < 0) c = 0;
+    if (c >= n) c = n - 1;
+    ble_devices_cursor  = c;
+    ble_devices_confirm = false;
+}
+
+static void ble_devices_enter(void) {
+    if (!ble_devices_on_action_row()) return;  // device rows are display-only
+    if (ble_devices_confirm) {
+        ble_devices_confirm = false;
+        ble_companion_clear_bonds();
+        ble_devices_cursor = 0;
+        snprintf(toast_text, sizeof(toast_text), "Bonds cleared");
+        toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    } else {
+        ble_devices_confirm = true;
+    }
+}
+
+static void nav_ble_devices(uint32_t key) {
+    if (key == BSP_INPUT_NAVIGATION_KEY_UP)
+        ble_devices_move(-1);
+    else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN)
+        ble_devices_move(+1);
+    else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN)
+        ble_devices_enter();
+}
+
+static void key_ble_devices(char c) {
+    if (c == 'w' || c == 'W')
+        ble_devices_move(-1);
+    else if (c == 's' || c == 'S')
+        ble_devices_move(+1);
+    else if (c == '\r' || c == '\n')
+        ble_devices_enter();
 }
 
 // Ping the repeater under the coverage cursor (3x, GPS-stamped). Re-collects so
@@ -1222,6 +1286,13 @@ void handle_nav(uint32_t key) {
         } else if (current_view == VIEW_TOOLBOX_STORAGE && toolbox_storage_detail >= 0) {
             toolbox_storage_detail = -1;  // back out of a detail view to the summary
             toolbox_storage_sub    = 0;
+        } else if (current_view == VIEW_BLE_DEVICES && ble_devices_confirm) {
+            ble_devices_confirm = false;  // first ESC cancels the armed Clear-bonds
+        } else if (current_view == VIEW_BLE_DEVICES) {
+            // Opened from the Settings > Bluetooth field list, so return there
+            // (not to the Toolbox launcher). `selected` still points at the
+            // Paired-devices row.
+            current_view = VIEW_SETTINGS;
         } else if (current_view == VIEW_TOOLBOX_LOG || current_view == VIEW_TOOLBOX_COVERAGE ||
                    current_view == VIEW_TOOLBOX_STORAGE) {
             current_view = VIEW_TOOLBOX;  // back to the launcher
@@ -1276,6 +1347,9 @@ void handle_nav(uint32_t key) {
                 break;
             case VIEW_TOOLBOX_STORAGE:
                 nav_toolbox_storage(key);
+                break;
+            case VIEW_BLE_DEVICES:
+                nav_ble_devices(key);
                 break;
             case VIEW_TOOLBOX_COVERAGE:
                 nav_toolbox_coverage(key);
@@ -1478,6 +1552,8 @@ static void key_settings(char c) {
             save_ble_enabled();
             snprintf(toast_text, sizeof(toast_text), "BLE %s on next start", ble_enabled ? "ON" : "OFF");
             toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        } else if (selected == FIELD_BLE_DEVICES) {
+            open_ble_devices();
         } else if (!edit_mode) {
             if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
             edit_mode = true;
@@ -1893,6 +1969,9 @@ void handle_key(char c) {
             break;
         case VIEW_TOOLBOX_STORAGE:
             key_toolbox_storage(c);
+            break;
+        case VIEW_BLE_DEVICES:
+            key_ble_devices(c);
             break;
         case VIEW_TOOLBOX_COVERAGE:
             key_toolbox_coverage(c);
