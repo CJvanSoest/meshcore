@@ -94,6 +94,13 @@ int contact_find(const uint8_t* pub) {
     return -1;
 }
 
+int contact_find_by_prefix(const uint8_t prefix[8]) {
+    for (int i = 0; i < contact_count; i++) {
+        if (memcmp(contacts[i].pub_key, prefix, 8) == 0) return i;
+    }
+    return -1;
+}
+
 // Idempotent add — used to persist anyone we've ever DM'd with.
 // Returns 1 if added, 0 if already known, -1 if full.
 int contact_ensure(const uint8_t* pub, const char* name, uint8_t role) {

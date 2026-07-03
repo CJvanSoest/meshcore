@@ -138,8 +138,25 @@ extern bool toolbox_log_dissect;      // false = hex dump, true = field dissecto
 extern int  toolbox_log_cursor;       // selected entry in the packet log (newest-first index)
 extern bool toolbox_log_detail;       // showing the full breakdown of the selected entry
 extern int  toolbox_coverage_cursor;  // selected repeater in the coverage test
-extern int  toolbox_storage_cursor;   // selected action in the Storage Viewer
+extern int  toolbox_storage_cursor;   // selected category row on the Storage summary
+extern int  toolbox_storage_detail;   // -1 = summary; else the open category (ST_CAT_*)
+extern int  toolbox_storage_sub;      // cursor within the open detail (action / conversation)
 extern bool toolbox_storage_confirm;  // armed: next Enter runs the selected action
+
+// Number of actions in the Storage Viewer's Backup detail (Backup / Restore /
+// Factory-reset). Shared so input.c can bound its cursor to the same count.
+#define STORAGE_ACTION_COUNT 3
+
+// Storage Viewer drill-down categories (see toolbox_storage_detail). Kept here so
+// both the renderer (lvgl_ui.c) and the input handlers (input.c) agree on the set.
+enum {
+    ST_CAT_NVS = 0,  // NVS entries + per-namespace table
+    ST_CAT_MEM,      // RAM + PSRAM heap
+    ST_CAT_STORAGE,  // AppFS / SD / locfd store
+    ST_CAT_HISTORY,  // on-SD message history, per conversation + clear
+    ST_CAT_BACKUP,   // last-backup date + backup / restore / factory-reset
+    ST_CAT_COUNT,
+};
 
 // Short on-screen status toast (e.g. "Flood advert sent"). The string is empty
 // when no toast is active. toast_start_ms is the tick-time the toast became

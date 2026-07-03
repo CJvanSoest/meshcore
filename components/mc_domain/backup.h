@@ -45,3 +45,8 @@ long backup_file_mtime(void);
 // and removes the canonical backup so the next boot does not auto-restore.
 // Does NOT reboot — the caller decides. Returns false if the SD is not ready.
 bool backup_factory_reset(void);
+
+// Keep only the `keep` newest timestamped snapshots (/sd/meshcore/backup-*.bin);
+// delete the rest. Called after factory reset so the safety copies don't pile up
+// indefinitely. No-op if the SD is not ready.
+void backup_prune_snapshots(int keep);

@@ -66,6 +66,11 @@ bool channels_remove(int idx);
 // callers should still verify the MAC against the channel's secret.
 int channels_find_by_hash(uint8_t hash);
 
+// Find the active channel slot whose 16-byte secret starts with these 8 bytes
+// (the on-SD history filename prefix). Slot 0 (Public) is included. Returns the
+// slot idx or -1 — used by the Storage Viewer to name/flag conversation logs.
+int channels_find_by_secret_prefix(const uint8_t prefix[8]);
+
 // Persist channels[1..channel_count-1] (skip hardcoded Public) to NVS blob
 // "mc.channels". Called automatically by channels_add_*/channels_remove.
 void channels_save_nvs(void);

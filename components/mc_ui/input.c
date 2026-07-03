@@ -786,72 +786,142 @@ static void open_toolbox_tile(void) {
         coverage_session_reset();  // fresh SD log + cleared results for this area test
     } else if (t == VIEW_TOOLBOX_STORAGE) {
         toolbox_storage_cursor  = 0;
+        toolbox_storage_detail  = -1;
+        toolbox_storage_sub     = 0;
         toolbox_storage_confirm = false;
     }
     current_view = t;
 }
 
-// Execute the armed Storage Viewer action. Feedback is a toast plus the live
-// info rows (backup size / counts) the view re-reads each frame.
-static void storage_run_action(void) {
-    switch (toolbox_storage_cursor) {
-        case 0: {  // Backup now
-            bool ok = backup_write();
-            snprintf(toast_text, sizeof(toast_text), ok ? "Backup written to SD" : "Backup failed (no SD?)");
-            break;
+// A conversation log is orphaned when it resolves to no current contact/channel
+// (a removed contact or a left/deleted channel). Mirrors st_conv_is_orphan in the
+// renderer so "Clear orphaned" clears exactly the rows flagged "DM?/Ch?".
+static bool storage_conv_is_orphan(const history_conv_t* c) {
+    return c->is_dm ? (contact_find_by_prefix(c->id) < 0) : (channels_find_by_secret_prefix(c->id) < 0);
+}
+
+// Number of selectable rows in the currently-open Storage detail (0 for the
+// read-only NVS/Memory/Storage views). History = conversations + two bulk-clear
+// rows ("Clear orphaned" + "Clear all"), or a single empty-note row when none.
+static int storage_sub_count(void) {
+    switch (toolbox_storage_detail) {
+        case ST_CAT_BACKUP:
+            return STORAGE_ACTION_COUNT;
+        case ST_CAT_HISTORY: {
+            history_conv_t tmp[40];
+            int            n = history_list_conversations(tmp, 40, NULL);
+            return n > 0 ? n + 2 : 1;
         }
-        case 1: {  // Restore from backup (manual force-merge)
-            int n = backup_restore(true);
-            if (n < 0)
-                snprintf(toast_text, sizeof(toast_text), "No backup on SD");
-            else
-                snprintf(toast_text, sizeof(toast_text), "Restored %d item(s)", n);
-            break;
-        }
-        case 2:  // Factory reset (backup first) then reboot
-            backup_factory_reset();
-            esp_restart();  // no return
-            break;
         default:
-            return;
+            return 0;
+    }
+}
+
+// Execute the armed Storage Viewer action. Which action depends on the open
+// detail view + the sub-cursor. Feedback is a toast; the view re-reads live rows.
+static void storage_run_action(void) {
+    if (toolbox_storage_detail == ST_CAT_BACKUP) {
+        switch (toolbox_storage_sub) {
+            case 0: {  // Backup now
+                bool ok = backup_write();
+                snprintf(toast_text, sizeof(toast_text), ok ? "Backup written to SD" : "Backup failed (no SD?)");
+                break;
+            }
+            case 1: {  // Restore from backup (manual force-merge)
+                int n = backup_restore(true);
+                if (n < 0)
+                    snprintf(toast_text, sizeof(toast_text), "No backup on SD");
+                else
+                    snprintf(toast_text, sizeof(toast_text), "Restored %d item(s)", n);
+                break;
+            }
+            case 2:  // Factory reset (backup first) then reboot
+                backup_factory_reset();
+                esp_restart();  // no return
+                break;
+            default:
+                return;
+        }
+    } else if (toolbox_storage_detail == ST_CAT_HISTORY) {
+        history_conv_t convs[40];
+        int            n = history_list_conversations(convs, 40, NULL);
+        if (toolbox_storage_sub < n) {  // delete the selected conversation
+            bool ok = history_delete_conversation(convs[toolbox_storage_sub].id, convs[toolbox_storage_sub].is_dm);
+            snprintf(toast_text, sizeof(toast_text), ok ? "Conversation deleted" : "Delete failed");
+            if (toolbox_storage_sub > 0) toolbox_storage_sub--;  // keep the cursor in range
+        } else if (n > 0 && toolbox_storage_sub == n) {          // "Clear orphaned (N)"
+            int removed = 0;
+            for (int i = 0; i < n; i++)
+                if (storage_conv_is_orphan(&convs[i]) && history_delete_conversation(convs[i].id, convs[i].is_dm))
+                    removed++;
+            snprintf(toast_text, sizeof(toast_text), "Cleared %d orphaned log(s)", removed);
+            toolbox_storage_sub = 0;
+        } else {  // "Clear all history"
+            int removed = history_clear_all();
+            snprintf(toast_text, sizeof(toast_text), "Cleared %d conversation(s)", removed);
+            toolbox_storage_sub = 0;
+        }
+    } else {
+        return;
     }
     toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 }
 
-// Storage Viewer: W/S move between the action rows; Enter arms a confirm, a
-// second Enter runs it. ESC (handled in the nav ESC branch) cancels the arm.
-static void nav_toolbox_storage(uint32_t key) {
-    if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
-        if (toolbox_storage_cursor > 0) toolbox_storage_cursor--;
-        toolbox_storage_confirm = false;
-    } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
-        toolbox_storage_cursor++;  // render clamps to the action count
-        toolbox_storage_confirm = false;
-    } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
-        if (toolbox_storage_confirm) {
-            toolbox_storage_confirm = false;
-            storage_run_action();
-        } else {
-            toolbox_storage_confirm = true;
+// Move the cursor: the category rows on the summary, or the action/conversation
+// rows inside a detail. Any move disarms a pending confirm.
+static void storage_move(int dir) {
+    if (toolbox_storage_detail < 0) {
+        int c = toolbox_storage_cursor + dir;
+        if (c < 0) c = 0;
+        if (c >= ST_CAT_COUNT) c = ST_CAT_COUNT - 1;
+        toolbox_storage_cursor = c;
+    } else {
+        int n = storage_sub_count();
+        if (n > 0) {
+            int c = toolbox_storage_sub + dir;
+            if (c < 0) c = 0;
+            if (c >= n) c = n - 1;
+            toolbox_storage_sub = c;
         }
+    }
+    toolbox_storage_confirm = false;
+}
+
+// Enter: on the summary, drill into the selected category. Inside an actionable
+// detail (History/Backup), arm a confirm then run it on the second Enter. The
+// read-only detail views ignore Enter.
+static void storage_enter(void) {
+    if (toolbox_storage_detail < 0) {
+        toolbox_storage_detail  = toolbox_storage_cursor;
+        toolbox_storage_sub     = 0;
+        toolbox_storage_confirm = false;
+        return;
+    }
+    if (toolbox_storage_detail != ST_CAT_BACKUP && toolbox_storage_detail != ST_CAT_HISTORY) return;
+    if (toolbox_storage_confirm) {
+        toolbox_storage_confirm = false;
+        storage_run_action();
+    } else {
+        toolbox_storage_confirm = true;
     }
 }
 
+static void nav_toolbox_storage(uint32_t key) {
+    if (key == BSP_INPUT_NAVIGATION_KEY_UP)
+        storage_move(-1);
+    else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN)
+        storage_move(+1);
+    else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN)
+        storage_enter();
+}
+
 static void key_toolbox_storage(char c) {
-    if (c == 'w' || c == 'W') {
-        if (toolbox_storage_cursor > 0) toolbox_storage_cursor--;
-        toolbox_storage_confirm = false;
-    } else if (c == 's' || c == 'S') {
-        toolbox_storage_cursor++;
-        toolbox_storage_confirm = false;
-    } else if (c == '\r' || c == '\n') {
-        if (toolbox_storage_confirm) {
-            toolbox_storage_confirm = false;
-            storage_run_action();
-        } else {
-            toolbox_storage_confirm = true;
-        }
-    }
+    if (c == 'w' || c == 'W')
+        storage_move(-1);
+    else if (c == 's' || c == 'S')
+        storage_move(+1);
+    else if (c == '\r' || c == '\n')
+        storage_enter();
 }
 
 // Ping the repeater under the coverage cursor (3x, GPS-stamped). Re-collects so
@@ -1149,6 +1219,9 @@ void handle_nav(uint32_t key) {
             toolbox_log_detail = false;  // first ESC closes the detail breakdown
         } else if (current_view == VIEW_TOOLBOX_STORAGE && toolbox_storage_confirm) {
             toolbox_storage_confirm = false;  // first ESC cancels the armed action
+        } else if (current_view == VIEW_TOOLBOX_STORAGE && toolbox_storage_detail >= 0) {
+            toolbox_storage_detail = -1;  // back out of a detail view to the summary
+            toolbox_storage_sub    = 0;
         } else if (current_view == VIEW_TOOLBOX_LOG || current_view == VIEW_TOOLBOX_COVERAGE ||
                    current_view == VIEW_TOOLBOX_STORAGE) {
             current_view = VIEW_TOOLBOX;  // back to the launcher
