@@ -1309,7 +1309,7 @@ static void render_nodes_lvgl(void) {
     int  fx      = 10;
     int  fy_text = fy_base + 6;
     char counts[48];
-    snprintf(counts, sizeof(counts), "Nodes:%d  Contacts:%d", node_count, contact_count);
+    snprintf(counts, sizeof(counts), "Nodes:%d/%d  Contacts:%d/%d", node_count, MAX_NODES, contact_count, MAX_CONTACTS);
     add_label(scr, fx, fy_text, TXT_BODY, COL_WHITE, counts);
     fx += text_w(counts, TXT_BODY) + 20;
 
@@ -1951,6 +1951,11 @@ static void render_chat_lvgl(void) {
         char hdr[MESHCORE_MAX_NAME_SIZE + 24];
         snprintf(hdr, sizeof(hdr), "<  %s", dm_target_set ? dm_target_name : "(no target)");
         add_label(scr, 10, CHAT_Y0 + 4, TXT_BODY, COL_WHITE, hdr);
+        // Message-ring usage (loaded messages / ring capacity). The full history
+        // lives on SD; this counts what's currently in the in-RAM ring.
+        char cc[12];
+        snprintf(cc, sizeof(cc), "%d/%d", chat_count, MAX_CHAT_MSGS);
+        add_label(scr, w - text_w(cc, TXT_SMALL) - 10, CHAT_Y0 + 6, TXT_SMALL, COL_GRAY, cc);
     }
 
     if (xSemaphoreTake(chat_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -2133,6 +2138,12 @@ static void render_channel_lvgl(void) {
                              ? channels[active_channel_idx].name
                              : "(no channel)";
         add_label(scr, 12, CHAT_Y0 + 4, TXT_BODY, COL_WHITE, nm);
+
+        // Message-ring usage (loaded messages / ring capacity), mirroring the DM
+        // view. The full channel history lives on SD.
+        char cc[12];
+        snprintf(cc, sizeof(cc), "%d/%d", ch_count, MAX_CHAT_MSGS);
+        add_label(scr, w - text_w(cc, TXT_SMALL) - 12, CHAT_Y0 + 6, TXT_SMALL, COL_GRAY, cc);
 
         char sub[48];
         if (region_scope[0]) {
