@@ -21,6 +21,21 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-07-03
+
+### Added
+- **Storage Viewer in the Toolbox** — a drill down view of where the badge keeps its data: NVS entries with a per namespace table, RAM and PSRAM, AppFS and SD capacity, and the on SD message history. Each summary row opens a detail with Enter and closes with ESC. (GitHub issues #67, #70)
+- **Automatic SD backup of your channels and contacts**, refreshed whenever they change, including private channel secrets, the DM inbox, and the node identity, radio config and saved location. After an NVS wipe the badge restores them on the next boot. (GitHub issue #66)
+- **Manual backup, restore and factory reset** under the Storage Viewer, with the last backup date shown; factory reset keeps a timestamped safety copy first and prunes to the five newest. (GitHub issues #67, #70)
+- **Per conversation message history** in the Storage Viewer: each DM and channel log with its size, named after the contact or channel, with delete for one conversation, Clear orphaned for logs whose contact or channel is gone, and Clear all history. (GitHub issue #70)
+- **Scroll in the About view** to read the full node public key. (GitHub issue #70)
+
+### Changed
+- **Channels and contacts now live on the internal flash filesystem** instead of the shared NVS partition, keeping the NVS footprint small; existing data migrates automatically on first boot. (GitHub issue #66)
+
+### Fixed
+- **A full NVS partition no longer loses your private channels.** The shared 16 KB NVS is blanket erased at boot once it fills, which permanently lost private channel secrets that exist only in NVS; channels and contacts moved to internal flash and are mirrored to SD with a boot restore, so the erase is survivable. (GitHub issue #66)
+
 ## [3.2.0] - 2026-07-02
 
 ### Added
