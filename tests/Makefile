@@ -48,7 +48,7 @@ SRC_TRACE       = ../components/mc_proto/trace.c
 
 .PHONY: all test clean
 
-all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup
+all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup test_special_table
 
 test_ed25519: test_ed25519.c $(SRC_ED25519)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
@@ -73,6 +73,11 @@ test_companion_protocol: test_companion_protocol.c $(SRC_COMP_PROTO)
 # every transmit on the device.
 test_region_limits: test_region_limits.c ../components/mc_proto/region_limits.c
 	$(CC) $(CFLAGS) -o $@ $^
+
+# F5 special-character bank: UTF-8 encoding round-trip + no-duplicate check.
+# Pure data + utf8_decode, no mbedtls; needs the mc_common include dir.
+test_special_table: test_special_table.c ../components/mc_common/special_table.c ../components/mc_common/emoji_table.c
+	$(CC) $(CFLAGS) -I../components/mc_common -o $@ $^
 
 # MeshCore packet codec round-trip + error-path test. Guards the wire boundary
 # (header bit-packing, transport-code gating, path length-byte encoding).
@@ -147,7 +152,7 @@ test_channel_share: test_channel_share.c ../components/mc_domain/channel_share.c
 test_backup: test_backup.c ../components/mc_domain/backup_codec.c
 	$(CC) $(CFLAGS) -I../components/mc_domain -o $@ $^
 
-test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup
+test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup test_special_table
 	./test_ed25519
 	./test_gps_nmea
 	./test_companion_protocol
@@ -164,6 +169,7 @@ test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test
 	./test_trace
 	./test_channel_share
 	./test_backup
+	./test_special_table
 
 clean:
-	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup test_special_table

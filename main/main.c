@@ -523,7 +523,7 @@ void app_main(void) {
             handle_nav(event.args_navigation.key);
             changed = true;
         } else if (event.type == INPUT_EVENT_TYPE_KEYBOARD) {
-            handle_key(event.args_keyboard.ascii);
+            handle_key(event.args_keyboard.ascii, event.args_keyboard.utf8);
             changed = true;
         }
 

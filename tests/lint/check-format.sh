@@ -4,8 +4,10 @@
 # different version may report false diffs. CI pins 18.1.8; locally, override
 # the binary with CLANG_FORMAT=/path/to/clang-format if your default differs.
 #
-# Vendored drops (components/vendor) and the upstream protocol mirror
-# (components/mc_proto/meshcore) are excluded: they are not ours to reformat.
+# Vendored drops (components/vendor), the upstream protocol mirror
+# (components/mc_proto/meshcore) and the generated Montserrat font tables
+# (components/mc_fonts/lv_font_*_ext.c) are excluded: they are not ours to
+# reformat (the fonts come out of lv_font_conv — see scripts/gen_ext_fonts.sh).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -23,7 +25,7 @@ fi
 
 mapfile -t files < <(git ls-files -- components main tests |
     grep -E '\.(c|h)$' |
-    grep -vE '^components/vendor/|^components/mc_proto/meshcore/')
+    grep -vE '^components/vendor/|^components/mc_proto/meshcore/|^components/mc_fonts/lv_font_montserrat_.*_ext\.c$')
 
 fail=0
 for f in "${files[@]}"; do

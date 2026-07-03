@@ -14,6 +14,7 @@
 #include "freertos/task.h"
 #include "history.h"
 #include "mbedtls/sha256.h"
+#include "special_table.h"  // F5 special-character bank
 #include "tanmatsu_coprocessor.h"
 
 static const char* TAG = "chat";
@@ -40,6 +41,20 @@ bool chat_typing                   = false;
 
 bool emoji_picker_active = false;
 int  emoji_picker_cursor = 0;
+int  emoji_picker_mode   = PICKER_EMOJI;
+
+// Active-bank accessors for the shared picker overlay. The UI drives navigation
+// and insertion through these so it never has to branch on the mode itself.
+int picker_count(void) {
+    return emoji_picker_mode == PICKER_SPECIAL ? SPECIAL_COUNT : EMOJI_COUNT;
+}
+
+const emoji_entry_t* picker_entry(int idx) {
+    if (idx < 0 || idx >= picker_count()) {
+        return NULL;
+    }
+    return emoji_picker_mode == PICKER_SPECIAL ? &SPECIAL_SET[idx] : &EMOJI_SET[idx];
+}
 
 bool dm_inbox_mode   = true;
 int  dm_inbox_cursor = 0;
@@ -56,9 +71,10 @@ const uint8_t PUBLIC_CHANNEL_KEY[16] = {0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea
                                         0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72};
 uint8_t       channel_hash           = 0;
 
-// Preserve UTF-8 sequences that decode to a codepoint we have an inline emoji
-// glyph for. Unknown multi-byte sequences collapse to a single '?' so the
-// ASCII-only Saira font still renders them as something.
+// Preserve UTF-8 sequences that decode to a codepoint we can actually draw: an
+// inline emoji glyph, or a character the extended Montserrat font covers
+// (Latin-1 umlauts/accents, °, §, €, en/em dash, …). Only genuinely
+// undrawable / malformed multi-byte sequences collapse to a single '?'.
 static void utf8_sanitize(char* dst, size_t dst_sz, const char* src) {
     size_t di = 0;
     size_t si = 0;
@@ -71,8 +87,8 @@ static void utf8_sanitize(char* dst, size_t dst_sz, const char* src) {
         }
         uint32_t cp  = 0;
         int      adv = utf8_decode(&src[si], &cp);
-        if (adv > 0 && emoji_lookup_by_codepoint(cp) >= 0 && di + adv + 1 < dst_sz) {
-            // Recognised emoji: copy the full UTF-8 sequence through.
+        if (adv > 0 && (emoji_lookup_by_codepoint(cp) >= 0 || special_font_covers(cp)) && di + adv + 1 < dst_sz) {
+            // Recognised emoji or font-covered character: copy the sequence through.
             memcpy(&dst[di], &src[si], (size_t)adv);
             di += (size_t)adv;
             si += (size_t)adv;

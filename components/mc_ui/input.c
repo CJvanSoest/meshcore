@@ -17,7 +17,7 @@
 #include "contacts.h"
 #include "coverage.h"
 #include "diag.h"
-#include "emoji_table.h"  // EMOJI_SET / emoji_entry_t (picker selection)
+#include "emoji_table.h"  // emoji_entry_t (picker selection via chat.h helpers)
 #include "esp_log.h"
 #include "esp_system.h"  // esp_restart (Storage Viewer factory reset)
 #include "freertos/FreeRTOS.h"
@@ -34,6 +34,7 @@
 #include "render_internal.h"
 #include "settings_nvs.h"
 #include "sounds.h"
+#include "special_table.h"  // special_font_covers (AltGr / UTF-8 key insertion)
 #include "ui_state.h"
 #include "wifi_connection.h"
 
@@ -1191,11 +1192,14 @@ void handle_nav(uint32_t key) {
         return;
     }
 
-    // Emoji picker (F4 button = green circle on Tanmatsu) opens during chat typing.
-    if (key == BSP_INPUT_NAVIGATION_KEY_F4 && chat_typing &&
+    // Character picker opens during chat typing: F4 (green circle) shows the
+    // emoji bank, F5 (blue cloud) shows the special-character bank. Same overlay,
+    // different bank — the mode selects which.
+    if ((key == BSP_INPUT_NAVIGATION_KEY_F4 || key == BSP_INPUT_NAVIGATION_KEY_F5) && chat_typing &&
         (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL) && !emoji_picker_active) {
         emoji_picker_active = true;
         emoji_picker_cursor = 0;
+        emoji_picker_mode   = (key == BSP_INPUT_NAVIGATION_KEY_F5) ? PICKER_SPECIAL : PICKER_EMOJI;
         return;
     }
 
@@ -1204,23 +1208,22 @@ void handle_nav(uint32_t key) {
     // '\r' in handle_key) wouldn't close the picker — leaving it hanging open
     // for the next chat-typing session.
     if (emoji_picker_active && chat_typing && (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL)) {
-        const int cols = 4;
-        // Red X (F1) closes; F4 (the green circle) toggles — pressing it again
-        // closes the picker instead of leaving it stuck open (which blocked
-        // leaving chat). ESC is no longer a back key in submenus.
-        if (key == BSP_INPUT_NAVIGATION_KEY_F1 || key == BSP_INPUT_NAVIGATION_KEY_F4) {
+        const int cols  = 4;
+        const int count = picker_count();
+        // Red X (F1) closes; F4/F5 toggle — pressing the open key again closes the
+        // picker instead of leaving it stuck open (which blocked leaving chat).
+        // ESC is no longer a back key in submenus.
+        if (key == BSP_INPUT_NAVIGATION_KEY_F1 || key == BSP_INPUT_NAVIGATION_KEY_F4 ||
+            key == BSP_INPUT_NAVIGATION_KEY_F5) {
             emoji_picker_active = false;
             return;
         }
         if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
-            int idx = emoji_picker_cursor;
-            if (idx >= 0 && idx < EMOJI_COUNT) {
-                const emoji_entry_t* e = &EMOJI_SET[idx];
-                if (chat_input_len + e->utf8_len <= MAX_INPUT_LEN) {
-                    memcpy(&chat_input[chat_input_len], e->utf8, e->utf8_len);
-                    chat_input_len             += e->utf8_len;
-                    chat_input[chat_input_len]  = '\0';
-                }
+            const emoji_entry_t* e = picker_entry(emoji_picker_cursor);
+            if (e && chat_input_len + e->utf8_len <= MAX_INPUT_LEN) {
+                memcpy(&chat_input[chat_input_len], e->utf8, e->utf8_len);
+                chat_input_len             += e->utf8_len;
+                chat_input[chat_input_len]  = '\0';
             }
             emoji_picker_active = false;
             return;
@@ -1230,7 +1233,7 @@ void handle_nav(uint32_t key) {
             return;
         }
         if (key == BSP_INPUT_NAVIGATION_KEY_RIGHT) {
-            if (emoji_picker_cursor < EMOJI_COUNT - 1) emoji_picker_cursor++;
+            if (emoji_picker_cursor < count - 1) emoji_picker_cursor++;
             return;
         }
         if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
@@ -1238,7 +1241,7 @@ void handle_nav(uint32_t key) {
             return;
         }
         if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
-            if (emoji_picker_cursor + cols < EMOJI_COUNT) emoji_picker_cursor += cols;
+            if (emoji_picker_cursor + cols < count) emoji_picker_cursor += cols;
             return;
         }
     }
@@ -1658,7 +1661,26 @@ static void key_channel(char c) {
     }
 }
 
-void handle_key(char c) {
+// AltGr / dead-key characters arrive from the BSP keyboard event as a
+// multi-byte UTF-8 string (args_keyboard.utf8) alongside the ASCII byte, which
+// for these is 0. Append those bytes straight into `buf` when they decode to a
+// character the display font can draw, so users can *type* umlauts/accents
+// without the F5 picker. Returns the bytes appended (0 if `utf8` is NULL, plain
+// ASCII, undrawable, malformed, or does not fit — the caller then falls back to
+// its ASCII path).
+static int insert_altgr_utf8(char* buf, int* len, int maxlen, const char* utf8) {
+    if (!utf8 || (unsigned char)utf8[0] < 0x80) return 0;
+    uint32_t cp  = 0;
+    int      adv = utf8_decode(utf8, &cp);
+    if (adv <= 0 || !special_font_covers(cp)) return 0;
+    if (*len + adv > maxlen) return 0;
+    memcpy(&buf[*len], utf8, (size_t)adv);
+    *len      += adv;
+    buf[*len]  = '\0';
+    return adv;
+}
+
+void handle_key(char c, const char* utf8) {
     if (c == 27) {
         // Keyboard ESC exits only from the home tile-grid. In every submenu /
         // modal it does nothing — the physical red X (F1) is the single back
@@ -1683,6 +1705,10 @@ void handle_key(char c) {
             dirty     = false;
         } else if (c == 127 || c == 8) {  // Backspace
             if (field_edit_len > 0) field_edit_buf[--field_edit_len] = '\0';
+        } else if (selected != FIELD_REGION_SCOPE && selected != FIELD_BLE_PIN &&
+                   insert_altgr_utf8(field_edit_buf, &field_edit_len, (int)sizeof(field_edit_buf) - 1, utf8)) {
+            // AltGr / dead-key character typed into a free-text field (e.g. a name
+            // like "Jürgen"). Restricted fields (region scope, BLE PIN) stay ASCII.
         } else if (c >= 32 && c < 127 && field_edit_len < (int)sizeof(field_edit_buf) - 1) {
             // Region scope: force lowercase, only [a-z 0-9 -] accepted.
             if (selected == FIELD_REGION_SCOPE) {
@@ -1813,17 +1839,15 @@ void handle_key(char c) {
     if (current_view == VIEW_CHAT || current_view == VIEW_CHANNEL) {
         // Emoji picker overlay swallows all keys when active.
         if (chat_typing && emoji_picker_active) {
-            const int cols = 4;
-            // Red X / F4 close the picker (handle_nav); keyboard ESC no longer does.
+            const int cols  = 4;
+            const int count = picker_count();
+            // Red X / F4 / F5 close the picker (handle_nav); keyboard ESC no longer does.
             if (c == '\r' || c == '\n') {
-                int idx = emoji_picker_cursor;
-                if (idx >= 0 && idx < EMOJI_COUNT) {
-                    const emoji_entry_t* e = &EMOJI_SET[idx];
-                    if (chat_input_len + e->utf8_len <= MAX_INPUT_LEN) {
-                        memcpy(&chat_input[chat_input_len], e->utf8, e->utf8_len);
-                        chat_input_len             += e->utf8_len;
-                        chat_input[chat_input_len]  = '\0';
-                    }
+                const emoji_entry_t* e = picker_entry(emoji_picker_cursor);
+                if (e && chat_input_len + e->utf8_len <= MAX_INPUT_LEN) {
+                    memcpy(&chat_input[chat_input_len], e->utf8, e->utf8_len);
+                    chat_input_len             += e->utf8_len;
+                    chat_input[chat_input_len]  = '\0';
                 }
                 emoji_picker_active = false;
                 return;
@@ -1833,7 +1857,7 @@ void handle_key(char c) {
                 return;
             }
             if (c == 'd' || c == 'D') {
-                if (emoji_picker_cursor < EMOJI_COUNT - 1) emoji_picker_cursor++;
+                if (emoji_picker_cursor < count - 1) emoji_picker_cursor++;
                 return;
             }
             if (c == 'w' || c == 'W') {
@@ -1841,7 +1865,7 @@ void handle_key(char c) {
                 return;
             }
             if (c == 's' || c == 'S') {
-                if (emoji_picker_cursor + cols < EMOJI_COUNT) emoji_picker_cursor += cols;
+                if (emoji_picker_cursor + cols < count) emoji_picker_cursor += cols;
                 return;
             }
             return;  // swallow the rest
@@ -1875,6 +1899,8 @@ void handle_key(char c) {
                 if (chat_input_len > 0) {
                     chat_input[--chat_input_len] = '\0';
                 }
+            } else if (insert_altgr_utf8(chat_input, &chat_input_len, MAX_INPUT_LEN, utf8)) {
+                // AltGr / dead-key character (e.g. ä) typed directly as UTF-8.
             } else if (c >= 32 && c < 127 && chat_input_len < MAX_INPUT_LEN) {
                 chat_input[chat_input_len++] = c;
                 chat_input[chat_input_len]   = '\0';

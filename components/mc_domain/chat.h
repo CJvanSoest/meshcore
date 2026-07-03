@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "app_config.h"
+#include "emoji_table.h"  // emoji_entry_t (shared by the emoji + special banks)
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "meshcore/packet.h"
@@ -53,9 +54,23 @@ extern char chat_input[MAX_INPUT_LEN + 1];
 extern int  chat_input_len;
 extern bool chat_typing;
 
-// ── Emoji picker overlay state (active during chat_typing) ───────────────────
+// ── Character picker overlay state (active during chat_typing) ───────────────
+// One overlay serves two banks: the F4 emoji grid and the F5 special-character
+// grid. `emoji_picker_mode` selects the bank; the cursor indexes into it. Insert
+// and nav code reads the active bank through the helpers below instead of
+// branching on the mode at every call site.
+typedef enum {
+    PICKER_EMOJI   = 0,
+    PICKER_SPECIAL = 1,
+} picker_mode_t;
+
 extern bool emoji_picker_active;
-extern int  emoji_picker_cursor;  // index into EMOJI_SET (0..EMOJI_COUNT-1)
+extern int  emoji_picker_cursor;  // index into the active bank (0..picker_count()-1)
+extern int  emoji_picker_mode;    // picker_mode_t
+
+// Entry count of the active bank, and the entry at `idx` (NULL if out of range).
+int                  picker_count(void);
+const emoji_entry_t* picker_entry(int idx);
 
 // ── DM tab inbox-view state ──────────────────────────────────────────────────
 extern bool dm_inbox_mode;

@@ -6,6 +6,7 @@
 idf_component_register(
     SRCS
         "emoji_table.c"
+        "special_table.c"
         "diag.c"
     INCLUDE_DIRS
         "."
