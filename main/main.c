@@ -100,8 +100,10 @@ app_view_t current_view = VIEW_HOME;
 // ── Chat ──────────────────────────────────────────────────────────────────────
 // chat_msg_t, ring buffers, DM target, public-channel key, notification LED,
 // ch_*/chat_* helpers all live in chat.c/h.
+#include "backup.h"
 #include "channels.h"
 #include "chat.h"
+#include "locfs.h"
 
 // field_t lives in ui_state.h (shared with input.c and render.c).
 
@@ -134,6 +136,7 @@ int       field_edit_len              = 0;
 bool      field_editing_text          = false;
 int       settings_scroll             = 0;
 int       home_cursor                 = 0;  // VIEW_HOME tile-grid focus (0..HOME_TILE_COUNT-1)
+int       about_scroll                = 0;  // VIEW_ABOUT vertical scroll offset (px)
 bool      qr_from_home                = false;
 bool      qr_from_channel             = false;
 char      toast_text[64]              = {0};
@@ -149,6 +152,8 @@ bool      toolbox_log_dissect         = false;
 int       toolbox_log_cursor          = 0;
 bool      toolbox_log_detail          = false;
 int       toolbox_coverage_cursor     = 0;
+int       toolbox_storage_cursor      = 0;
+bool      toolbox_storage_confirm     = false;
 
 // Display blanking: F3 (yellow square) toggles the MIPI backlight off so
 // the badge is silent in the pocket while keyboard input + chat LEDs remain
@@ -228,6 +233,7 @@ void app_main(void) {
     ESP_ERROR_CHECK(bsp_input_get_queue(&input_event_queue));
 
     // Module init (radio_start_tasks below creates rx_mutex when tasks come up).
+    locfs_init();  // mount the internal FAT store (if present) before channels/contacts load
     nodes_init();
     chat_init();
     channels_init();
@@ -343,6 +349,14 @@ void app_main(void) {
     DIAG(COL_WHITE, "SD mount...");
     history_init(node_prv_key);
     DIAG(history_is_ready() ? COL_GREEN : COL_YELLOW, "  SD: %s", history_status());
+    // NVS is a shared 16 KB partition; a full/erase event at boot wipes channels
+    // + contacts, and private-channel secrets (random keys) live nowhere else.
+    // Now that the SD card is mounted, restore from the SD mirror if NVS looks
+    // wiped (auto path only acts on a Public-only + zero-contacts table).
+    if (history_is_ready()) {
+        int restored = backup_restore(false);
+        if (restored > 0) DIAG(COL_GREEN, "  restored %d item(s) from SD backup", restored);
+    }
     // sounds_init runs before the SD mount, so its first sounds_refresh_list()
     // sees no files. Re-scan now that /sd is live so the Settings UI shows the
     // real filenames + the slot pickers see the full list.

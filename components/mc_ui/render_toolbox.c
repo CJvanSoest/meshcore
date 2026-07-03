@@ -21,6 +21,7 @@ typedef struct {
 static const toolbox_tile_t toolbox_tiles[] = {
     {"Packet Log", "Live RX/TX frames, hex dump + dissector", true, VIEW_TOOLBOX_LOG},
     {"Coverage Test", "Ping repeaters, log reachability to SD", true, VIEW_TOOLBOX_COVERAGE},
+    {"Storage Viewer", "NVS/SD usage + backup / restore", true, VIEW_TOOLBOX_STORAGE},
 };
 #define TOOLBOX_TILE_COUNT ((int)(sizeof(toolbox_tiles) / sizeof(toolbox_tiles[0])))
 

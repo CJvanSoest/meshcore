@@ -101,6 +101,11 @@ bool history_is_ready(void) {
     return s_ready;
 }
 
+uint64_t history_sd_capacity_bytes(void) {
+    if (!s_ready || s_card == NULL) return 0;
+    return (uint64_t)s_card->csd.capacity * s_card->csd.sector_size;
+}
+
 static void append_impl(const char* path, const char* text, bool is_mine) {
     if (!s_ready || text == NULL) return;
     int N = (int)strnlen(text, MAX_MSG_TEXT);

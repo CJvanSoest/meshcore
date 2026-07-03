@@ -108,6 +108,10 @@ extern int qr_channel_idx;
 // input.c, read by render_home.c.
 extern int home_cursor;
 
+// VIEW_ABOUT vertical scroll offset in pixels (content is taller than the
+// screen once the node public key is shown). Clamped in render_about_lvgl.
+extern int about_scroll;
+
 // QR overlay was opened from the home QR-tile (vs the classic 'Q' shortcut in
 // nodes view). When true, closing the overlay returns to VIEW_HOME instead of
 // leaving the user stranded on the nodes list.
@@ -134,6 +138,8 @@ extern bool toolbox_log_dissect;      // false = hex dump, true = field dissecto
 extern int  toolbox_log_cursor;       // selected entry in the packet log (newest-first index)
 extern bool toolbox_log_detail;       // showing the full breakdown of the selected entry
 extern int  toolbox_coverage_cursor;  // selected repeater in the coverage test
+extern int  toolbox_storage_cursor;   // selected action in the Storage Viewer
+extern bool toolbox_storage_confirm;  // armed: next Enter runs the selected action
 
 // Short on-screen status toast (e.g. "Flood advert sent"). The string is empty
 // when no toast is active. toast_start_ms is the tick-time the toast became

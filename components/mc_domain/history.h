@@ -19,6 +19,10 @@ void history_init(const uint8_t prv_key[32]);
 const char* history_status(void);
 bool        history_is_ready(void);
 
+// Total capacity of the mounted µSD card in bytes, or 0 if none mounted.
+// (Free space isn't exposed — statvfs is absent on the esp32p4 toolchain.)
+uint64_t history_sd_capacity_bytes(void);
+
 // Per-channel history keyed by the 16-byte channel secret (file name uses an
 // 8-byte secret prefix as hex, mirroring the per-DM scheme). Each channel keeps
 // its own log so messages don't bleed across channels.
