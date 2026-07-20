@@ -8,6 +8,9 @@ dependencies:
   # LVGL 9 — the sole UI toolkit (pax-gfx was retired in the LVGL-only cleanup).
   lvgl/lvgl: "^9.2.0"
   # rx_boost shipped upstream in tanmatsu-lora v0.3.0 (paired with
-  # tanmatsu-radio v3.2.0). The CJ fork is no longer needed — drop the
-  # local git: redirect and track upstream directly.
-  nicolaielectronics/tanmatsu-lora: "^0.3.0"
+  # tanmatsu-radio v3.2.0). Bumped to ^0.5.5 (2026-07-20, #80): the v0.3.x
+  # client's GET_CONFIG used a fixed response buffer sized for the older,
+  # smaller config struct and hard-fails (ESP_ERR_INVALID_SIZE) against
+  # radio firmware >=v3.4.0's larger reply. tanmatsu-radio and
+  # tanmatsu-launcher already track ^0.5.5.
+  nicolaielectronics/tanmatsu-lora: "^0.5.5"
