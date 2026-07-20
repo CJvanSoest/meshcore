@@ -7,7 +7,7 @@
 # Remove this override (and the components/tanmatsu-lora/ dir) once that
 # lands and the registry version has caught up.
 if(CONFIG_IDF_TARGET_ESP32P4)
-	set(lora_extra_requires "esp-hosted-tanmatsu")
+	set(lora_extra_requires "nicolaielectronics__esp-hosted-tanmatsu")
 endif()
 
 idf_component_register(
