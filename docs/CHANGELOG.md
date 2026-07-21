@@ -21,6 +21,11 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-07-21
+
+### Fixed
+- **Radio configuration screen** no longer fails with "C6 unavailable" when paired with tanmatsu-radio firmware v3.4.0 or newer; `tanmatsu-lora` is bumped to the latest registry release (v0.5.7), which also fixes a build dependency bug in the component itself, so the temporary vendored copy is no longer needed (GitHub issue #80, Nicolai-Electronics/esp32-component-tanmatsu-lora#7).
+
 ## [3.5.0] - 2026-07-03
 
 ### Added
