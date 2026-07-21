@@ -32,12 +32,8 @@ done
 
 # 3. First-party C source carries an SPDX header. Vendored libraries and the
 #    upstream-mirrored companion parser keep their own upstream notices, so they
-#    are exempt. components/tanmatsu-lora/ is a TEMPORARY vendored mirror of
-#    nicolaielectronics/tanmatsu-lora v0.5.6 (unmodified upstream source, no
-#    SPDX header of its own) pending Nicolai-Electronics/esp32-component-
-#    tanmatsu-lora#7 — drop this exemption along with that directory once the
-#    registry pin can be used directly again.
-exempt='^components/vendor/|^components/mc_proto/companion-radio-protocol/|^components/tanmatsu-lora/'
+#    are exempt.
+exempt='^components/vendor/|^components/mc_proto/companion-radio-protocol/'
 while IFS= read -r f; do
     case "$f" in
         components/*|main/*|tests/*) ;;
