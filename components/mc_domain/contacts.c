@@ -55,10 +55,14 @@ void contacts_load(void) {
 
 void contacts_save(void) {
     if (locfs_ready()) {
-        FILE* f = fopen(CT_FILE, "wb");
+        // Temp file + rename so a crash mid-write can't truncate the only
+        // copy of the contact list (same scheme as nodes_save_to_sd).
+        FILE* f = fopen(CT_FILE ".tmp", "wb");
         if (f) {
             if (contact_count > 0) fwrite(contacts, sizeof(contact_t), (size_t)contact_count, f);
             fclose(f);
+            remove(CT_FILE);
+            if (rename(CT_FILE ".tmp", CT_FILE) != 0) ESP_LOGW(TAG, "contacts_save: rename failed");
         }
         nvs_handle_t handle;  // drop the legacy NVS copy so it stops using the shared partition
         if (nvs_open("system", NVS_READWRITE, &handle) == ESP_OK) {

@@ -148,10 +148,14 @@ void channels_save_nvs(void) {
     size_t blob_size = 1 + count * sizeof(stored_channel_t);
 
     if (locfs_ready()) {
-        FILE* f = fopen(CH_FILE, "wb");
+        // Temp file + rename so a crash mid-write can't truncate the only
+        // copy of the channel list (same scheme as nodes_save_to_sd).
+        FILE* f = fopen(CH_FILE ".tmp", "wb");
         if (f) {
             fwrite(buf, 1, blob_size, f);
             fclose(f);
+            remove(CH_FILE);
+            if (rename(CH_FILE ".tmp", CH_FILE) != 0) ESP_LOGW(TAG, "channels_save: rename failed");
         }
         nvs_handle_t h;  // drop the legacy NVS copy so it stops using the shared partition
         if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
