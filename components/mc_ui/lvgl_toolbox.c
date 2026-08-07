@@ -3,32 +3,6 @@
 //
 // VIEW_TOOLBOX.
 
-#include <ctype.h>
-#include <math.h>
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
-#include "app_config.h"
-#include "appfs.h"
-#include "backup.h"
-#include "ble_companion.h"
-#include "bsp/power.h"
-#include "channels.h"
-#include "chat.h"
-#include "contacts.h"
-#include "coverage.h"
-#include "diag.h"
-#include "diag_decode.h"
-#include "emoji_table.h"
-#include "esp_app_desc.h"
-#include "esp_heap_caps.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-#include "gps_task.h"
-#include "history.h"
-#include "identity.h"
-#include "locfs.h"
-#include "lvgl.h"
 #include "lvgl_internal.h"
 #include "lvgl_port.h"
 #include "lvgl_ui.h"
@@ -47,7 +21,7 @@
 #include "wifi_connection.h"
 
 // ── VIEW_TOOLBOX ─────────────────────────────────────────────────────────────
-// Port of render_toolbox.c. Tile metadata mirrors toolbox_tiles[] there.
+// Port of toolbox_tiles.c. Tile metadata mirrors toolbox_tiles[] there.
 
 #define TB_HEADER_H 50
 #define TB_FOOTER_H 38

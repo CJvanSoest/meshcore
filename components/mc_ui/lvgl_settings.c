@@ -3,32 +3,6 @@
 //
 // VIEW_SETTINGS and the category glyphs.
 
-#include <ctype.h>
-#include <math.h>
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
-#include "app_config.h"
-#include "appfs.h"
-#include "backup.h"
-#include "ble_companion.h"
-#include "bsp/power.h"
-#include "channels.h"
-#include "chat.h"
-#include "contacts.h"
-#include "coverage.h"
-#include "diag.h"
-#include "diag_decode.h"
-#include "emoji_table.h"
-#include "esp_app_desc.h"
-#include "esp_heap_caps.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-#include "gps_task.h"
-#include "history.h"
-#include "identity.h"
-#include "locfs.h"
-#include "lvgl.h"
 #include "lvgl_internal.h"
 #include "lvgl_port.h"
 #include "lvgl_ui.h"
@@ -47,7 +21,7 @@
 #include "wifi_connection.h"
 
 // ── VIEW_SETTINGS ────────────────────────────────────────────────────────────
-// Pixel-matched port of render_settings.c (category-list grid + drilldown) and
+// Pixel-matched port of settings_fields.c (category-list grid + drilldown) and
 // the category glyphs from the former render_settings_icons.c. This view reuses
 // the field registry (settings_field_label/value) and the category table
 // helpers so no per-field logic is duplicated here.
@@ -217,7 +191,7 @@ void cat_icon_toolbox_lv(lv_obj_t* s, int cx, int cy, int sz, uint32_t col) {
 }
 
 typedef void (*cat_icon_lv_fn)(lv_obj_t*, int, int, int, uint32_t);
-// Index order MUST match s_categories[] in render_settings.c (real index,
+// Index order MUST match s_categories[] in settings_fields.c (real index,
 // including the hidden-from-grid Advert slot).
 static const cat_icon_lv_fn s_cat_icons_lv[] = {
     cat_icon_identity_lv,  cat_icon_regulatory_lv, cat_icon_radio_lv,      cat_icon_advert_lv, cat_icon_wifi_lv,
