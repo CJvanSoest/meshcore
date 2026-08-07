@@ -22,12 +22,10 @@ of merged PR titles since the previous tag.
 ## [Unreleased]
 
 ## [3.6.0] - 2026-07-21
-
 ### Fixed
 - **Radio configuration screen** no longer fails with "C6 unavailable" when paired with tanmatsu-radio firmware v3.4.0 or newer; `tanmatsu-lora` is bumped to the latest registry release (v0.5.7), which also fixes a build dependency bug in the component itself, so the temporary vendored copy is no longer needed (GitHub issue #80, Nicolai-Electronics/esp32-component-tanmatsu-lora#7).
 
 ## [3.5.0] - 2026-07-03
-
 ### Added
 - **Special characters** — receive, display and type European characters: umlauts (ä ö ü ß), accents (é à ñ ç …), and symbols like ° and €. An extended Montserrat display font renders them, an F5 "blue cloud" picker inserts the 40 most used characters, and the AltGr keyboard layer types them directly in chats and free text settings fields (PR #78).
 
@@ -35,7 +33,6 @@ of merged PR titles since the previous tag.
 - **Umlauts and accents displayed as `?`** — incoming and typed non ASCII characters were collapsed to `?` because both the receive side sanitiser and the on screen text renderer only passed emoji through; they now draw any character the extended display font covers (PR #78).
 
 ## [3.4.0] - 2026-07-03
-
 ### Added
 - **Paired devices viewer** — Settings > Bluetooth shows live BLE status (radio up, advertising, connection) and the list of bonded phones, with a Clear bonds action to recover from a stale pairing that blocks re pairing (PR #74, GitHub issue #73).
 - **Limit counters** — the Nodes view footer shows nodes and contacts against their caps (x/200, x/40); the DM inbox shows saved conversations against the limit (x/40); the channel list and channel view show channel slot usage (x/20) (PR #75).
@@ -48,7 +45,6 @@ of merged PR titles since the previous tag.
 - **BLE companion was not discoverable** in the phone app for any device name longer than about five characters; the advertising packet overflowed the 31 byte limit because the name shared it with the complete 128 bit service UUID, so advertising never started. The device name now goes in the scan response (PR #74, GitHub issue #73).
 
 ## [3.3.0] - 2026-07-03
-
 ### Added
 - **Storage Viewer in the Toolbox** — a drill down view of where the badge keeps its data: NVS entries with a per namespace table, RAM and PSRAM, AppFS and SD capacity, and the on SD message history. Each summary row opens a detail with Enter and closes with ESC. (GitHub issues #67, #70)
 - **Automatic SD backup of your channels and contacts**, refreshed whenever they change, including private channel secrets, the DM inbox, and the node identity, radio config and saved location. After an NVS wipe the badge restores them on the next boot. (GitHub issue #66)
@@ -63,7 +59,6 @@ of merged PR titles since the previous tag.
 - **A full NVS partition no longer loses your private channels.** The shared 16 KB NVS is blanket erased at boot once it fills, which permanently lost private channel secrets that exist only in NVS; channels and contacts moved to internal flash and are mirrored to SD with a boot restore, so the erase is survivable. (GitHub issue #66)
 
 ## [3.2.0] - 2026-07-02
-
 ### Added
 - **Configure the badge from the MeshCore phone app over BLE.** The companion app can import a channel (add or delete a slot), add, update or remove contacts, set the node advert name, and list the badge's contacts. (PR #63)
 - **Set the radio config and clock from the phone app.** Radio parameters (frequency, bandwidth, spreading factor, coding rate and tx power), tx power on its own, and the device time now take effect from the app; the radio reconfigure runs on a background worker so the app stays responsive while the C6 re enters RX. (PR #64)
@@ -78,7 +73,6 @@ of merged PR titles since the previous tag.
 - **A badge with no GPS no longer floods the console.** The QWIIC GPS read blind looped for the whole poll window when no module answered, so the i2c driver logged thousands of NACK errors; the read now bails after a few NACKs, mutes the driver NACK log for the read, and backs off the poll cadence while no module is present. (PR #52)
 
 ## [3.1.0] - 2026-07-01
-
 ### Removed
 - **On-device HTTPS subsystem** — the HTTPS config/`/ping` server, the per badge
   self signed ECDSA P-256 cert generator, the `http_api_key` shared secret, and
@@ -97,6 +91,12 @@ of merged PR titles since the previous tag.
   (PR #49)
 
 ## [3.0.0] - 2026-06-30
+### Added
+- **Bluetooth pairing code** — a 6-digit code you set in Settings → Bluetooth is
+  used as the BLE companion's fixed pairing passkey, so the phone prompts for the
+  code you chose (replaces the previous random passkey).
+- **Home shortcuts** — the home grid grows to a 4x3 layout (12 tiles) with new
+  **WiFi**, **Bluetooth** and **Toolbox** shortcut tiles.
 
 ### Changed
 - **The entire UI now renders through LVGL 9** instead of PAX. Every screen —
@@ -108,13 +108,6 @@ of merged PR titles since the previous tag.
   connectivity tiles — **WiFi**, **HTTPS** and **Bluetooth**. *Role* moved to
   Identity and *Path hash size* moved to Radio, where they fit better.
 
-### Added
-- **Bluetooth pairing code** — a 6-digit code you set in Settings → Bluetooth is
-  used as the BLE companion's fixed pairing passkey, so the phone prompts for the
-  code you chose (replaces the previous random passkey).
-- **Home shortcuts** — the home grid grows to a 4x3 layout (12 tiles) with new
-  **WiFi**, **Bluetooth** and **Toolbox** shortcut tiles.
-
 ### Removed
 - The PAX graphics library and the vendored PAX bitmap font are gone now that the
   UI is LVGL-only, shrinking the binary.
@@ -124,7 +117,6 @@ of merged PR titles since the previous tag.
   display (no stride corruption).
 
 ## [2.8.0] - 2026-06-30
-
 ### Added
 - **Private channels** — create a channel with a random key and share it by QR
   or secret, or join one by entering a name plus its 32 hex secret. Up to 15
@@ -150,6 +142,11 @@ of merged PR titles since the previous tag.
 - **Back navigation** — the red X is the sole back key; ESC exits only from the
   home screen (PR #24, PR #26).
 
+### Removed
+- **GPS auto-fill** — the "Auto-fill from GPS" settings action is gone.
+  Coordinates are set manually or via the MeshCore phone app, and the on-device
+  GPS module feeds only the live map (PR #44).
+
 ### Fixed
 - **Companion frequency** — the phone app showed e.g. 869618.000 MHz because the
   self-info frequency was sent in Hz; it now reports kHz, so the app shows
@@ -157,13 +154,7 @@ of merged PR titles since the previous tag.
 - **Duplicate channel messages** — your own channel messages no longer appear
   twice; the self-flood echo is dropped on receive (PR #32).
 
-### Removed
-- **GPS auto-fill** — the "Auto-fill from GPS" settings action is gone.
-  Coordinates are set manually or via the MeshCore phone app, and the on-device
-  GPS module feeds only the live map (PR #44).
-
 ## [2.7.0] - 2026-06-23
-
 ### Added
 - **Toolbox** — a new tile under Settings opening a launcher for LoRa
   diagnostic tools. First tool: **Packet Log**, a live hex-dump / dissector
@@ -186,6 +177,11 @@ of merged PR titles since the previous tag.
   styles"); no other code change needed.
 
 ## [2.6.0] - 2026-06-19
+### Added
+- `test_advert_sign` host test: locks the ADVERT signature layout (the
+  `to_sign` byte range) with an offset check plus a golden signature, so a
+  regression in the signed-bytes construction goes red in CI rather than
+  only showing up as silently-rejected adverts on hardware.
 
 ### Changed
 - **The screensaver also blanks the keyboard backlight**, and now wakes on any
@@ -193,6 +189,17 @@ of merged PR titles since the previous tag.
   keyboard backlight and is itself ignored (it triggers no function); the RGB
   notification LED keeps blinking throughout, so in-pocket alerts still show.
   (issue #7)
+- Extracted the ADVERT signable-bytes construction out of
+  `send_advert_internal` into the pure, host-tested
+  `meshcore_advert_signable_bytes` (`mc_proto/advert_sign.c`). No wire
+  change; both flood and direct adverts sign the same bytes as before.
+
+### Removed
+- Dead first-party functions with no caller in the tree or tests:
+  `nodes_mark_dirty` / `nodes_dirty`, `save_wifi`, the unused
+  `nvs_{load,save}_{u16,u32,i32}` scalar wrappers,
+  `http_server_is_running`, `map_tile_to_latlon`, and the `icon_placeholder`
+  home tile. See the "Unused code" section in `docs/architecture/Architecture.md`.
 
 ### Fixed
 - **DM and ACK decrypt under a 1-byte sender-hash collision.** A TXT_MSG
@@ -225,27 +232,7 @@ of merged PR titles since the previous tag.
 - **System-protocol GET request shipped uninitialised stack bytes** to the C6
   (only the header was filled). The request buffer is now zeroed.
 
-### Added
-- `test_advert_sign` host test: locks the ADVERT signature layout (the
-  `to_sign` byte range) with an offset check plus a golden signature, so a
-  regression in the signed-bytes construction goes red in CI rather than
-  only showing up as silently-rejected adverts on hardware.
-
-### Changed
-- Extracted the ADVERT signable-bytes construction out of
-  `send_advert_internal` into the pure, host-tested
-  `meshcore_advert_signable_bytes` (`mc_proto/advert_sign.c`). No wire
-  change; both flood and direct adverts sign the same bytes as before.
-
-### Removed
-- Dead first-party functions with no caller in the tree or tests:
-  `nodes_mark_dirty` / `nodes_dirty`, `save_wifi`, the unused
-  `nvs_{load,save}_{u16,u32,i32}` scalar wrappers,
-  `http_server_is_running`, `map_tile_to_latlon`, and the `icon_placeholder`
-  home tile. See the "Unused code" section in `docs/architecture/Architecture.md`.
-
 ## [2.5.0] - 2026-06-18
-
 ### Added
 - **VIEW_MAP** — slippy-map view that renders OSM PNG tiles from SD with
   live GPS overlay. Pan, zoom (6 → 14), crosshair, scale bar, lock toggle,
@@ -294,6 +281,10 @@ of merged PR titles since the previous tag.
   zoom change and bumped 64 → 128 slots.
 
 ## [2.3.2] - 2026-06-06
+### Added
+- **RFC 8032 TV1 sign-roundtrip self-test** runs in `identity_init()` at
+  boot and exposes `ed25519_tv1_keypair_ok` / `ed25519_tv1_sign_ok` as
+  globals so future Ed25519 regressions surface immediately.
 
 ### Fixed
 - **Advert reception** (PR #14, GitHub issue #1) — adverts broadcast by
@@ -316,13 +307,7 @@ of merged PR titles since the previous tag.
 - **`sync_word` setting persisted to NVS**. Was pushed to C6 in-session
   but lost on the next cold boot. New `lora.sync` NVS key.
 
-### Added
-- **RFC 8032 TV1 sign-roundtrip self-test** runs in `identity_init()` at
-  boot and exposes `ed25519_tv1_keypair_ok` / `ed25519_tv1_sign_ok` as
-  globals so future Ed25519 regressions surface immediately.
-
 ## [2.3.1] - 2026-06-05
-
 ### Added
 - **Auto-screensaver timer** (PR #8) — extension of the F3 manual
   display-blank from v2.3.0. Configurable idle timeout in
@@ -342,7 +327,6 @@ of merged PR titles since the previous tag.
   Settings value, dropping the stale local cache.
 
 ## [2.3.0] - 2026-06-05
-
 ### Added
 - **F3 (yellow square) toggles display backlight** (PR #5) — short press
   blanks the MIPI backlight while keyboard input, LoRa RX and the
@@ -368,19 +352,18 @@ of merged PR titles since the previous tag.
 - `scripts/release.sh` — single command for cutting a release
   + GitHub with changelog + binary attached.
 
+### Changed
+- Branch protection rule on `main`: direct push disabled, CI
+  status check required, block-on-outdated enabled. Devlog files
+  exempted via `unprotected_file_patterns`.
+
 ### Fixed
 - **Preamble length now persists in NVS** (PR #7) — was a UI-editable
   field that silently reset to 16 on every restart because it wasn't
   in the `load_lora_from_nvs` / `save_lora_to_nvs` schema. Default
   bumped to 8 to match the MeshCore protocol standard.
 
-### Changed
-- Branch protection rule on `main`: direct push disabled, CI
-  status check required, block-on-outdated enabled. Devlog files
-  exempted via `unprotected_file_patterns`.
-
 ## [2.2.0] - 2026-06-04
-
 ### Added
 - `VIEW_HOME` tile-grid landing screen in Pager-stijl — eight tiles
   with PAX-drawn icons (Nodes, DM, Channel, Map, Advert, Settings,
@@ -414,3 +397,4 @@ of merged PR titles since the previous tag.
 
 [Unreleased]: https://github.com/CJvanSoest/meshcore/compare/v2.2.0...HEAD
 [2.2.0]: https://github.com/CJvanSoest/meshcore/releases/tag/v2.2.0
+
