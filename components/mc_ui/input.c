@@ -673,6 +673,83 @@ static void nav_channel(uint32_t key) {
     }
 }
 
+// Activating the focused Settings row: drill into a category from the grid, or
+// act on the focused field. Both input paths reach it and used to carry a copy
+// each; a cursor-translation fix had to be applied twice because of that.
+static void settings_activate_selected(void) {
+    if (settings_category_list_mode) {
+        // Drill into the focused category: the grid cursor is in
+        // visible-slot space, translate to the real s_categories
+        // index before drilling. Clamp the field cursor to the
+        // first field of the target category.
+        int real = settings_visible_category_real_idx(settings_category_cursor);
+        if (real < 0) real = 0;
+        // External tiles (Toolbox) switch straight to a top-level view
+        // instead of drilling into a field list.
+        app_view_t ext_view;
+        if (settings_category_is_external(real, &ext_view)) {
+            current_view = ext_view;
+            return;
+        }
+        settings_category_active    = real;
+        settings_category_list_mode = false;
+        int first, last;
+        settings_category_bounds(settings_category_active, &first, &last);
+        selected        = first;
+        settings_scroll = 0;
+        return;
+    }
+    // FIELD_RADIO_FW / FIELD_RADIO_FW_APP / FIELD_DUTY_CYCLE are read-only.
+    // FIELD_ANTENNA_GAIN is read-only until country is set.
+    bool gain_locked = (selected == FIELD_ANTENNA_GAIN && (country_code[0] == '-' || country_code[0] == '\0'));
+    if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP || selected == FIELD_DUTY_CYCLE ||
+        selected == FIELD_GPS_SOURCE || selected == FIELD_WIFI_SSID || selected == FIELD_WIFI_STATUS || gain_locked) {
+        // ignore (read-only rows)
+    } else if (selected == FIELD_SEND_FLOOD_NOW) {
+        send_advert();
+        snprintf(toast_text, sizeof(toast_text), "Flood advert sent");
+        toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    } else if (selected == FIELD_SEND_DIRECT_NOW) {
+        send_advert_direct();
+        snprintf(toast_text, sizeof(toast_text), "Direct adverts queued (1-hop)");
+        toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    } else if (selected == FIELD_SOUND_TEST_DM) {
+        sounds_play_dm();
+    } else if (selected == FIELD_SOUND_TEST_CHANNEL) {
+        sounds_play_channel();
+    } else if (selected == FIELD_SOUND_TEST_ERROR) {
+        sounds_play_error();
+    } else if (selected == FIELD_SOUND_TEST_BOOT) {
+        sounds_play_boot();
+    } else if (selected == FIELD_BLE_ENABLED) {
+        // Toggle row: flip + save. Takes effect on next app start;
+        // tearing NimBLE down cleanly mid-runtime is messy enough that
+        // a relaunch is the simpler contract.
+        ble_enabled = !ble_enabled;
+        save_ble_enabled();
+        snprintf(toast_text, sizeof(toast_text), "BLE %s on next start", ble_enabled ? "ON" : "OFF");
+        toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    } else if (selected == FIELD_BLE_DEVICES) {
+        open_ble_devices();
+    } else if (!edit_mode) {
+        // Refresh the cached launcher-slot list right before letting
+        // the user cycle through it, so newly added networks land.
+        if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
+        edit_mode = true;
+        if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME || selected == FIELD_REGION_SCOPE ||
+            selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON || selected == FIELD_BLE_PIN) {
+            settings_begin_text_edit(selected);
+        }
+    } else {
+        if (field_editing_text)
+            settings_commit_text_edit(selected);
+        else
+            field_save(selected);
+        edit_mode = false;
+        dirty     = false;
+    }
+}
+
 static void nav_settings(uint32_t key) {
     if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
         if (settings_category_list_mode) {
@@ -708,78 +785,7 @@ static void nav_settings(uint32_t key) {
         } else if (edit_mode && !field_editing_text)
             field_adjust(selected, +1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
-        if (settings_category_list_mode) {
-            // Drill into the focused category: the grid cursor is in
-            // visible-slot space, translate to the real s_categories
-            // index before drilling. Clamp the field cursor to the
-            // first field of the target category.
-            int real = settings_visible_category_real_idx(settings_category_cursor);
-            if (real < 0) real = 0;
-            // External tiles (Toolbox) switch straight to a top-level view
-            // instead of drilling into a field list.
-            app_view_t ext_view;
-            if (settings_category_is_external(real, &ext_view)) {
-                current_view = ext_view;
-                return;
-            }
-            settings_category_active    = real;
-            settings_category_list_mode = false;
-            int first, last;
-            settings_category_bounds(settings_category_active, &first, &last);
-            selected        = first;
-            settings_scroll = 0;
-            return;
-        }
-        // FIELD_RADIO_FW / FIELD_RADIO_FW_APP / FIELD_DUTY_CYCLE are read-only.
-        // FIELD_ANTENNA_GAIN is read-only until country is set.
-        bool gain_locked = (selected == FIELD_ANTENNA_GAIN && (country_code[0] == '-' || country_code[0] == '\0'));
-        if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP || selected == FIELD_DUTY_CYCLE ||
-            selected == FIELD_GPS_SOURCE || selected == FIELD_WIFI_SSID || selected == FIELD_WIFI_STATUS ||
-            gain_locked) {
-            // ignore (read-only rows)
-        } else if (selected == FIELD_SEND_FLOOD_NOW) {
-            send_advert();
-            snprintf(toast_text, sizeof(toast_text), "Flood advert sent");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_SEND_DIRECT_NOW) {
-            send_advert_direct();
-            snprintf(toast_text, sizeof(toast_text), "Direct adverts queued (1-hop)");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_SOUND_TEST_DM) {
-            sounds_play_dm();
-        } else if (selected == FIELD_SOUND_TEST_CHANNEL) {
-            sounds_play_channel();
-        } else if (selected == FIELD_SOUND_TEST_ERROR) {
-            sounds_play_error();
-        } else if (selected == FIELD_SOUND_TEST_BOOT) {
-            sounds_play_boot();
-        } else if (selected == FIELD_BLE_ENABLED) {
-            // Toggle row: flip + save. Takes effect on next app start;
-            // tearing NimBLE down cleanly mid-runtime is messy enough that
-            // a relaunch is the simpler contract.
-            ble_enabled = !ble_enabled;
-            save_ble_enabled();
-            snprintf(toast_text, sizeof(toast_text), "BLE %s on next start", ble_enabled ? "ON" : "OFF");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_BLE_DEVICES) {
-            open_ble_devices();
-        } else if (!edit_mode) {
-            // Refresh the cached launcher-slot list right before letting
-            // the user cycle through it, so newly added networks land.
-            if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
-            edit_mode = true;
-            if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME || selected == FIELD_REGION_SCOPE ||
-                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON || selected == FIELD_BLE_PIN) {
-                settings_begin_text_edit(selected);
-            }
-        } else {
-            if (field_editing_text)
-                settings_commit_text_edit(selected);
-            else
-                field_save(selected);
-            edit_mode = false;
-            dirty     = false;
-        }
+        settings_activate_selected();
     }
 }
 
@@ -1490,72 +1496,7 @@ static void key_settings(char c) {
     } else if (c == '>' || c == '.') {
         if (edit_mode && !field_editing_text) field_adjust(selected, +1);
     } else if (c == '\r' || c == '\n') {
-        if (settings_category_list_mode) {
-            // The grid cursor is in visible-slot space (Advert is hidden);
-            // translate to the real s_categories index, exactly like the D-pad
-            // RETURN path in nav_settings. Assigning the slot directly opened
-            // the wrong category for every slot at or after a hidden one.
-            int real = settings_visible_category_real_idx(settings_category_cursor);
-            if (real < 0) real = 0;
-            // External tiles (Toolbox) switch straight to a top-level view.
-            app_view_t ext_view;
-            if (settings_category_is_external(real, &ext_view)) {
-                current_view = ext_view;
-                return;
-            }
-            settings_category_active    = real;
-            settings_category_list_mode = false;
-            int first, last;
-            settings_category_bounds(settings_category_active, &first, &last);
-            selected        = first;
-            settings_scroll = 0;
-            return;
-        }
-        // FIELD_RADIO_FW / FIELD_RADIO_FW_APP / FIELD_DUTY_CYCLE are read-only — Enter no-op.
-        // FIELD_ANTENNA_GAIN is read-only until country is set (otherwise gain has no effect).
-        bool gain_locked = (selected == FIELD_ANTENNA_GAIN && (country_code[0] == '-' || country_code[0] == '\0'));
-        if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP || selected == FIELD_DUTY_CYCLE ||
-            selected == FIELD_GPS_SOURCE || selected == FIELD_WIFI_SSID || selected == FIELD_WIFI_STATUS ||
-            gain_locked) {
-            // ignore (read-only rows)
-        } else if (selected == FIELD_SEND_FLOOD_NOW) {
-            send_advert();
-            snprintf(toast_text, sizeof(toast_text), "Flood advert sent");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_SEND_DIRECT_NOW) {
-            send_advert_direct();
-            snprintf(toast_text, sizeof(toast_text), "Direct adverts queued (1-hop)");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_SOUND_TEST_DM) {
-            sounds_play_dm();
-        } else if (selected == FIELD_SOUND_TEST_CHANNEL) {
-            sounds_play_channel();
-        } else if (selected == FIELD_SOUND_TEST_ERROR) {
-            sounds_play_error();
-        } else if (selected == FIELD_SOUND_TEST_BOOT) {
-            sounds_play_boot();
-        } else if (selected == FIELD_BLE_ENABLED) {
-            ble_enabled = !ble_enabled;
-            save_ble_enabled();
-            snprintf(toast_text, sizeof(toast_text), "BLE %s on next start", ble_enabled ? "ON" : "OFF");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_BLE_DEVICES) {
-            open_ble_devices();
-        } else if (!edit_mode) {
-            if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
-            edit_mode = true;
-            if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME || selected == FIELD_REGION_SCOPE ||
-                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON || selected == FIELD_BLE_PIN) {
-                settings_begin_text_edit(selected);
-            }
-        } else {
-            if (field_editing_text)
-                settings_commit_text_edit(selected);
-            else
-                field_save(selected);
-            edit_mode = false;
-            dirty     = false;
-        }
+        settings_activate_selected();
     } else if (c == 'r' || c == 'R') {
         wifi_slots_refresh();
         load_owner_name();
