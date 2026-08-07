@@ -8,6 +8,14 @@ name: Privacy Gate
 #
 # If a secret is missing the job fails closed: a misconfigured gate
 # is worse than a noisy one, since silent passes look like clean runs.
+#
+# GitHub withholds repo secrets from pull_request runs on external
+# contributors' PRs (anti-exfiltration), so PRIVATE_PATTERNS always
+# comes through empty there and the job would always fail closed —
+# not a real finding, just an artifact of the trust boundary. Skip
+# the job for PRs not authored by the maintainer; the push-to-main
+# trigger still scans the merged result with real secrets, so a leak
+# is still caught, just after merge instead of before.
 
 on:
   push:
@@ -19,6 +27,7 @@ jobs:
   scan:
     name: Scan for private patterns
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.user.login == 'CJvanSoest'
     steps:
       - uses: actions/checkout@v4
 
