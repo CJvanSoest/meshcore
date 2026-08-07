@@ -1158,8 +1158,8 @@ static void render_nodes_lvgl(void) {
         if (node_count == 0 && contact_count == 0) {
             add_label(scr, 12, list_y0 + 14, TXT_BODY, COL_GRAY, "Listening... no nodes heard yet.");
         } else {
-            display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
-            int           idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
+            display_row_t* rows_dl   = node_display_rows();
+            int            idx_count = build_node_display(rows_dl, NODE_DISPLAY_ROWS_MAX);
 
             int max_scroll = idx_count - rows_vis;
             if (max_scroll < 0) max_scroll = 0;

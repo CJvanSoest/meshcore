@@ -505,8 +505,8 @@ static void nav_nodes(uint32_t key) {
         if (node_cursor < upper) node_cursor++;
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
         if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
-            int           idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
+            display_row_t* rows_dl   = node_display_rows();
+            int            idx_count = build_node_display(rows_dl, NODE_DISPLAY_ROWS_MAX);
             if (node_cursor < idx_count) {
                 display_row_t* d = &rows_dl[node_cursor];
                 if (d->node_idx >= 0) {
@@ -1416,8 +1416,8 @@ static void key_nodes(char c) {
         send_advert();
     } else if (c == 'f' || c == 'F') {
         if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
-            int           idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
+            display_row_t* rows_dl   = node_display_rows();
+            int            idx_count = build_node_display(rows_dl, NODE_DISPLAY_ROWS_MAX);
             if (node_cursor < idx_count) {
                 display_row_t* d = &rows_dl[node_cursor];
                 if (d->is_contact) {
@@ -1449,8 +1449,8 @@ static void key_nodes(char c) {
         qr_overlay_active = true;
     } else if (c == '\r' || c == '\n') {
         if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
-            int           idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
+            display_row_t* rows_dl   = node_display_rows();
+            int            idx_count = build_node_display(rows_dl, NODE_DISPLAY_ROWS_MAX);
             if (node_cursor < idx_count) {
                 display_row_t* d = &rows_dl[node_cursor];
                 if (d->node_idx >= 0) {

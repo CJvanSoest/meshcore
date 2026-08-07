@@ -51,8 +51,14 @@ typedef struct {
     int  node_idx;     // index into node_list[]; -1 if offline contact
 } display_row_t;
 
+#define NODE_DISPLAY_ROWS_MAX (MAX_CONTACTS + MAX_NODES)
+
 // Caller must hold node_mutex. Returns the number of rows written.
 int build_node_display(display_row_t* rows, int max_rows);
+
+// Shared scratch for build_node_display (~2.9 KB, too big for the main task
+// stack). Main task only, caller must hold node_mutex.
+display_row_t* node_display_rows(void);
 
 // "Chat" / "Rptr" / "Room" / "Sens" / "?"
 const char* role_label(meshcore_device_role_t role);
