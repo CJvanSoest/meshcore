@@ -4,6 +4,7 @@
 #include "channels.h"
 #include <stdio.h>
 #include <string.h>
+#include "atomic_file.h"
 #include "backup.h"  // backup_write — mirror channel changes to SD
 #include "esp_log.h"
 #include "esp_random.h"
@@ -148,12 +149,11 @@ void channels_save_nvs(void) {
     size_t blob_size = 1 + count * sizeof(stored_channel_t);
 
     if (locfs_ready()) {
-        FILE* f = fopen(CH_FILE, "wb");
-        if (f) {
-            fwrite(buf, 1, blob_size, f);
-            fclose(f);
+        if (!atomic_write_file(CH_FILE, buf, blob_size)) {
+            ESP_LOGE(TAG, "channels write failed, keeping the NVS copy");
+            return;
         }
-        nvs_handle_t h;  // drop the legacy NVS copy so it stops using the shared partition
+        nvs_handle_t h;  // drop the legacy NVS copy only now the file is safe
         if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
             nvs_erase_key(h, NVS_KEY);  // ignores not-found
             nvs_commit(h);

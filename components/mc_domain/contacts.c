@@ -4,6 +4,7 @@
 #include "contacts.h"
 #include <stdio.h>
 #include <string.h>
+#include "atomic_file.h"
 #include "backup.h"  // backup_write — mirror contact changes to SD
 #include "esp_log.h"
 #include "locfs.h"  // internal FAT store (keeps contacts off the shared NVS)
@@ -55,12 +56,11 @@ void contacts_load(void) {
 
 void contacts_save(void) {
     if (locfs_ready()) {
-        FILE* f = fopen(CT_FILE, "wb");
-        if (f) {
-            if (contact_count > 0) fwrite(contacts, sizeof(contact_t), (size_t)contact_count, f);
-            fclose(f);
+        if (!atomic_write_file(CT_FILE, contacts, (size_t)contact_count * sizeof(contact_t))) {
+            ESP_LOGE(TAG, "contacts write failed, keeping the NVS copy");
+            return;
         }
-        nvs_handle_t handle;  // drop the legacy NVS copy so it stops using the shared partition
+        nvs_handle_t handle;  // drop the legacy NVS copy only now the file is safe
         if (nvs_open("system", NVS_READWRITE, &handle) == ESP_OK) {
             nvs_erase_key(handle, NVS_CONTACTS_BLOB);  // ignores not-found
             nvs_commit(handle);
