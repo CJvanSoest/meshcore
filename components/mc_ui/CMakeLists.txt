@@ -3,10 +3,10 @@
 idf_component_register(
     SRCS
         "render.c"
-        "render_settings.c"
-        "render_home.c"
-        "render_toolbox.c"
-        "render_toolbox_log.c"
+        "settings_fields.c"
+        "home_tiles.c"
+        "toolbox_tiles.c"
+        "packet_log.c"
         "input.c"
         "lvgl_port.c"
         "lvgl_ui.c"

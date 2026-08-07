@@ -95,7 +95,8 @@ the signer. Both ship.
 
 ### `mc_io` (L1)
 Thin wrappers over ESP-IDF platform APIs: `nvs_helpers.c` (scalar NVS load/save),
-`gps.c` (PA1010D over QWIIC), `cert_gen.c` (self-signed cert), SD helpers. Each
+`gps.c` (PA1010D over QWIIC), `locfs.c` (internal FAT store),
+`atomic_file.c` (crash-safe whole-file replace). Each
 should be a shim, not a place for domain logic. Watch uninitialised outputs on a
 failed load.
 
@@ -129,11 +130,11 @@ The on-device HTTPS server and cert generator were removed in v3.1.0.
 
 ### `mc_ui` (L4)
 One `lvgl_<view>.c` per view, `input.c` for key handling, `lvgl_port.c` for the
-display glue. `render_settings.c` installs
+display glue. `settings_fields.c` installs
 the `save_*` handlers into a field-dispatch table by address (this is why
 cppcheck thinks they are unused, see [Pitfalls.md](Pitfalls.md)). Selection
 cursors versus shrinking lists are the classic bug here. Must not include
-`meshcore/` — the Toolbox views (`lvgl_toolbox.c` launcher, `lvgl_toolbox_log.c`
+`meshcore/` — the Toolbox views (`lvgl_toolbox.c` launcher, `lvgl_log.c`
 packet log) read the `mc_common/diag` ring and the pure `mc_proto/diag_decode`
 for display rather than speaking the wire protocol.
 

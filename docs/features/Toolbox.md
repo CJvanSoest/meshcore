@@ -8,7 +8,7 @@ with a "soon" tag.
 <p><img src="../../assets/screenshots/screen-toolbox.svg" width="480" alt="Toolbox launcher"></p>
 
 `W`/`S` move between tools, `Enter` opens the focused one, the red X (F1) returns
-to Settings. The launcher lives in `render_toolbox.c`; each tool is its own view.
+to Settings. The launcher lives in `toolbox_tiles.c`; each tool is its own view.
 
 ---
 
@@ -77,7 +77,7 @@ ts_ms,dir,type,route,rssi_dbm,snr_db,len,raw_hex
 `rssi_dbm` / `snr_db` are blank on TX rows and on RX frames with no measurement;
 `raw_hex` is the captured leading bytes as lower-case hex. Row formatting is the
 pure, host-tested `diag_csv_row()` (`mc_proto/diag_decode`); the UI side
-(`render_toolbox_log.c`) writes the file, a no-op when no card is mounted. The
+(`packet_log.c`) writes the file, a no-op when no card is mounted. The
 rows carry on-air frame bytes only — no decrypted message content. Pull a file
 off with `badgelink fs download /sd/meshcore/log/pkt_<unix>.csv`.
 
@@ -105,7 +105,7 @@ Sub-phase 2b (the coverage map) is still design only. Implemented in 2a:
 `mc_domain/coverage.{c,h}` (result model + TRACE-tag matcher + SD CSV + repeater
 collector), the ping controller `coverage_ping_start` + `send_trace` in `mc_rx`
 with a `rx_handle_trace` hook, and `VIEW_TOOLBOX_COVERAGE`
-(`render_toolbox_coverage.c` + input).
+(`lvgl_coverage.c` + input).
 
 ### What you see
 

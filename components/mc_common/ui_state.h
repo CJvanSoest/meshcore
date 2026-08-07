@@ -106,7 +106,7 @@ extern int qr_channel_idx;
 
 // ── Home tile-grid cursor (VIEW_HOME) ────────────────────────────────────────
 // Index into the home tile array (0..HOME_TILE_COUNT-1). Owned + updated by
-// input.c, read by render_home.c.
+// input.c, read by home_tiles.c.
 extern int home_cursor;
 
 // VIEW_ABOUT vertical scroll offset in pixels (content is taller than the
@@ -154,7 +154,7 @@ extern bool ble_devices_confirm;  // armed: next Enter runs Clear bonds
 #define STORAGE_ACTION_COUNT 3
 
 // Storage Viewer drill-down categories (see toolbox_storage_detail). Kept here so
-// both the renderer (lvgl_ui.c) and the input handlers (input.c) agree on the set.
+// both the renderer (lvgl_settings.c) and the input handlers (input.c) agree on the set.
 enum {
     ST_CAT_NVS = 0,  // NVS entries + per-namespace table
     ST_CAT_MEM,      // RAM + PSRAM heap

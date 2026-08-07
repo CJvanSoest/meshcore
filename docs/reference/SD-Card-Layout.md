@@ -141,7 +141,7 @@ decoded payload + route names (`?` if the header did not parse), `rssi_dbm` and
 true on-air length, and `raw_hex` is the captured leading bytes (up to
 `DIAG_RAW_MAX`) as lower-case hex. The row is formatted by the pure
 `diag_csv_row()` in `mc_proto/diag_decode.c` (host-tested); the UI side in
-`mc_ui/render_toolbox_log.c` `mkdir`s the directory and writes the file, a no-op
+`mc_ui/packet_log.c` `mkdir`s the directory and writes the file, a no-op
 when no card is mounted. These rows carry on-air frame bytes only, no decrypted
 message content.
 

@@ -11,7 +11,7 @@ many **live** functions as unused. Two patterns fool it:
 
 - **Function-pointer tables.** The Settings UI installs handlers such as
   `save_brightness` into a field dispatch table by address
-  (`render_settings.c`: `{ "Display backlight", save_brightness }`). cppcheck
+  (`settings_fields.c`: `{ "Display backlight", save_brightness }`). cppcheck
   does not count taking an address as a call, so every `save_*` handler looks
   unused while in fact the UI invokes all of them.
 - **Test-only callers.** Helpers like `region_effective_power_dbm` and

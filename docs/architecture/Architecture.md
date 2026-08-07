@@ -194,7 +194,7 @@ are deliberately kept:
   has no in-tree caller.
 - **Function-pointer callbacks and test-only symbols.** The Settings UI
   installs `save_*` handlers into a field-dispatch table by address
-  (`render_settings.c`), and helpers such as `region_effective_power_dbm`
+  (`settings_fields.c`), and helpers such as `region_effective_power_dbm`
   are exercised only from `tests/`. cppcheck counts neither as a call.
 
 Everything else with no caller is gone.
