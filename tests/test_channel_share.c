@@ -9,6 +9,7 @@
 // that the gitleaks secret scanner would flag.
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "channel_share.h"
 
@@ -85,7 +86,18 @@ int main(void) {
           "link without secret rejected");
     CHECK(!channel_parse_share(link("X", "tooshort"), name, sizeof(name), secret), "link short secret rejected");
 
-    // 8. name truncation respects name_cap.
+    // 8. Odd-length hex on an exactly-sized buffer: the parser used to read the
+    //    second nibble of a pair before testing the first, running one byte past
+    //    the NUL. Heap-allocated so a sanitizer build catches a regression.
+    for (int len = 1; len < 32; len++) {
+        char* exact = malloc((size_t)len + 1);
+        memset(exact, 'a', (size_t)len);
+        exact[len] = '\0';
+        CHECK(!channel_parse_share(exact, name, sizeof(name), secret), "short hex rejected without overread");
+        free(exact);
+    }
+
+    // 9. name truncation respects name_cap.
     char small[5];
     CHECK(channel_parse_share(link("abcdefgh", "000102030405060708090a0b0c0d0e0f"), small, sizeof(small), secret),
           "truncating parse ok");
