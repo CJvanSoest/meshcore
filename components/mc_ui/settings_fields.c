@@ -47,7 +47,7 @@ static const settings_category_t s_categories[] = {
     {FIELD_FLOOD_ADVERT_INT, "Advert", "Flood + direct intervals, manual send", true},
     {FIELD_WIFI_SSID, "WiFi", "Slot picker + connect toggle", false},
     {FIELD_BLE_ENABLED, "Bluetooth", "BLE companion radio + pairing code", false},
-    {FIELD_REGION_SCOPE, "Region &\nLocation", "Region scope, GPS coordinates", false},
+    {FIELD_REGION_SCOPE, "Location", "Region scope, GPS coordinates", false},
     {FIELD_DISPLAY_BL, "Brightness", "Display, keyboard, RGB LED, auto-blank", false},
     {FIELD_SOUND_VOLUME, "Sounds", "Volume + per-event toggles + previews", false},
     // External tile: opens the Toolbox launcher rather than a field drilldown.
