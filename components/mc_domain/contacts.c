@@ -55,14 +55,29 @@ void contacts_load(void) {
 
 void contacts_save(void) {
     if (locfs_ready()) {
-        // Temp file + rename so a crash mid-write can't truncate the only
-        // copy of the contact list (same scheme as nodes_save_to_sd).
+        // Write to a temp file and rename over the canonical one, the same
+        // scheme nodes_save_to_sd uses: a crash while writing then damages
+        // only the temp copy. Every write is checked, because promoting a
+        // short .tmp would cause exactly the loss this is meant to prevent.
         FILE* f = fopen(CT_FILE ".tmp", "wb");
         if (f) {
-            if (contact_count > 0) fwrite(contacts, sizeof(contact_t), (size_t)contact_count, f);
-            fclose(f);
-            remove(CT_FILE);
-            if (rename(CT_FILE ".tmp", CT_FILE) != 0) ESP_LOGW(TAG, "contacts_save: rename failed");
+            bool ok = true;
+            if (contact_count > 0)
+                ok = fwrite(contacts, sizeof(contact_t), (size_t)contact_count, f) == (size_t)contact_count;
+            if (fclose(f) != 0) ok = false;
+            if (!ok) {
+                ESP_LOGW(TAG, "contacts_save: write failed (storage full?) — keeping previous file");
+                remove(CT_FILE ".tmp");
+            } else {
+                // FATFS f_rename refuses an existing target, so the old file
+                // goes first; the gap where neither name exists is small but
+                // real -- this is safer than a truncating write, not atomic.
+                remove(CT_FILE);
+                if (rename(CT_FILE ".tmp", CT_FILE) != 0) {
+                    ESP_LOGW(TAG, "contacts_save: rename failed");
+                    remove(CT_FILE ".tmp");
+                }
+            }
         }
         nvs_handle_t handle;  // drop the legacy NVS copy so it stops using the shared partition
         if (nvs_open("system", NVS_READWRITE, &handle) == ESP_OK) {
