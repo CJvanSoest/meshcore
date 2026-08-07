@@ -36,8 +36,8 @@ pure parts, which is what keeps them host-testable.
 | `mc_domain` | mc_proto, mc_common, tanmatsu-lora, freertos | mc_io, vendor, nvs_flash, mbedtls, fatfs, sdmmc, badge-bsp, tanmatsu-wifi, wifi-manager, lwip, esp_driver_i2s |
 | `mc_crypto` | mc_proto | mbedtls, vendor |
 | `mc_radio` | freertos, tanmatsu-lora, mc_proto | mc_domain, mc_crypto, (esp-hosted-tanmatsu on P4) |
-| `mc_net` | mc_domain, mc_common, badge-bsp, pax-gfx | mc_io, mc_proto, vendor, tanmatsu-lora, esp_http(s)_server, esp_wifi, mdns, wifi-manager, ... |
-| `mc_ui` | mc_common, mc_domain, mc_radio, mc_net, pax-gfx, badge-bsp, freertos | mc_io, mc_proto, mc_rx, vendor, wifi-manager, esp_app_format |
+| `mc_net` | mc_domain, mc_common, badge-bsp | mc_io, mc_proto, vendor, tanmatsu-lora, esp_http(s)_server, esp_wifi, mdns, wifi-manager, ... |
+| `mc_ui` | mc_common, mc_domain, mc_radio, mc_net, mc_fonts, lvgl, badge-bsp, freertos | mc_io, mc_proto, mc_rx, vendor, wifi-manager, esp_app_format |
 | `mc_rx` | (none public) | mc_radio, mc_domain, mc_common, mc_crypto, mc_proto, vendor, mbedtls |
 
 `tanmatsu-lora` is a public REQUIRES of `mc_domain` because a domain header
@@ -76,7 +76,7 @@ pure `mc_proto/diag_decode`.
 Two parts in one component:
 - `meshcore/` is the **upstream protocol mirror** (packet.c, payload/advert.c,
   payload/grp_txt.c). Treat as read-only; fixes go upstream then re-pin. Keep it
-  free of ESP-IDF / pax / BSP / L1 headers.
+  free of ESP-IDF / LVGL / BSP / L1 headers.
 - Root holds **first-party pure helpers**: `region_limits.c` (regulatory
   sub-bands, ERP/EIRP power, duty-cycle budget), `gps_parser.c` (NMEA),
   `advert_sign.c` (the signable-byte range), `diag_decode.c` (the Toolbox
@@ -120,18 +120,20 @@ load/save. It builds no MeshCore payload and decrypts nothing.
 boundary, tracks upstream). Keep `radio.c` domain free.
 
 ### `mc_net` (L4)
-`http_server.c` (HTTPS test/cert endpoints), `map.c` (slippy-map tile math +
-LRU cache + async tile loader). Map tile math and cache indexing are the bug-
-prone parts.
+`map.c` (slippy-map tile math + LRU cache + async tile loader), the BLE
+companion link (`ble_companion.c`, `companion_transport.c`), `gps_task.c` and
+`wifi_keepalive.c`. Map tile math and cache indexing are the bug-prone parts.
+The on-device HTTPS server and cert generator were removed in v3.1.0.
 
 ### `mc_ui` (L4)
-`render_*.c` screens, input handling, view state. `render_settings.c` installs
+One `lvgl_<view>.c` per view, `input.c` for key handling, `lvgl_port.c` for the
+display glue. `render_settings.c` installs
 the `save_*` handlers into a field-dispatch table by address (this is why
 cppcheck thinks they are unused, see [Pitfalls.md](Pitfalls.md)). Selection
 cursors versus shrinking lists are the classic bug here. Must not include
-`meshcore/` — the Toolbox views (`render_toolbox.c` launcher,
-`render_toolbox_log.c` packet log) read the `mc_common/diag` ring and the pure
-`mc_proto/diag_decode` for display rather than speaking the wire protocol.
+`meshcore/` — the Toolbox views (`lvgl_toolbox.c` launcher, `lvgl_toolbox_log.c`
+packet log) read the `mc_common/diag` ring and the pure `mc_proto/diag_decode`
+for display rather than speaking the wire protocol.
 
 ### `mc_rx` (L5)
 The MeshCore application brain. RX handlers (`rx_handle_advert/grp_txt/dm/path`)

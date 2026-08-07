@@ -11,8 +11,8 @@ In order:
 
 1. `gpio_install_isr_service`, then `nvs_flash_init` (erase + retry on
    no-free-pages / new-version).
-2. `bsp_device_initialize`, display parameters, `pax_buf_init` + orientation,
-   `bsp_input_get_queue`.
+2. `bsp_device_initialize`, display parameters, LVGL bring-up via
+   `lvgl_port_init`, `bsp_input_get_queue`.
 3. Domain init: `nodes_init`, `chat_init`, `channels_init`, `identity_init`,
    `emoji_init`. **`identity_init` runs the RFC 8032 Ed25519 boot self-test and
    `abort()`s if it fails** (see [Crypto.md](Crypto.md)).

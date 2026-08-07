@@ -73,10 +73,10 @@ esp32-p4-function-ev-board).
    compiler flags a warning in `meshcore/`, suppress it at the call site (CI
    target) rather than editing the mirror, as the test Makefile already does.
 3. **Layer direction is one-way.** Higher layers include lower; never the
-   reverse. `render_*.c` must not include `meshcore/`. See docs/architecture/Architecture.md for
-   the exact grep checks.
+   reverse. Nothing in `mc_ui` may include `meshcore/`. See
+   docs/architecture/Architecture.md for the exact grep checks.
 4. **Add a host test for any pure logic you touch.** Pure modules with no
-   ESP-IDF / pax / mbedtls dependency (region_limits, meshcore codecs,
+   ESP-IDF / LVGL / mbedtls dependency (region_limits, meshcore codecs,
    gps_parser, the companion command parser) are unit-tested on the host and
    gate the merge. Keep that property; do not pull a platform header into a
    currently-pure translation unit without good reason.

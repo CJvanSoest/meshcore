@@ -62,14 +62,14 @@ Two consequences worth internalising:
 
 | Kind of code | Component | Notes |
 |---|---|---|
-| Pure protocol / codec / regulatory / parser logic | `mc_proto` | No ESP-IDF, pax or BSP. Host testable. Holds the upstream mirror under `meshcore/` plus first-party pure helpers in the root. |
+| Pure protocol / codec / regulatory / parser logic | `mc_proto` | No ESP-IDF, LVGL or BSP. Host testable. Holds the upstream mirror under `meshcore/` plus first-party pure helpers in the root. |
 | Symmetric channel crypto | `mc_crypto` | Host tested. Add a vector for anything you touch. |
 | DM crypto (ed25519 ECDH) | `mc_crypto` (`mc_crypto_dm.c`) | A file in the `mc_crypto` component, not a separate component; split so the channel tests stay ed25519 free. |
 | Persisted state and app data | `mc_domain` | Settings, nodes, contacts, chat, channels, identity. |
-| Platform I/O wrappers | `mc_io` | NVS, GPS, certs, SD. Thin shims over ESP-IDF. |
+| Platform I/O wrappers | `mc_io` | NVS, GPS, the internal FAT store, crash-safe file writes. Thin shims over ESP-IDF. |
 | LoRa transport | `mc_radio` | Send and receive primitives, duty cycle, region scope. **Domain free**: it builds no MeshCore payloads. |
 | MeshCore receive handlers and TX composers | `mc_rx` | Owns decrypt, encrypt, domain writes, notifications, ACK. Radio hands it raw packets via the RX sink and `radio_tx_message`. |
-| Screens, input, rendering | `mc_ui` | The `render_*.c` files. Must not include `meshcore/`. |
+| Screens, input, rendering | `mc_ui` | One `lvgl_<view>.c` per view plus `input.c`. Must not include `meshcore/`. |
 | Connectivity and peripherals | `mc_net` | HTTP server, maps, WiFi glue. |
 | Third party drops and generated assets | `vendor` | See hard rules. Leaf component, never imports first-party code. |
 
@@ -85,7 +85,7 @@ first-party code goes in a component, never back into `main/`.
   looks unused, it usually is, and it stays anyway so the file matches upstream.
   See [Pitfalls.md](Pitfalls.md) on dead code and on the ed25519 split.
 - **`components/mc_proto/meshcore/` is the upstream protocol mirror.** Keep it
-  free of ESP-IDF, pax, BSP and L1 headers. Never grow a wire format struct
+  free of ESP-IDF, LVGL, BSP and L1 headers. Never grow a wire format struct
   locally: take the change upstream and re-pin the dependency. Local additions
   live in `mc_radio` (region scope) or `mc_rx` (framing), or as a pure
   first-party helper in `mc_proto` root, never inside `meshcore/`.
@@ -118,11 +118,10 @@ first-party code goes in a component, never back into `main/`.
   block needs a paragraph, the paragraph probably belongs in `docs/`.
 - All repo text (code, comments, commit messages, docs) is in English. Chat with
   the user can be in their language.
-- Write plainly. No em dash, no coined hyphen-adjectives, no serial comma. This
-  applies to comments and docs too.
+- Write plainly and keep it short. Match the surrounding prose rather than a
+  house style sheet: the tree has always used em dashes and they stay.
 - Format touched files with `.clang-format`.
-- Commit messages: imperative subject, short body, at most a few lines, no AI
-  attribution trailer and no co-author line.
+- Commit messages: imperative subject, short body, at most a few lines.
 
 ## Dead code policy
 

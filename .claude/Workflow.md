@@ -11,7 +11,7 @@ rules behind each step are in [Guidelines.md](Guidelines.md); the traps are in
   symptom shows.
 - Decide the component and layer. If you cannot name them, you are not ready to
   write yet.
-- Check whether the logic is pure (no ESP-IDF, pax or BSP). Pure logic belongs in
+- Check whether the logic is pure (no ESP-IDF, LVGL or BSP). Pure logic belongs in
   `mc_proto` or a crypto component and gets a host test. Platform behaviour does
   not.
 
