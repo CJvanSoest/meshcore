@@ -52,6 +52,9 @@ locally:
   top-level dirs are listed inside it; add new ones there).
 - `check-test-wiring.sh` fails if a `tests/test_*.c` is not wired into the
   Makefile.
+- `check-changelog.sh` checks `docs/CHANGELOG.md` against
+  [Releases.md](../docs/guides/Releases.md): heading format, section names,
+  section order and descending versions. It does not judge the version level.
 - `check-cppcheck.sh` runs cppcheck over the first-party components. Treat its
   `unusedFunction` output as advisory, see [Pitfalls.md](Pitfalls.md).
 - `check-format.sh` runs `clang-format --dry-run --Werror` over the first-party

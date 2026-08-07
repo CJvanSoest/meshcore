@@ -35,7 +35,8 @@ scripts/gen_ext_fonts.sh      # needs Node's lv_font_conv; NAS CI image has Node
 ```
 
 Output lands in `components/mc_fonts/lv_font_montserrat_<sz>_ext.c` (checked in
-as generated asset data, like `emoji_bitmaps.c` — do not hand-edit).
+as generated asset data, like `emoji_bitmaps.c` — do not hand-edit; both have a
+generator under `scripts/`).
 
 ### Wiring (implemented)
 

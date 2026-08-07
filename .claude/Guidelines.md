@@ -70,7 +70,7 @@ Two consequences worth internalising:
 | LoRa transport | `mc_radio` | Send and receive primitives, duty cycle, region scope. **Domain free**: it builds no MeshCore payloads. |
 | MeshCore receive handlers and TX composers | `mc_rx` | Owns decrypt, encrypt, domain writes, notifications, ACK. Radio hands it raw packets via the RX sink and `radio_tx_message`. |
 | Screens, input, rendering | `mc_ui` | One `lvgl_<view>.c` per view plus `input.c`. Must not include `meshcore/`. |
-| Connectivity and peripherals | `mc_net` | HTTP server, maps, WiFi glue. |
+| Connectivity and peripherals | `mc_net` | BLE companion, maps, GPS task, WiFi glue. |
 | Third party drops and generated assets | `vendor` | See hard rules. Leaf component, never imports first-party code. |
 
 `main/` is `main.c` only: the cold start sequence and the event loop. New
@@ -80,7 +80,9 @@ first-party code goes in a component, never back into `main/`.
 ## Hard rules (these have bitten real users)
 
 - **Do not modify vendored code.** `components/vendor/*` (lodepng, qrcodegen,
-  ed25519, emoji_bitmaps) are third party drops kept close to upstream. Their
+  ed25519) are third party drops kept close to upstream. `emoji_bitmaps.c` sits
+  there too but is generated art, not source: regenerate it with
+  `scripts/gen_emoji_bitmaps.py` rather than editing it, and never by hand. Their
   TODO markers are upstream comments, not work items. If a vendored function
   looks unused, it usually is, and it stays anyway so the file matches upstream.
   See [Pitfalls.md](Pitfalls.md) on dead code and on the ed25519 split.
@@ -141,6 +143,7 @@ tests/lint/check-arch-rules.sh         # include direction discipline
 tests/lint/check-structure.sh          # file placement (main/ thin, root clean)
 tests/lint/check-test-wiring.sh        # every test_*.c is wired into the Makefile
 tests/lint/check-cppcheck.sh           # static analysis, first-party only
+tests/lint/check-changelog.sh          # CHANGELOG shape against Releases.md
 make build DEVICE=tanmatsu             # the firmware actually builds
 ```
 

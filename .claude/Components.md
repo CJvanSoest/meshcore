@@ -86,7 +86,9 @@ Two parts in one component:
 All of it is host-tested. Do not pull a platform header in here.
 
 ### `vendor` (leaf)
-Third-party drops: lodepng, qrcodegen, ed25519, emoji_bitmaps. **Do not modify.**
+Third-party drops: lodepng, qrcodegen, ed25519. **Do not modify.** Plus the
+generated `emoji_bitmaps.c` (Twemoji art), rebuilt by
+`scripts/gen_emoji_bitmaps.py`; `--check` verifies it still matches.
 Note the ed25519 split documented in [Crypto.md](Crypto.md) and
 [Pitfalls.md](Pitfalls.md): `ed25519.c` is X25519 ECDH only, `ed25519_mpi.c` is
 the signer. Both ship.

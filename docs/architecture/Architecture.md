@@ -25,7 +25,7 @@ just by convention — a backward include fails to compile.
 | L4 | UI | `mc_ui` | `lvgl_ui.*` (dispatch), one `lvgl_<view>.c` per view behind `lvgl_internal.h`, `lvgl_port.*`, `input.*` — LVGL 9 UI, user-facing |
 | L5 | MeshCore app | `mc_rx` | RX handlers (behind the radio sink) + TX composers (called by the UI): decrypt/encrypt, domain writes, notifications, ADVERT signing, ACK |
 | L5 | App entry | `main` | `main.c` — `app_main()`, boot sequence, event loop |
-| — | Third-party | `vendor` | lodepng, qrcodegen, ed25519, emoji_bitmaps — kept verbatim |
+| — | Third-party | `vendor` | lodepng, qrcodegen, ed25519 — kept verbatim. Plus generated `emoji_bitmaps.c` (`scripts/gen_emoji_bitmaps.py`) |
 
 ## Forbidden includes
 
