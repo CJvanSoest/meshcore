@@ -21,9 +21,10 @@ check() {
     fi
 }
 
-# 1. UI must not speak the wire protocol.
-check "render_*.c includes meshcore/" \
-    '^#include "meshcore/' components/mc_ui/render_*.c
+# 1. UI must not speak the wire protocol. Whole component, not render_*.c: most
+#    of the UI moved into lvgl_*.c and a file glob silently stops covering it.
+check "mc_ui includes meshcore/" \
+    '^#include "meshcore/' components/mc_ui/
 
 # 2. The protocol mirror stays pure (no UI, BSP or L1 data headers).
 #    meshcore/ now lives in the mc_proto component.
@@ -31,15 +32,12 @@ check "meshcore/ includes UI/BSP/L1 headers" \
     '^#include "(lvgl|lv_|bsp/|chat|nodes|channels|contacts|settings_nvs|render)' \
     components/mc_proto/meshcore/
 
-# 3. Data and protocol layers do not drive UI.
-check "L0-L3 includes render.h or input.h" \
-    '^#include "(render|input)\.h"' \
-    components/mc_proto/meshcore/ components/mc_proto/region_limits.c \
-    components/mc_radio/radio*.c \
-    components/mc_domain/settings_nvs.c components/mc_domain/identity.c \
-    components/mc_domain/history.c components/mc_domain/chat.c \
-    components/mc_domain/nodes.c components/mc_domain/contacts.c \
-    components/mc_domain/channels.c
+# 3. Data and protocol layers do not drive UI. Whole components, so a new file
+#    under any of them is covered without editing this list.
+check "L0-L3 includes render.h, input.h or lvgl_ui.h" \
+    '^#include "(render|input|lvgl_ui|lvgl_port)\.h"' \
+    components/mc_proto/ components/mc_radio/ components/mc_domain/ \
+    components/mc_io/ components/mc_crypto/ components/mc_rx/
 
 if [ "$fail" -eq 0 ]; then
     echo "arch-rules: OK (no forbidden includes)"
