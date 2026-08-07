@@ -480,8 +480,35 @@ static void settings_commit_text_edit(field_t f) {
 // dispatches the rest into the matching view function. ESC was already
 // taken by the time these run, so they only see directional keys + RETURN.
 
+// Both input paths (D-pad RETURN and Enter) open the focused Nodes row as a DM
+// and used to carry a verbatim copy of this each.
+static void open_selected_node_as_dm(void) {
+    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        display_row_t* rows_dl   = node_display_rows();
+        int            idx_count = build_node_display(rows_dl, NODE_DISPLAY_ROWS_MAX);
+        if (node_cursor < idx_count) {
+            display_row_t* d = &rows_dl[node_cursor];
+            if (d->node_idx >= 0) {
+                node_entry_t* n = &node_list[d->node_idx];
+                dm_select_target(n->pub_key, n->name);
+                contact_ensure(n->pub_key, n->name, (uint8_t)n->role);
+            } else if (d->is_contact) {
+                contact_t* c = &contacts[d->contact_idx];
+                dm_select_target(c->pub_key, c->alias);
+            }
+        }
+        xSemaphoreGive(node_mutex);
+    }
+    if (dm_target_set) {
+        current_view   = VIEW_CHAT;
+        dm_inbox_mode  = false;
+        led_dm_pending = false;
+        update_notification_led();
+    }
+}
+
 static void nav_home(uint32_t key) {
-    int cols = 4;  // mirrors HOME_TILE_COLS in render_home.c
+    int cols = 4;  // mirrors HOME_TILE_COLS in home_tiles.c
     if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
         if (home_cursor - cols >= 0) home_cursor -= cols;
     } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
@@ -504,28 +531,7 @@ static void nav_nodes(uint32_t key) {
         if (upper < 0) upper = 0;
         if (node_cursor < upper) node_cursor++;
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
-        if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            display_row_t* rows_dl   = node_display_rows();
-            int            idx_count = build_node_display(rows_dl, NODE_DISPLAY_ROWS_MAX);
-            if (node_cursor < idx_count) {
-                display_row_t* d = &rows_dl[node_cursor];
-                if (d->node_idx >= 0) {
-                    node_entry_t* n = &node_list[d->node_idx];
-                    dm_select_target(n->pub_key, n->name);
-                    contact_ensure(n->pub_key, n->name, (uint8_t)n->role);
-                } else if (d->is_contact) {
-                    contact_t* c = &contacts[d->contact_idx];
-                    dm_select_target(c->pub_key, c->alias);
-                }
-            }
-            xSemaphoreGive(node_mutex);
-        }
-        if (dm_target_set) {
-            current_view   = VIEW_CHAT;
-            dm_inbox_mode  = false;
-            led_dm_pending = false;
-            update_notification_led();
-        }
+        open_selected_node_as_dm();
     }
 }
 
@@ -1370,7 +1376,7 @@ void handle_nav(uint32_t key) {
 // `<>,.`/D, previously a long `else if (current_view == VIEW_X)` cascade.
 
 static void key_home(char c) {
-    const int cols  = 4;  // mirrors HOME_TILE_COLS in render_home.c
+    const int cols  = 4;  // mirrors HOME_TILE_COLS in home_tiles.c
     const int total = home_tile_count();
     if (c == 'w' || c == 'W') {
         if (home_cursor - cols >= 0) home_cursor -= cols;
@@ -1448,28 +1454,7 @@ static void key_nodes(char c) {
     } else if ((c == 'q' || c == 'Q') && identity_is_ready()) {
         qr_overlay_active = true;
     } else if (c == '\r' || c == '\n') {
-        if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            display_row_t* rows_dl   = node_display_rows();
-            int            idx_count = build_node_display(rows_dl, NODE_DISPLAY_ROWS_MAX);
-            if (node_cursor < idx_count) {
-                display_row_t* d = &rows_dl[node_cursor];
-                if (d->node_idx >= 0) {
-                    node_entry_t* n = &node_list[d->node_idx];
-                    dm_select_target(n->pub_key, n->name);
-                    contact_ensure(n->pub_key, n->name, (uint8_t)n->role);
-                } else if (d->is_contact) {
-                    contact_t* c2 = &contacts[d->contact_idx];
-                    dm_select_target(c2->pub_key, c2->alias);
-                }
-            }
-            xSemaphoreGive(node_mutex);
-        }
-        if (dm_target_set) {
-            current_view   = VIEW_CHAT;
-            dm_inbox_mode  = false;
-            led_dm_pending = false;
-            update_notification_led();
-        }
+        open_selected_node_as_dm();
     }
 }
 
