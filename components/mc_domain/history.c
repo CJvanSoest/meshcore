@@ -8,6 +8,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 #include "app_config.h"
 #include "driver/sdmmc_host.h"
 #include "esp_log.h"
@@ -137,11 +138,19 @@ static void append_impl(const char* path, const char* text, bool is_mine) {
     mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, padded, iv_copy, pt, ct);
     mbedtls_aes_free(&aes);
 
+    // A half-written record makes load_impl read its leftovers as the next
+    // header, which stops the load for good. Roll back to this length instead.
+    struct stat pre;
+    long        start = (stat(path, &pre) == 0) ? (long)pre.st_size : -1;
+
     FILE* f = fopen(path, "ab");
     if (f) {
-        fwrite(&hdr, sizeof(hdr), 1, f);
-        fwrite(ct, padded, 1, f);
-        fclose(f);
+        bool ok = fwrite(&hdr, sizeof(hdr), 1, f) == 1 && fwrite(ct, padded, 1, f) == 1;
+        if (fclose(f) != 0) ok = false;
+        if (!ok) {
+            ESP_LOGW(TAG, "append(%s): short write, rolling back", path);
+            if (start >= 0) truncate(path, start);
+        }
     } else {
         ESP_LOGW(TAG, "append: fopen(%s) failed", path);
     }
@@ -158,8 +167,9 @@ static void load_impl(const char* path, history_ring_add_fn add) {
         return;
     }
 
-    int  loaded = 0;
-    bool fatal  = false;
+    int  loaded   = 0;
+    bool fatal    = false;
+    long good_end = 0;  // offset just past the last record that parsed cleanly
     while (1) {
         history_rec_hdr_t hdr;
         if (fread(&hdr, sizeof(hdr), 1, f) != 1) break;
@@ -192,13 +202,13 @@ static void load_impl(const char* path, history_ring_add_fn add) {
         }
         int N = hdr.plain_len;
 
-        char text[MAX_MSG_TEXT];
-        int  copy = N < MAX_MSG_TEXT - 1 ? N : MAX_MSG_TEXT - 1;
-        memcpy(text, pt, copy);
-        text[copy] = '\0';
+        char text[MAX_MSG_TEXT + 1];
+        memcpy(text, pt, N);
+        text[N] = '\0';
 
         add(text, (hdr.flags & 0x01) != 0);
         loaded++;
+        good_end = ftell(f);
     }
     fclose(f);
 
@@ -208,6 +218,10 @@ static void load_impl(const char* path, history_ring_add_fn add) {
     if (fatal && loaded == 0) {
         ESP_LOGW(TAG, "(%s): unreadable from start — removing stale file", path);
         remove(path);
+    } else if (fatal && good_end > 0) {
+        // Left in place, the bad record would stop every future load too.
+        ESP_LOGW(TAG, "(%s): keeping %d good record(s), dropping the tail", path, loaded);
+        truncate(path, good_end);
     }
 
     ESP_LOGI(TAG, "load(%s): %d record(s) restored", path, loaded);
