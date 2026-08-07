@@ -29,8 +29,8 @@ For the build-level view — which `mc_*` component each module lives in, the
                 ┌──────────────────────┼──────────────────────┐
                 ▼                      ▼                      ▼
         ┌─────────────┐         ┌─────────────────┐    ┌─────────────┐
-        │   input.c   │         │   render.c +    │    │   radio.c   │
-        │ navigation, │ ──────▶ │   render_*.c    │    │ LoRa tasks, │
+        │   input.c   │         │   lvgl_ui.c +   │    │   radio.c   │
+        │ navigation, │ ──────▶ │  lvgl_<view>.c  │    │ LoRa tasks, │
         │ edit-mode   │  state  │  per-view +     │ ◀──│ advert,     │
         │ FSM         │         │ Pager strip     │ stats │ TX/RX rings │
         └─────────────┘         └─────────────────┘    └──────┬──────┘

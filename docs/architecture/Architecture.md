@@ -21,8 +21,8 @@ just by convention — a backward include fails to compile.
 | L2 | Wire protocol | `mc_proto` | MeshCore packet/payload codecs, region limits, GPS/companion parsers — mirror of upstream, host-tested |
 | L2 | Channel crypto | `mc_crypto` | GRP_TXT decrypt/encrypt + the ACK-binding CRC, mbedtls only, host-tested |
 | L3 | Transport | `mc_radio` | `radio.*`, `radio_system_protocol_client.*` — LoRa send/receive primitives, duty-cycle, region scope, config. Domain-free; the RX+TX handlers live in `mc_rx`. |
-| L4 | Connectivity | `mc_net` | HTTP server, BLE, companion transport, WiFi keepalive, GPS task, map |
-| L4 | UI | `mc_ui` | `lvgl_ui.*`, `lvgl_port.*`, `render*.c`, `input.*` — LVGL 9 UI, user-facing |
+| L4 | Connectivity | `mc_net` | BLE, companion transport, WiFi keepalive, GPS task, map |
+| L4 | UI | `mc_ui` | `lvgl_ui.*` (dispatch), one `lvgl_<view>.c` per view behind `lvgl_internal.h`, `lvgl_port.*`, `input.*` — LVGL 9 UI, user-facing |
 | L5 | MeshCore app | `mc_rx` | RX handlers (behind the radio sink) + TX composers (called by the UI): decrypt/encrypt, domain writes, notifications, ADVERT signing, ACK |
 | L5 | App entry | `main` | `main.c` — `app_main()`, boot sequence, event loop |
 | — | Third-party | `vendor` | lodepng, qrcodegen, ed25519, emoji_bitmaps — kept verbatim |
@@ -32,20 +32,22 @@ just by convention — a backward include fails to compile.
 These rules are TRUE today. The point is to keep them true. They are
 grep-checkable and enforced in CI by `tests/lint/check-arch-rules.sh`.
 
-1. **`render_*.c` must not include `meshcore/*`** — UI doesn't speak the
+1. **Nothing in `mc_ui` may include `meshcore/*`** — UI doesn't speak the
    wire protocol; it reads and writes state through L1 (`chat`, `nodes`,
-   `channels`, `contacts`).
+   `channels`, `contacts`). The check covers the whole component, so a new
+   view file is included by default.
 2. **`meshcore/` must not include `lvgl`/`lv_*`, `bsp/*`, or any L1 data
    header** — protocol code stays pure and can be reasoned about (or
    unit-tested, or moved) without dragging in the UI toolkit.
-3. **L0–L3 files must not include `render*.h` or `input.h`** — data and
-   protocol don't drive UI; UI subscribes to state.
+3. **L0–L3 components must not include `render*.h`, `input.h` or the LVGL
+   headers** — data and protocol don't drive UI; UI subscribes to state.
+   Checked per component, not per file.
 
 Manual check (output should be empty; `tests/lint/check-arch-rules.sh` runs exactly
 these):
 
 ```sh
-grep -rE '^#include "meshcore/' components/mc_ui/render_*.c
+grep -rE '^#include "meshcore/' components/mc_ui/
 grep -rE '^#include "(lvgl|lv_|bsp/|chat|nodes|channels|contacts|settings_nvs|render)' components/mc_proto/meshcore/
 grep -rE '^#include "(render|input)\.h"' \
   components/mc_proto/meshcore/ components/mc_proto/region_limits.c \
