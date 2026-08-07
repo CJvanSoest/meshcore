@@ -9,7 +9,6 @@
 
 #include "app_config.h"
 #include "render_internal.h"
-#include "ui_state.h"
 
 // ── Tile-grid geometry (kept in sync with lvgl_home.c) ──────────────────────
 #define HOME_TILE_COLS  4

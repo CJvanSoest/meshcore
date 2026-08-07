@@ -21,7 +21,6 @@
 #include "esp_log.h"
 #include "esp_system.h"  // esp_restart (Storage Viewer factory reset)
 #include "freertos/FreeRTOS.h"
-#include "gps.h"
 #include "gps_task.h"
 #include "history.h"
 #include "identity.h"

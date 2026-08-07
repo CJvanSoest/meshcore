@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "lora.h"
-#include "meshcore/packet.h"
+#include "meshcore/packet.h"  // meshcore_device_role_t
 #include "meshcore/payload/advert.h"
 
 // ── Defaults (launcher-compatible, used when NVS is empty) ───────────────────

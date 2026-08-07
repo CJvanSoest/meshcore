@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <string.h>
 #include "app_config.h"
-#include "gps.h"
 #include "gps_task.h"
 #include "map.h"
 #include "nodes.h"

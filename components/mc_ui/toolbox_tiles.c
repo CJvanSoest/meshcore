@@ -9,7 +9,6 @@
 
 #include "app_config.h"
 #include "render_internal.h"
-#include "ui_state.h"
 
 typedef struct {
     const char* label;

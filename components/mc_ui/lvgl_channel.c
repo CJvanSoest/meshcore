@@ -3,22 +3,18 @@
 //
 // VIEW_CHANNEL.
 
+#include <stdio.h>
+#include "channels.h"
+#include "chat.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "history.h"
+#include "lvgl.h"
 #include "lvgl_internal.h"
 #include "lvgl_port.h"
-#include "lvgl_ui.h"
-#include "map.h"
-#include "mc_fonts.h"  // extended Montserrat faces (umlauts, accents, °, €, …)
-#include "nodes.h"
-#include "nvs_flash.h"
-#include "qrcodegen.h"
-#include "radio.h"
-#include "region_limits.h"
-#include "render.h"  // COL_* palette + TXT_* sizes
-#include "render_internal.h"
+#include "render.h"
 #include "settings_nvs.h"
-#include "special_table.h"  // special_font_covers (draw umlauts instead of '?')
 #include "ui_state.h"
-#include "wifi_connection.h"
 
 // ── VIEW_CHANNEL (channel list + wizard + conversation) ──────────────────────
 // Channel list, join wizard and conversation. The share QR and the emoji picker

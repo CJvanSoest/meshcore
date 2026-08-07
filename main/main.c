@@ -46,7 +46,6 @@
 #include "lora.h"
 #include "nvs.h"
 #include "nvs_flash.h"
-#include "qrcodegen.h"
 #include "radio_system_protocol_client.h"
 #include "tanmatsu_coprocessor.h"
 #include "wifi_connection.h"
