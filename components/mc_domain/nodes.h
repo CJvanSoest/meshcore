@@ -69,6 +69,10 @@ void nodes_init(void);
 // Upsert an advert into node_list. Caller passes optional packet stats (RSSI/SNR).
 void update_node(const meshcore_advert_t* advert, uint32_t now_ms, const lora_packet_stats_t* stats);
 
+// Re-insert a peer as a plain node row (used when unfavoriting a contact that
+// is no longer in the live list). Caller must hold node_mutex.
+void nodes_ensure_entry_locked(const uint8_t* pub, const char* name, uint8_t role);
+
 // ── SD persistence ───────────────────────────────────────────────────────────
 // Discovered nodes survive an app restart so the user can come back and
 // promote a previously-seen node to favorite. Storage: /sd/meshcore/nodes.bin

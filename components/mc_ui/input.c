@@ -1432,11 +1432,24 @@ static void key_nodes(char c) {
             if (node_cursor < idx_count) {
                 display_row_t* d = &rows_dl[node_cursor];
                 if (d->is_contact) {
-                    contact_toggle(contacts[d->contact_idx].pub_key, NULL, 0);
+                    contact_t removed = contacts[d->contact_idx];  // snapshot; toggle shifts the array
+                    if (contact_toggle(removed.pub_key, NULL, 0) == 0) {
+                        // Demote to a plain node row instead of vanishing when
+                        // the peer is not in the live list right now.
+                        nodes_ensure_entry_locked(removed.pub_key, removed.alias, removed.role);
+                        snprintf(toast_text, sizeof(toast_text), "Favorite removed: %.24s", removed.alias);
+                        toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+                    }
                 } else if (d->node_idx >= 0) {
                     node_entry_t* n = &node_list[d->node_idx];
                     int           r = contact_toggle(n->pub_key, n->name, (uint8_t)n->role);
-                    if (r < 0) ESP_LOGW(TAG, "Contacts list is full (%d/%d)", contact_count, MAX_CONTACTS);
+                    if (r < 0) {
+                        ESP_LOGW(TAG, "Contacts list is full (%d/%d)", contact_count, MAX_CONTACTS);
+                        snprintf(toast_text, sizeof(toast_text), "Contacts full (%d/%d)", contact_count, MAX_CONTACTS);
+                    } else {
+                        snprintf(toast_text, sizeof(toast_text), "Favorite added: %.24s", n->name);
+                    }
+                    toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
                 }
             }
             xSemaphoreGive(node_mutex);
