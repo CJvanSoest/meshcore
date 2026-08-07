@@ -21,7 +21,7 @@
 #include "wifi_connection.h"
 
 // ── Shared chat-message ring renderer (DM + Channel) ─────────────────────────
-// Pixel-matched port of render_msg_list() / msg_wrap() in render_chat.c.
+// The shared message ring renderer and its word wrap, used by Chat and Channel.
 
 #define MSG_MAX_LINES 8
 
@@ -98,7 +98,7 @@ void render_msg_list_lvgl(lv_obj_t* scr, int w, int list_y0, int list_h, chat_ms
     char      lines[MSG_MAX_LINES][MAX_MSG_TEXT];
 
     // Clip container at the list region: LVGL clips children to it, so a tall
-    // top bubble can't bleed into the header (the PAX path used pax_clip). All
+    // top bubble can't bleed into the header. All
     // child coordinates below are local to this container.
     lv_obj_t* lst = lv_obj_create(scr);
     lv_obj_remove_style_all(lst);
@@ -189,8 +189,8 @@ void render_msg_list_lvgl(lv_obj_t* scr, int w, int list_y0, int list_h, chat_ms
 }
 
 // ── VIEW_CHAT (DM inbox + conversation) ──────────────────────────────────────
-// Pixel-matched port of render_chat.c. The emoji-picker overlay reachable while
-// typing stays on the PAX path (lvgl_view_active reports false while it's up).
+// DM inbox and conversation. The emoji picker reachable while typing is drawn
+// by lvgl_emoji.c.
 
 void render_chat_lvgl(void) {
     int       w   = (int)lvgl_port_width();

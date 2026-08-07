@@ -21,7 +21,7 @@
 #include "wifi_connection.h"
 
 // ── VIEW_MAP ─────────────────────────────────────────────────────────────────
-// Port of render_map.c. The OSM tile raster is composited into a persistent
+// The OSM tile raster is composited into a persistent
 // lv_canvas (its own PSRAM pixel buffer) so the cache tiles can be safely
 // evicted by the loader task the instant we release the cache lock — the canvas
 // owns a private copy. All other map-area graphics (node pins, crosshair, scale
@@ -33,7 +33,7 @@
 #define MAP_LV_HEADER_H 44
 #define MAP_LV_FOOTER_H 26
 
-// Role pin palette — mirrors render_map.c's ROLE_COL_* macros.
+// Role pin palette.
 #define MAP_PIN_CHAT   COL_GREEN
 #define MAP_PIN_RPTR   COL_BLUE
 #define MAP_PIN_ROOM   0xFFBB9AF7
@@ -45,7 +45,7 @@ static uint8_t* s_map_canvas_buf = NULL;
 static int      s_map_canvas_w   = 0;
 static int      s_map_canvas_h   = 0;
 
-// First-fix toast latch — one-shot per process; mirrors render_map.c's static.
+// First-fix toast latch, one-shot per process.
 static bool s_map_first_fix_seen = false;
 
 static uint32_t map_role_pin_color(meshcore_device_role_t r) {
@@ -106,7 +106,7 @@ static void cv_tri(lv_layer_t* l, int x0, int y0, int x1, int y1, int x2, int y2
 }
 
 // Filled role-shape pin with a 1 px black halo, centred at canvas-local (cx,cy).
-// Shape mapping matches render_map.c::draw_role_pin.
+
 static void cv_pin(lv_layer_t* l, int cx, int cy, meshcore_device_role_t role, bool favorite) {
     uint32_t col = map_role_pin_color(role);
     switch (role) {
@@ -206,7 +206,7 @@ void render_map_lvgl(void) {
         lv_obj_clear_flag(canvas, LV_OBJ_FLAG_SCROLLABLE);
         lv_canvas_set_buffer(canvas, s_map_canvas_buf, map_w, map_h, LV_COLOR_FORMAT_RGB565);
         lv_obj_set_pos(canvas, 0, map_y0);
-        // Missing-tile backdrop (matches render_map.c's COL_PANEL fill).
+        // Missing-tile backdrop.
         lv_canvas_fill_bg(canvas, mc_col(COL_PANEL), LV_OPA_COVER);
 
         int center_tx, center_ty, px_in, py_in;
@@ -353,8 +353,8 @@ void render_map_lvgl(void) {
             cv_pin(&olayer, row_cx, row_cy, legend[i].r, false);
         }
 
-        // Status strip pills (top-right). Walk the same right-to-left chain as
-        // render_map.c so the text objects below land on each pill.
+        // Status strip pills (top-right), laid out right to left so the text
+        // objects below land on each pill.
         char     z_buf[12], sat_buf[16], rx_buf[16], bat_buf[16];
         bool     have_bat = false, have_rx = false, stale = false;
         uint32_t col_bat = COL_GREEN, col_sat = COL_GREEN;
@@ -465,7 +465,7 @@ void render_map_lvgl(void) {
     add_rect(scr, 0, fy, w, 1, COL_PAGER_ACCENT);
     add_label(scr, 10, fy + (MAP_LV_FOOTER_H - TXT_SMALL) / 2, TXT_SMALL, COL_WHITE, "(c) OpenStreetMap contributors");
 
-    // First-fix toast — one-shot per process visit (mirrors render_map.c).
+    // First-fix toast, one-shot per process visit.
     if (!s_map_first_fix_seen && gps_live_valid) {
         s_map_first_fix_seen = true;
         snprintf(toast_text, sizeof(toast_text), "GPS fix locked");

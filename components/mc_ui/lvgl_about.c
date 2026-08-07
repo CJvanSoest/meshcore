@@ -21,7 +21,7 @@
 #include "wifi_connection.h"
 
 // ── VIEW_ABOUT ───────────────────────────────────────────────────────────────
-// Pixel-matched port of render_about.c.
+// Version, author, credits, licence and source.
 
 #define ABOUT_HEADER_H 50
 #define ABOUT_FOOTER_H 38

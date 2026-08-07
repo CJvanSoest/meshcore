@@ -24,7 +24,7 @@
 // The 32x32 Twemoji bitmaps in emoji_bitmaps.c are ARGB8888 (0xAARRGGBB); on
 // this little-endian target that byte order is exactly LVGL's
 // LV_COLOR_FORMAT_ARGB8888 (B,G,R,A), so each flash array wraps straight into an
-// lv_image_dsc_t with no copy — the mirror of emoji.c's pax_buf wrappers.
+// lv_image_dsc_t with no copy.
 
 extern const uint32_t* const EMOJI_BITMAPS[];
 #define EMOJI_PX 32

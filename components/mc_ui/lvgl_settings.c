@@ -22,7 +22,7 @@
 
 // ── VIEW_SETTINGS ────────────────────────────────────────────────────────────
 // Pixel-matched port of settings_fields.c (category-list grid + drilldown) and
-// the category glyphs from the former render_settings_icons.c. This view reuses
+// the category glyphs. This view reuses
 // the field registry (settings_field_label/value) and the category table
 // helpers so no per-field logic is duplicated here.
 
@@ -33,19 +33,15 @@ extern bool c6_available;
 #define S_GRID_V_MARG 20
 #define S_GRID_FOOTER 38
 
-// PAX 0 rad = +x, +y down; LVGL arc 0 deg = 3 o'clock, increasing clockwise.
+// LVGL arc 0 deg = 3 o'clock, increasing clockwise; radians come in with 0 at
+// +x and +y down.
 // Both run clockwise in screen space, so a plain rad->deg conversion keeps the
-// same start/end ordering. (See render_settings_icons.c pax_outline_arc calls.)
+// same start/end ordering.
 static void add_arc_rad(lv_obj_t* p, int cx, int cy, int r, float a0, float a1, int w, uint32_t col) {
     add_arc(p, cx, cy, r, (int)lroundf(a0 * 180.0f / 3.14159265f), (int)lroundf(a1 * 180.0f / 3.14159265f), w, col);
 }
 
-// ── Category glyphs (port of render_settings_icons.c) ───────────────────────
-// pax_simple_line          -> add_line(...,2,col)
-// pax_outline_circle       -> add_circle(...,-1,col,2)   (border only)
-// pax_simple_circle        -> add_circle(...,col,-1,0)   (filled)
-// pax_outline_hollow_circle-> add_circle(...,outer,-1,col,2) (stroked ring)
-// pax_outline_arc          -> add_arc_rad (rad->deg)
+// ── Category glyphs ──────────────────────────────────────────────────────────
 
 static void cat_icon_identity_lv(lv_obj_t* s, int cx, int cy, int sz, uint32_t col) {
     int half = sz / 2;
@@ -300,7 +296,7 @@ static void render_settings_drilldown_lvgl(lv_obj_t* scr, int w, int h) {
     if (selected < first_field) selected = first_field;
     if (selected > last_field) selected = last_field;
 
-    // Scroll pre-pass (identical math to the PAX renderer) — survives the
+    // Scroll pre-pass — survives the
     // variable-height inline section headers.
     int field_y[FIELD_COUNT] = {0};
     int total_h = 0, sel_top = 0, sel_bot = 0;
@@ -320,9 +316,9 @@ static void render_settings_drilldown_lvgl(lv_obj_t* scr, int w, int h) {
 
     int text_y_off = (row_h - TXT_BODY) / 2;
 
-    // Clip container at the list region (LVGL clips children to it, like the
-    // PAX pax_clip). Child coordinates below are LOCAL to this container, so the
-    // absolute (list_y0 + ...) of the PAX path becomes just (field_y - scroll).
+    // Clip container at the list region: LVGL clips children to it, and child
+    // coordinates are LOCAL to it, so a row sits at (field_y - scroll) rather
+    // than an absolute list_y0 offset.
     lv_obj_t* lst = lv_obj_create(scr);
     lv_obj_remove_style_all(lst);
     lv_obj_set_pos(lst, 0, list_y0);

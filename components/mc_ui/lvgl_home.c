@@ -24,7 +24,7 @@
 // Tile-grid landing screen, pixel-matched to home_tiles.c. The tile metadata
 // (labels, order, targets, unread badges) mirrors home_tiles[] there; keep the
 // two in step. Icons are widget-built approximations of the PAX vector glyphs
-// (LVGL's bitmap fonts can't scale to the ~60 px glyph sizes the PAX path uses).
+// (LVGL's bitmap fonts do not scale to the ~60 px glyph sizes these need).
 
 #define HOME_TILE_COLS  4
 #define HOME_TILE_ROWS  3

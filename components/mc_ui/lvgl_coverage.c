@@ -21,7 +21,7 @@
 #include "wifi_connection.h"
 
 // ── VIEW_TOOLBOX_COVERAGE ────────────────────────────────────────────────────
-// Port of render_toolbox_coverage.c.
+// Repeater coverage test: results list and per-repeater status.
 
 #define COV_HEADER_H 50
 #define COV_FOOTER_H 38

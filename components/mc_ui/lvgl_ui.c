@@ -24,33 +24,6 @@
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
-bool lvgl_view_active(app_view_t v) {
-    switch (v) {
-        case VIEW_ABOUT:
-        case VIEW_HOME:
-        case VIEW_MAP:
-        case VIEW_TOOLBOX:
-        case VIEW_TOOLBOX_COVERAGE:
-        case VIEW_TOOLBOX_LOG:
-        case VIEW_TOOLBOX_STORAGE:
-        case VIEW_BLE_DEVICES:
-            return true;
-        case VIEW_SETTINGS:
-            return true;
-        case VIEW_NODES:
-            // Nodes + its QR overlay both render through LVGL now.
-            return true;
-        case VIEW_CHAT:
-            // Chat + the emoji-picker overlay both render through LVGL now.
-            return true;
-        case VIEW_CHANNEL:
-            // Channel + its QR (share) overlay both render through LVGL now.
-            return true;
-        default:
-            return false;
-    }
-}
-
 void lvgl_view_render(app_view_t v) {
     switch (v) {
         case VIEW_SETTINGS:

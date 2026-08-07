@@ -21,10 +21,8 @@
 #include "wifi_connection.h"
 
 // ── VIEW_NODES ───────────────────────────────────────────────────────────────
-// Pixel-matched port of render_nodes.c. Scrolling contacts+nodes list with row
-// selection. The QR overlay reachable from this view (Q) is left on the PAX
-// path: lvgl_view_active(VIEW_NODES) reports false while qr_overlay_active, so
-// render() routes the whole nodes+QR frame through the proven PAX renderer.
+// Scrolling contacts + nodes list with row selection. The QR overlay reachable
+// from here (Q) is drawn by lvgl_qr.c.
 
 #define NODES_ROW_H    44
 #define NODES_Y0       (TAB_BAR_H + 4)

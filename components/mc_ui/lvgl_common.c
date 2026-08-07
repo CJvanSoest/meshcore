@@ -48,16 +48,16 @@ static const lv_font_t* mc_font(int sz) {
     }
 }
 
-// Exact rendered width of `text` in the given size's face — the LVGL analogue
-// of pax_text_size().x, used for centring and right-alignment.
+// Exact rendered width of `text` in the given size's face, used for centring
+// and right-alignment.
 int text_w(const char* text, int font_sz) {
     lv_point_t sz;
     lv_text_get_size(&sz, text, mc_font(font_sz), 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
     return (int)sz.x;
 }
 
-// A flat label at absolute (x, y) — y is the top of the text, matching the PAX
-// pax_draw_text origin. No padding, no scroll, no wrap.
+// A flat label at absolute (x, y); y is the top of the text. No padding, no
+// scroll, no wrap.
 lv_obj_t* add_label(lv_obj_t* parent, int x, int y, int font_sz, uint32_t col, const char* text) {
     lv_obj_t* l = lv_label_create(parent);
     lv_label_set_text(l, text);
@@ -84,7 +84,7 @@ void add_hex_cols(lv_obj_t* parent, int x, int y, uint32_t col, const uint8_t* b
     }
 }
 
-// A filled rectangle (PAX pax_simple_rect equivalent): used for header/footer
+// A filled rectangle: used for header/footer
 // strips and accent lines.
 lv_obj_t* add_rect(lv_obj_t* parent, int x, int y, int w, int h, uint32_t col) {
     lv_obj_t* r = lv_obj_create(parent);
@@ -137,10 +137,9 @@ lv_obj_t* begin_screen(uint32_t bg_col) {
 // ── Boot splash ──────────────────────────────────────────────────────────────
 // Incremental init readout shown during app_main, before the first view render.
 // main.c stays LVGL-free: it calls these with COL_* ARGB values + plain text;
-// each line is appended and flushed so the user sees init progress live (this
-// replaces the PAX pax_draw_text + blit splash). lvgl_splash_begin() clears the
-// screen + paints the title/attribution; lvgl_splash_line() appends one status
-// line below the previous and reflushes.
+// each line is appended and flushed so the user sees init progress live.
+// lvgl_splash_begin() clears the screen and paints the title and attribution;
+// lvgl_splash_line() appends one status line below the previous and reflushes.
 static int s_splash_y;
 
 void lvgl_splash_begin(const char* title, const char* subtitle) {

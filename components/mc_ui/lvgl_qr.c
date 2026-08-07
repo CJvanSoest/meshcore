@@ -22,7 +22,7 @@
 
 // ── QR overlay (contact / channel) ───────────────────────────────────────────
 // Full-screen overlay drawn on top of the Nodes/Channel base view. Pixel-matched
-// port of render_qr_overlay() in render_nodes.c. The qrcodegen module produces a
+// The qrcodegen module produces a
 // module bitmap; we wrap it at module resolution into an lv_image_dsc_t and
 // upscale by an integer factor (nearest-neighbour, antialias off) so the cells
 // stay crisp without materialising one lv_obj per module.

@@ -21,9 +21,8 @@
 #include "wifi_connection.h"
 
 // ── VIEW_CHANNEL (channel list + wizard + conversation) ──────────────────────
-// Pixel-matched port of render_channel.c. The QR (share) overlay and the
-// emoji-picker overlay stay on the PAX path (lvgl_view_active reports false
-// while either is up).
+// Channel list, join wizard and conversation. The share QR and the emoji picker
+// are drawn by lvgl_qr.c and lvgl_emoji.c.
 
 static void render_channel_list_lvgl(lv_obj_t* scr, int w, int h) {
     const int row_h    = 38;

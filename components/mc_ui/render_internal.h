@@ -76,7 +76,7 @@ void field_save(field_t f);
 
 // Field registry accessors (table + value switch live in settings_fields.c).
 // The LVGL settings view reuses them so the per-field label/value formatting
-// is not duplicated across the PAX + LVGL renderers during the migration.
+// is not duplicated across the view files.
 const char* settings_field_label(field_t f);
 void        settings_field_value(field_t f, char* out, size_t cap);
 // Optional inline section header drawn above a field's drilldown row; NULL when
