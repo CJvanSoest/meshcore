@@ -62,10 +62,11 @@ esp32-p4-function-ev-board).
 
 ## Rules that matter here
 
-1. **Do not modify vendored code.** `lodepng.{c,h}`, `qrcodegen.{c,h}`,
-   `ed25519*.{c,h}` are third-party drops; `emoji_bitmaps.c` is generated asset
-   data. Most TODO markers in the tree are upstream LodePNG comments, not work
-   items. Leave them.
+1. **Do not modify vendored code.** `lodepng.{c,h}`, `qrcodegen.{c,h}` and
+   `ed25519*.{c,h}` are third-party drops. `emoji_bitmaps.c` is generated asset
+   data: rebuild it with `scripts/gen_emoji_bitmaps.py`, never by hand. Most
+   TODO markers in the tree are upstream LodePNG comments, not work items.
+   Leave them.
 2. **`meshcore/` is the upstream protocol mirror.** Keep it pure (no UI, no
    BSP, no L1 headers) and do not extend a wire-format struct locally. A fix
    goes upstream first, then the dependency is re-pinned. Local additions on
@@ -73,10 +74,10 @@ esp32-p4-function-ev-board).
    compiler flags a warning in `meshcore/`, suppress it at the call site (CI
    target) rather than editing the mirror, as the test Makefile already does.
 3. **Layer direction is one-way.** Higher layers include lower; never the
-   reverse. `render_*.c` must not include `meshcore/`. See docs/architecture/Architecture.md for
-   the exact grep checks.
+   reverse. Nothing in `mc_ui` may include `meshcore/`. See
+   docs/architecture/Architecture.md for the exact grep checks.
 4. **Add a host test for any pure logic you touch.** Pure modules with no
-   ESP-IDF / pax / mbedtls dependency (region_limits, meshcore codecs,
+   ESP-IDF / LVGL / mbedtls dependency (region_limits, meshcore codecs,
    gps_parser, the companion command parser) are unit-tested on the host and
    gate the merge. Keep that property; do not pull a platform header into a
    currently-pure translation unit without good reason.

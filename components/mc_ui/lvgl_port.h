@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 //
 // LVGL 9 display glue for the migration. LVGL coexists with pax-gfx on this
-// branch: per frame, either a PAX renderer or an LVGL screen drives the panel,
+// LVGL drives the panel:
 // never both. This module owns the lv_display + flush path (a single full-frame
 // blit, software-rotated to match the known-good PAX orientation) and the tick.
 //

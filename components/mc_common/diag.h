@@ -4,7 +4,7 @@
 // Diagnostics ring for the Toolbox packet log: a small mutex-protected ring of
 // the most-recent radio frames (both directions), captured straight off the
 // transport in radio.c. Storage only — the wire decode for display lives in
-// the pure mc_proto/diag_decode helper, the UI in render_toolbox_log.c. The
+// the pure mc_proto/diag_decode helper, the UI in packet_log.c. The
 // ring keeps filling regardless of the UI; "pause" is a UI-side freeze of what
 // it re-reads, not a capture stop.
 

@@ -21,7 +21,6 @@
 #include "esp_log.h"
 #include "esp_system.h"  // esp_restart (Storage Viewer factory reset)
 #include "freertos/FreeRTOS.h"
-#include "gps.h"
 #include "gps_task.h"
 #include "history.h"
 #include "identity.h"
@@ -480,8 +479,35 @@ static void settings_commit_text_edit(field_t f) {
 // dispatches the rest into the matching view function. ESC was already
 // taken by the time these run, so they only see directional keys + RETURN.
 
+// Both input paths (D-pad RETURN and Enter) open the focused Nodes row as a DM
+// and used to carry a verbatim copy of this each.
+static void open_selected_node_as_dm(void) {
+    if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        display_row_t* rows_dl   = node_display_rows();
+        int            idx_count = build_node_display(rows_dl, NODE_DISPLAY_ROWS_MAX);
+        if (node_cursor < idx_count) {
+            display_row_t* d = &rows_dl[node_cursor];
+            if (d->node_idx >= 0) {
+                node_entry_t* n = &node_list[d->node_idx];
+                dm_select_target(n->pub_key, n->name);
+                contact_ensure(n->pub_key, n->name, (uint8_t)n->role);
+            } else if (d->is_contact) {
+                contact_t* c = &contacts[d->contact_idx];
+                dm_select_target(c->pub_key, c->alias);
+            }
+        }
+        xSemaphoreGive(node_mutex);
+    }
+    if (dm_target_set) {
+        current_view   = VIEW_CHAT;
+        dm_inbox_mode  = false;
+        led_dm_pending = false;
+        update_notification_led();
+    }
+}
+
 static void nav_home(uint32_t key) {
-    int cols = 4;  // mirrors HOME_TILE_COLS in render_home.c
+    int cols = 4;  // mirrors HOME_TILE_COLS in home_tiles.c
     if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
         if (home_cursor - cols >= 0) home_cursor -= cols;
     } else if (key == BSP_INPUT_NAVIGATION_KEY_DOWN) {
@@ -504,28 +530,7 @@ static void nav_nodes(uint32_t key) {
         if (upper < 0) upper = 0;
         if (node_cursor < upper) node_cursor++;
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
-        if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
-            int           idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
-            if (node_cursor < idx_count) {
-                display_row_t* d = &rows_dl[node_cursor];
-                if (d->node_idx >= 0) {
-                    node_entry_t* n = &node_list[d->node_idx];
-                    dm_select_target(n->pub_key, n->name);
-                    contact_ensure(n->pub_key, n->name, (uint8_t)n->role);
-                } else if (d->is_contact) {
-                    contact_t* c = &contacts[d->contact_idx];
-                    dm_select_target(c->pub_key, c->alias);
-                }
-            }
-            xSemaphoreGive(node_mutex);
-        }
-        if (dm_target_set) {
-            current_view   = VIEW_CHAT;
-            dm_inbox_mode  = false;
-            led_dm_pending = false;
-            update_notification_led();
-        }
+        open_selected_node_as_dm();
     }
 }
 
@@ -668,6 +673,83 @@ static void nav_channel(uint32_t key) {
     }
 }
 
+// Activating the focused Settings row: drill into a category from the grid, or
+// act on the focused field. Both input paths reach it and used to carry a copy
+// each; a cursor-translation fix had to be applied twice because of that.
+static void settings_activate_selected(void) {
+    if (settings_category_list_mode) {
+        // Drill into the focused category: the grid cursor is in
+        // visible-slot space, translate to the real s_categories
+        // index before drilling. Clamp the field cursor to the
+        // first field of the target category.
+        int real = settings_visible_category_real_idx(settings_category_cursor);
+        if (real < 0) real = 0;
+        // External tiles (Toolbox) switch straight to a top-level view
+        // instead of drilling into a field list.
+        app_view_t ext_view;
+        if (settings_category_is_external(real, &ext_view)) {
+            current_view = ext_view;
+            return;
+        }
+        settings_category_active    = real;
+        settings_category_list_mode = false;
+        int first, last;
+        settings_category_bounds(settings_category_active, &first, &last);
+        selected        = first;
+        settings_scroll = 0;
+        return;
+    }
+    // FIELD_RADIO_FW / FIELD_RADIO_FW_APP / FIELD_DUTY_CYCLE are read-only.
+    // FIELD_ANTENNA_GAIN is read-only until country is set.
+    bool gain_locked = (selected == FIELD_ANTENNA_GAIN && (country_code[0] == '-' || country_code[0] == '\0'));
+    if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP || selected == FIELD_DUTY_CYCLE ||
+        selected == FIELD_GPS_SOURCE || selected == FIELD_WIFI_SSID || selected == FIELD_WIFI_STATUS || gain_locked) {
+        // ignore (read-only rows)
+    } else if (selected == FIELD_SEND_FLOOD_NOW) {
+        send_advert();
+        snprintf(toast_text, sizeof(toast_text), "Flood advert sent");
+        toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    } else if (selected == FIELD_SEND_DIRECT_NOW) {
+        send_advert_direct();
+        snprintf(toast_text, sizeof(toast_text), "Direct adverts queued (1-hop)");
+        toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    } else if (selected == FIELD_SOUND_TEST_DM) {
+        sounds_play_dm();
+    } else if (selected == FIELD_SOUND_TEST_CHANNEL) {
+        sounds_play_channel();
+    } else if (selected == FIELD_SOUND_TEST_ERROR) {
+        sounds_play_error();
+    } else if (selected == FIELD_SOUND_TEST_BOOT) {
+        sounds_play_boot();
+    } else if (selected == FIELD_BLE_ENABLED) {
+        // Toggle row: flip + save. Takes effect on next app start;
+        // tearing NimBLE down cleanly mid-runtime is messy enough that
+        // a relaunch is the simpler contract.
+        ble_enabled = !ble_enabled;
+        save_ble_enabled();
+        snprintf(toast_text, sizeof(toast_text), "BLE %s on next start", ble_enabled ? "ON" : "OFF");
+        toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    } else if (selected == FIELD_BLE_DEVICES) {
+        open_ble_devices();
+    } else if (!edit_mode) {
+        // Refresh the cached launcher-slot list right before letting
+        // the user cycle through it, so newly added networks land.
+        if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
+        edit_mode = true;
+        if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME || selected == FIELD_REGION_SCOPE ||
+            selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON || selected == FIELD_BLE_PIN) {
+            settings_begin_text_edit(selected);
+        }
+    } else {
+        if (field_editing_text)
+            settings_commit_text_edit(selected);
+        else
+            field_save(selected);
+        edit_mode = false;
+        dirty     = false;
+    }
+}
+
 static void nav_settings(uint32_t key) {
     if (key == BSP_INPUT_NAVIGATION_KEY_UP) {
         if (settings_category_list_mode) {
@@ -703,78 +785,7 @@ static void nav_settings(uint32_t key) {
         } else if (edit_mode && !field_editing_text)
             field_adjust(selected, +1);
     } else if (key == BSP_INPUT_NAVIGATION_KEY_RETURN) {
-        if (settings_category_list_mode) {
-            // Drill into the focused category: the grid cursor is in
-            // visible-slot space, translate to the real s_categories
-            // index before drilling. Clamp the field cursor to the
-            // first field of the target category.
-            int real = settings_visible_category_real_idx(settings_category_cursor);
-            if (real < 0) real = 0;
-            // External tiles (Toolbox) switch straight to a top-level view
-            // instead of drilling into a field list.
-            app_view_t ext_view;
-            if (settings_category_is_external(real, &ext_view)) {
-                current_view = ext_view;
-                return;
-            }
-            settings_category_active    = real;
-            settings_category_list_mode = false;
-            int first, last;
-            settings_category_bounds(settings_category_active, &first, &last);
-            selected        = first;
-            settings_scroll = 0;
-            return;
-        }
-        // FIELD_RADIO_FW / FIELD_RADIO_FW_APP / FIELD_DUTY_CYCLE are read-only.
-        // FIELD_ANTENNA_GAIN is read-only until country is set.
-        bool gain_locked = (selected == FIELD_ANTENNA_GAIN && (country_code[0] == '-' || country_code[0] == '\0'));
-        if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP || selected == FIELD_DUTY_CYCLE ||
-            selected == FIELD_GPS_SOURCE || selected == FIELD_WIFI_SSID || selected == FIELD_WIFI_STATUS ||
-            gain_locked) {
-            // ignore (read-only rows)
-        } else if (selected == FIELD_SEND_FLOOD_NOW) {
-            send_advert();
-            snprintf(toast_text, sizeof(toast_text), "Flood advert sent");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_SEND_DIRECT_NOW) {
-            send_advert_direct();
-            snprintf(toast_text, sizeof(toast_text), "Direct adverts queued (1-hop)");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_SOUND_TEST_DM) {
-            sounds_play_dm();
-        } else if (selected == FIELD_SOUND_TEST_CHANNEL) {
-            sounds_play_channel();
-        } else if (selected == FIELD_SOUND_TEST_ERROR) {
-            sounds_play_error();
-        } else if (selected == FIELD_SOUND_TEST_BOOT) {
-            sounds_play_boot();
-        } else if (selected == FIELD_BLE_ENABLED) {
-            // Toggle row: flip + save. Takes effect on next app start;
-            // tearing NimBLE down cleanly mid-runtime is messy enough that
-            // a relaunch is the simpler contract.
-            ble_enabled = !ble_enabled;
-            save_ble_enabled();
-            snprintf(toast_text, sizeof(toast_text), "BLE %s on next start", ble_enabled ? "ON" : "OFF");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_BLE_DEVICES) {
-            open_ble_devices();
-        } else if (!edit_mode) {
-            // Refresh the cached launcher-slot list right before letting
-            // the user cycle through it, so newly added networks land.
-            if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
-            edit_mode = true;
-            if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME || selected == FIELD_REGION_SCOPE ||
-                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON || selected == FIELD_BLE_PIN) {
-                settings_begin_text_edit(selected);
-            }
-        } else {
-            if (field_editing_text)
-                settings_commit_text_edit(selected);
-            else
-                field_save(selected);
-            edit_mode = false;
-            dirty     = false;
-        }
+        settings_activate_selected();
     }
 }
 
@@ -1370,7 +1381,7 @@ void handle_nav(uint32_t key) {
 // `<>,.`/D, previously a long `else if (current_view == VIEW_X)` cascade.
 
 static void key_home(char c) {
-    const int cols  = 4;  // mirrors HOME_TILE_COLS in render_home.c
+    const int cols  = 4;  // mirrors HOME_TILE_COLS in home_tiles.c
     const int total = home_tile_count();
     if (c == 'w' || c == 'W') {
         if (home_cursor - cols >= 0) home_cursor -= cols;
@@ -1416,8 +1427,8 @@ static void key_nodes(char c) {
         send_advert();
     } else if (c == 'f' || c == 'F') {
         if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
-            int           idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
+            display_row_t* rows_dl   = node_display_rows();
+            int            idx_count = build_node_display(rows_dl, NODE_DISPLAY_ROWS_MAX);
             if (node_cursor < idx_count) {
                 display_row_t* d = &rows_dl[node_cursor];
                 if (d->is_contact) {
@@ -1448,28 +1459,7 @@ static void key_nodes(char c) {
     } else if ((c == 'q' || c == 'Q') && identity_is_ready()) {
         qr_overlay_active = true;
     } else if (c == '\r' || c == '\n') {
-        if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            display_row_t rows_dl[MAX_CONTACTS + MAX_NODES];
-            int           idx_count = build_node_display(rows_dl, MAX_CONTACTS + MAX_NODES);
-            if (node_cursor < idx_count) {
-                display_row_t* d = &rows_dl[node_cursor];
-                if (d->node_idx >= 0) {
-                    node_entry_t* n = &node_list[d->node_idx];
-                    dm_select_target(n->pub_key, n->name);
-                    contact_ensure(n->pub_key, n->name, (uint8_t)n->role);
-                } else if (d->is_contact) {
-                    contact_t* c2 = &contacts[d->contact_idx];
-                    dm_select_target(c2->pub_key, c2->alias);
-                }
-            }
-            xSemaphoreGive(node_mutex);
-        }
-        if (dm_target_set) {
-            current_view   = VIEW_CHAT;
-            dm_inbox_mode  = false;
-            led_dm_pending = false;
-            update_notification_led();
-        }
+        open_selected_node_as_dm();
     }
 }
 
@@ -1506,72 +1496,7 @@ static void key_settings(char c) {
     } else if (c == '>' || c == '.') {
         if (edit_mode && !field_editing_text) field_adjust(selected, +1);
     } else if (c == '\r' || c == '\n') {
-        if (settings_category_list_mode) {
-            // The grid cursor is in visible-slot space (Advert is hidden);
-            // translate to the real s_categories index, exactly like the D-pad
-            // RETURN path in nav_settings. Assigning the slot directly opened
-            // the wrong category for every slot at or after a hidden one.
-            int real = settings_visible_category_real_idx(settings_category_cursor);
-            if (real < 0) real = 0;
-            // External tiles (Toolbox) switch straight to a top-level view.
-            app_view_t ext_view;
-            if (settings_category_is_external(real, &ext_view)) {
-                current_view = ext_view;
-                return;
-            }
-            settings_category_active    = real;
-            settings_category_list_mode = false;
-            int first, last;
-            settings_category_bounds(settings_category_active, &first, &last);
-            selected        = first;
-            settings_scroll = 0;
-            return;
-        }
-        // FIELD_RADIO_FW / FIELD_RADIO_FW_APP / FIELD_DUTY_CYCLE are read-only — Enter no-op.
-        // FIELD_ANTENNA_GAIN is read-only until country is set (otherwise gain has no effect).
-        bool gain_locked = (selected == FIELD_ANTENNA_GAIN && (country_code[0] == '-' || country_code[0] == '\0'));
-        if (selected == FIELD_RADIO_FW || selected == FIELD_RADIO_FW_APP || selected == FIELD_DUTY_CYCLE ||
-            selected == FIELD_GPS_SOURCE || selected == FIELD_WIFI_SSID || selected == FIELD_WIFI_STATUS ||
-            gain_locked) {
-            // ignore (read-only rows)
-        } else if (selected == FIELD_SEND_FLOOD_NOW) {
-            send_advert();
-            snprintf(toast_text, sizeof(toast_text), "Flood advert sent");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_SEND_DIRECT_NOW) {
-            send_advert_direct();
-            snprintf(toast_text, sizeof(toast_text), "Direct adverts queued (1-hop)");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_SOUND_TEST_DM) {
-            sounds_play_dm();
-        } else if (selected == FIELD_SOUND_TEST_CHANNEL) {
-            sounds_play_channel();
-        } else if (selected == FIELD_SOUND_TEST_ERROR) {
-            sounds_play_error();
-        } else if (selected == FIELD_SOUND_TEST_BOOT) {
-            sounds_play_boot();
-        } else if (selected == FIELD_BLE_ENABLED) {
-            ble_enabled = !ble_enabled;
-            save_ble_enabled();
-            snprintf(toast_text, sizeof(toast_text), "BLE %s on next start", ble_enabled ? "ON" : "OFF");
-            toast_start_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        } else if (selected == FIELD_BLE_DEVICES) {
-            open_ble_devices();
-        } else if (!edit_mode) {
-            if (selected == FIELD_WIFI_NETWORK) wifi_slots_refresh();
-            edit_mode = true;
-            if (selected == FIELD_OWNER || selected == FIELD_ADV_NAME || selected == FIELD_REGION_SCOPE ||
-                selected == FIELD_GPS_LAT || selected == FIELD_GPS_LON || selected == FIELD_BLE_PIN) {
-                settings_begin_text_edit(selected);
-            }
-        } else {
-            if (field_editing_text)
-                settings_commit_text_edit(selected);
-            else
-                field_save(selected);
-            edit_mode = false;
-            dirty     = false;
-        }
+        settings_activate_selected();
     } else if (c == 'r' || c == 'R') {
         wifi_slots_refresh();
         load_owner_name();

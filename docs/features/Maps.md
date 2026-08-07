@@ -341,4 +341,4 @@ requested area.
 - [GPS sources](GPS-Sources.md) — how the badge knows where it is
 - [SD card layout](../reference/SD-Card-Layout.md) — the `/sd/meshcore` side of SD usage
 - [Settings / NVS](../reference/Settings-NVS.md) — `map.lat_e6` / `map.lon_e6` / `map.zoom` / `map.lock` / `map.profile` keys
-- [Architecture](../architecture/Overview.md) — `map.c` / `render_map.c` / `gps_task.c` modules
+- [Architecture](../architecture/Overview.md) — `map.c` / `lvgl_map.c` / `gps_task.c` modules

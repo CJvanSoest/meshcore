@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 //
 // Emoji 32x32 ARGB8888 bitmaps (generated). Twemoji CC-BY 4.0 (Twitter/jdecked).
+//
+// Do not hand-edit: regenerate with scripts/gen_emoji_bitmaps.py after changing
+// EMOJI_SET in components/mc_common/emoji_table.c.
 
 #include <stdint.h>
 

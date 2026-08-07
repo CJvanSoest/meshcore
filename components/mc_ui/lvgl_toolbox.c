@@ -1,0 +1,72 @@
+// SPDX-FileCopyrightText: 2026 CJ van Soest
+// SPDX-License-Identifier: MIT
+//
+// VIEW_TOOLBOX.
+
+#include <math.h>
+#include "history.h"
+#include "lvgl.h"
+#include "lvgl_internal.h"
+#include "lvgl_port.h"
+#include "render.h"
+#include "ui_state.h"
+
+// ── VIEW_TOOLBOX ─────────────────────────────────────────────────────────────
+// Port of toolbox_tiles.c. Tile metadata mirrors toolbox_tiles[] there.
+
+#define TB_HEADER_H 50
+#define TB_FOOTER_H 38
+#define TB_ROW_H    64
+
+typedef struct {
+    const char* label;
+    const char* desc;
+    bool        enabled;
+} tb_meta_t;
+
+static const tb_meta_t tb_meta[] = {
+    {"Packet Log", "Live RX/TX frames, hex dump + dissector", true},
+    {"Coverage Test", "Ping repeaters, log reachability to SD", true},
+    {"Storage Viewer", "NVS/SD usage + backup / restore", true},
+};
+#define TB_COUNT ((int)(sizeof(tb_meta) / sizeof(tb_meta[0])))
+
+void render_toolbox_lvgl(void) {
+    int       w   = (int)lvgl_port_width();
+    int       h   = (int)lvgl_port_height();
+    lv_obj_t* scr = begin_screen(COL_PAGER_BG);
+    pt_reset();
+
+    add_rect(scr, 0, 0, w, TB_HEADER_H, COL_PAGER_BG);
+    add_rect(scr, 0, TB_HEADER_H - 1, w, 1, COL_PAGER_ACCENT);
+    add_label(scr, 12, (TB_HEADER_H - TXT_TAB) / 2, TXT_TAB, COL_PAGER_TEXT, "Toolbox");
+
+    if (toolbox_cursor < 0) toolbox_cursor = 0;
+    if (toolbox_cursor >= TB_COUNT) toolbox_cursor = TB_COUNT - 1;
+
+    int x  = 20;
+    int rw = w - 40;
+    int y  = TB_HEADER_H + 20;
+    for (int i = 0; i < TB_COUNT; i++) {
+        bool foc = (i == toolbox_cursor);
+        add_rect(scr, x, y, rw, TB_ROW_H, foc ? COL_PAGER_ACCENT : COL_PAGER_TILE);
+        uint32_t title_col = tb_meta[i].enabled ? (foc ? COL_HEADER : COL_PAGER_TEXT) : COL_GRAY;
+        uint32_t desc_col  = foc ? COL_HEADER : COL_GRAY;
+        add_label(scr, x + 16, y + 12, TXT_BODY, title_col, tb_meta[i].label);
+        add_label(scr, x + 16, y + 12 + TXT_BODY + 4, TXT_BODY, desc_col, tb_meta[i].desc);
+        if (!tb_meta[i].enabled) {
+            const char* tag = "soon";
+            add_label(scr, x + rw - text_w(tag, TXT_SMALL) - 16, y + (TB_ROW_H - TXT_SMALL) / 2, TXT_SMALL, COL_AMBER,
+                      tag);
+        }
+        y += TB_ROW_H + 14;
+    }
+
+    int fy = h - TB_FOOTER_H;
+    add_rect(scr, 0, fy, w, TB_FOOTER_H, COL_HEADER);
+    add_rect(scr, 0, fy, w, 1, COL_PAGER_ACCENT);
+    const char* hint = "WS: nav   Enter: open   ";
+    int         ty   = fy + (TB_FOOTER_H - TXT_SMALL) / 2;
+    add_label(scr, 10, ty, TXT_SMALL, COL_HINT, hint);
+    add_back_hint(scr, 10 + text_w(hint, TXT_SMALL), ty, ": settings", TXT_SMALL);
+}

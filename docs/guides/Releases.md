@@ -11,14 +11,25 @@ Semantic Versioning: `MAJOR.MINOR.PATCH`, tagged `vMAJOR.MINOR.PATCH`.
 
 - **MAJOR** — a change that breaks interop or forces user action: a wire format
   change, an NVS key migration that drops old data, a required radio firmware
-  version, or a removed feature.
+  version, or a user facing capability that goes away with nothing to move to.
 - **MINOR** — a new feature or a meaningful behaviour change that stays
-  backward compatible.
+  backward compatible, including a removal that leaves the user a working
+  alternative.
 - **PATCH** — bug fixes, robustness, docs, and internal work with no user
   visible feature change.
 
+A `### Removed` section on its own does not decide the level. Deleting dead
+first party functions is a PATCH or MINOR detail (v2.6.0); dropping the GPS
+auto-fill action while the phone app and manual entry still work is MINOR
+(v2.8.0); removing the whole HTTPS and OwnTracks push path left anyone using
+that push with nowhere to go, which by this rule was a MAJOR and shipped as
+v3.1.0. Judge what the user loses, not which heading it lands under.
+
 When in doubt between two levels, pick the higher one. The version is read at
 runtime from the build description (the git tag), not from a define in code.
+`tests/lint/check-changelog.sh` checks the shape of `CHANGELOG.md`, heading
+format, section names, section order and descending versions. It deliberately
+does not try to judge the level for you.
 
 ## The CHANGELOG entry (the canonical format)
 

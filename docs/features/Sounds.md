@@ -124,7 +124,7 @@ $BL fs upload /sd/meshcore/sounds/startup.wav ./startup.wav
 > `No such file or directory` error.
 
 After uploading new files, reboot the badge (or pop into Settings →
-Sounds and back) so `sounds_refresh()` rescans the directory.
+Sounds and back) so `sounds_refresh_list()` rescans the directory.
 
 ## Testing
 

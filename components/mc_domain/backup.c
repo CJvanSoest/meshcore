@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "atomic_file.h"
 #include "backup_codec.h"
 #include "channels.h"
 #include "contacts.h"
@@ -70,16 +71,9 @@ static bool write_file(const char* path, const backup_data_t* d) {
         return false;
     }
     mkdir(BACKUP_DIR, 0775);  // ignores EEXIST
-    FILE* f = fopen(path, "wb");
-    if (!f) {
-        ESP_LOGW(TAG, "fopen(%s) failed", path);
-        heap_caps_free(buf);
-        return false;
-    }
-    size_t w = fwrite(buf, 1, n, f);
-    fclose(f);
+    bool ok = atomic_write_file(path, buf, n);
     heap_caps_free(buf);
-    return w == n;
+    return ok;
 }
 
 bool backup_write(void) {

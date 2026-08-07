@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: MIT
 //
 // VIEW_HOME — tile-grid landing screen. The tile metadata (label/target/action)
-// lives here as the single source of truth; the LVGL renderer in lvgl_ui.c reads
+// lives here as the single source of truth; the LVGL renderer in lvgl_home.c reads
 // the target/action via the accessors below so a tile-Enter opens the right view
 // and triggers any post-open side-effect. The PAX painter was retired in the
 // LVGL-only migration; only the non-rendering tile registry remains.
 
 #include "app_config.h"
 #include "render_internal.h"
-#include "ui_state.h"
 
-// ── Tile-grid geometry (kept in sync with lvgl_ui.c's home renderer) ─────────
+// ── Tile-grid geometry (kept in sync with lvgl_home.c) ──────────────────────
 #define HOME_TILE_COLS  4
 #define HOME_TILE_ROWS  3
 #define HOME_TILE_COUNT (HOME_TILE_COLS * HOME_TILE_ROWS)

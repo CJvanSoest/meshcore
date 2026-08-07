@@ -3,9 +3,9 @@
 
 #pragma once
 
-// Cross-file declarations shared between the LVGL views (lvgl_ui.c), input.c,
+// Cross-file declarations shared between the LVGL views (lvgl_<view>.c), input.c,
 // and the non-rendering registries that survived the LVGL-only migration
-// (render_settings.c, render_home.c, render_toolbox.c, render_toolbox_log.c).
+// (settings_fields.c, home_tiles.c, toolbox_tiles.c, packet_log.c).
 // Not part of the public render API — public callers use render.h.
 
 #include <stddef.h>       // size_t (snapshot / format-detail signatures)
@@ -19,7 +19,7 @@
 void toolbox_log_export_sd(void);
 
 // Packet-log snapshot accessors (the single-source snapshot + format logic live
-// in render_toolbox_log.c). The LVGL view reuses them so the snapshot is not
+// in packet_log.c). The LVGL view reuses them so the snapshot is not
 // duplicated during the migration — mirrors how settings_field_label/value
 // expose the field registry. Call toolbox_log_snapshot() first, then map
 // newest-first indices with toolbox_log_snap_ri() against the captured head.
@@ -54,7 +54,7 @@ app_view_t toolbox_tile_target(int idx);
 // Settings drilldown: the Settings view is a two-level menu — a list of
 // category cards, then a drilled-in view that only shows the fields belonging
 // to one category. These helpers expose the category table (defined in
-// render_settings.c) so input.c can clamp the field cursor + drive nav.
+// settings_fields.c) so input.c can clamp the field cursor + drive nav.
 int         settings_category_count(void);
 // Visible-only views: skips categories with hidden_from_grid set. Grid
 // rendering + grid cursor nav use these so the hidden Advert category
@@ -70,13 +70,13 @@ int         settings_category_for_field(int f);
 bool        settings_category_is_external(int cat, app_view_t* out_view);
 
 // Persist field `f` to NVS using the registry-defined save_*() (defined in
-// render_settings.c's s_fields[]). Fields without a dedicated save_*()
+// settings_fields.c's s_fields[]). Fields without a dedicated save_*()
 // fall back to save_lora_config(). Replaces input.c's old persist_field_change.
 void field_save(field_t f);
 
-// Field registry accessors (table + value switch live in render_settings.c).
+// Field registry accessors (table + value switch live in settings_fields.c).
 // The LVGL settings view reuses them so the per-field label/value formatting
-// is not duplicated across the PAX + LVGL renderers during the migration.
+// is not duplicated across the view files.
 const char* settings_field_label(field_t f);
 void        settings_field_value(field_t f, char* out, size_t cap);
 // Optional inline section header drawn above a field's drilldown row; NULL when

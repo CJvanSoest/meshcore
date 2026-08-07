@@ -16,11 +16,13 @@ static int hexval(char c) {
 // plain channel name is rejected and the caller falls back to a community channel.
 static bool hex16(const char* s, uint8_t out[16]) {
     while (*s == ' ' || *s == '\t') s++;
+    // Validate first: reading the pair before testing it would run past the NUL
+    // on an odd-length input.
+    for (int i = 0; i < 32; i++) {
+        if (hexval(s[i]) < 0) return false;
+    }
     for (int i = 0; i < 16; i++) {
-        int hi = hexval(s[2 * i]);
-        int lo = hexval(s[2 * i + 1]);
-        if (hi < 0 || lo < 0) return false;
-        out[i] = (uint8_t)((hi << 4) | lo);
+        out[i] = (uint8_t)((hexval(s[2 * i]) << 4) | hexval(s[2 * i + 1]));
     }
     const char* rest = s + 32;
     while (*rest == ' ' || *rest == '\t' || *rest == '\r' || *rest == '\n') rest++;

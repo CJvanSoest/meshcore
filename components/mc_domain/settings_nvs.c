@@ -6,11 +6,10 @@
 #include <stdio.h>
 #include <string.h>
 #include "bsp/display.h"
-#include "bsp/input.h"
+#include "bsp/input.h"  // bsp_input_set_backlight_brightness
 #include "bsp/led.h"
 #include "config_types.h"  // gps_/map_ profile enums + globals + labels
 #include "esp_log.h"
-#include "esp_random.h"  // esp_fill_random for the API-key entropy
 #include "nvs.h"
 #include "nvs_helpers.h"
 #include "wifi_connection.h"

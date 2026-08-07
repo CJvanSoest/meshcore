@@ -23,6 +23,9 @@ jobs:
       - name: Check test wiring
         run: tests/lint/check-test-wiring.sh
 
+      - name: Check changelog shape
+        run: tests/lint/check-changelog.sh
+
       - name: Check formatting (clang-format 18.1.8)
         run: |
           python3 -m venv /tmp/cf

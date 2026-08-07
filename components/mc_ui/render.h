@@ -8,7 +8,7 @@
 
 // Shared palette + typography + layout constants for the LVGL views. (The PAX
 // renderers that originally consumed these were retired in the LVGL-only
-// migration; lvgl_ui.c maps COL_* to lv_color via mc_col() and TXT_* to the
+// migration; lvgl_common.c maps COL_* to lv_color via mc_col() and TXT_* to the
 // built-in Montserrat faces via mc_font().)
 
 // ── Tokyo Night palette ──────────────────────────────────────────────────────
@@ -37,7 +37,7 @@
 #define COL_PAGER_TEXT   0xFFC0C8D0  // body / label text
 #define COL_PAGER_ACCENT 0xFFFAA61A  // focused tile + highlights (orange)
 
-// ── Typography sizes (mapped onto the built-in Montserrat faces in lvgl_ui.c) ─
+// ── Typography sizes (mapped onto the Montserrat faces in lvgl_common.c) ────
 #define TXT_TITLE 24
 #define TXT_TAB   22
 #define TXT_BODY  20

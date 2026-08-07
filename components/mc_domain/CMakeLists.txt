@@ -9,7 +9,6 @@ idf_component_register(
         "channel_share.c"
         "backup_codec.c"
         "backup.c"
-        "locfs.c"
         "chat.c"
         "nodes.c"
         "coverage.c"

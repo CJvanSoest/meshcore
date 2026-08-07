@@ -4,12 +4,11 @@
 // VIEW_TOOLBOX — the Toolbox launcher tile registry: a short menu of LoRa
 // diagnostic sub-tools, reached from the Settings "Toolbox" tile. The tile
 // metadata (label/desc/enabled/target) is the single source of truth; the LVGL
-// renderer in lvgl_ui.c reads enabled/target via the accessors below. The PAX
+// renderer in lvgl_toolbox.c reads enabled/target via the accessors below. The PAX
 // painter was retired in the LVGL-only migration.
 
 #include "app_config.h"
 #include "render_internal.h"
-#include "ui_state.h"
 
 typedef struct {
     const char* label;

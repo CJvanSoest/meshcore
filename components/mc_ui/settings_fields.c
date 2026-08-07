@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // The PAX category-grid + drilldown painters were retired in the LVGL-only
-// migration; lvgl_ui.c renders Settings now. This file keeps the non-rendering
+// migration; lvgl_settings.c renders Settings now. This file keeps the non-rendering
 // single-source registry: the category table, the field table, the save
 // dispatch, and the label/value/section formatters the LVGL view reuses.
 
 #include <stdio.h>
 #include <string.h>
 #include "app_config.h"
-#include "gps.h"
 #include "gps_task.h"
 #include "map.h"
 #include "nodes.h"

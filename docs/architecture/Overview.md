@@ -29,8 +29,8 @@ For the build-level view — which `mc_*` component each module lives in, the
                 ┌──────────────────────┼──────────────────────┐
                 ▼                      ▼                      ▼
         ┌─────────────┐         ┌─────────────────┐    ┌─────────────┐
-        │   input.c   │         │   render.c +    │    │   radio.c   │
-        │ navigation, │ ──────▶ │   render_*.c    │    │ LoRa tasks, │
+        │   input.c   │         │   lvgl_ui.c +   │    │   radio.c   │
+        │ navigation, │ ──────▶ │  lvgl_<view>.c  │    │ LoRa tasks, │
         │ edit-mode   │  state  │  per-view +     │ ◀──│ advert,     │
         │ FSM         │         │ Pager strip     │ stats │ TX/RX rings │
         └─────────────┘         └─────────────────┘    └──────┬──────┘
@@ -118,37 +118,43 @@ After the boot phase the only periodic work happens through:
 - LoRa RX task pushing frames into `chat`/`nodes`
 - Advert task firing on its interval
 
-## Render split (v2.2.0)
+## UI file split
 
-`render.c` used to be a 1.3-k-line monolith that painted every view. As of
-v2.2.0 it's a thin dispatcher plus the shared Pager status strip and the
-emoji-picker overlay; each view lives in its own file:
+The UI has been split twice. In v2.2.0 the PAX painter came out of one 1.3k line
+`render.c` into a file per view. The LVGL 9 migration then collapsed those views
+back into a single `lvgl_ui.c`, which reached 3790 lines before being split again
+along the same lines.
 
 | File | Owns |
 |---|---|
-| `render.c` | Dispatcher (`render()`), shared `render_tab_bar` (the Pager strip), `render_emoji_picker_overlay`, the shared `render_toast` overlay, `blit()`, global framebuffer `fb` |
-| `render_home.c` | `VIEW_HOME` tile grid, 8 home tiles + icons |
-| `render_settings.c` | Category tile grid + drilldown row list, 6 category icons, the field rows table |
-| `render_nodes.c` | `VIEW_NODES` table + `render_qr_overlay` (only triggered from this view or the QR home tile) |
-| `render_chat.c` | `VIEW_CHAT` (DM inbox + conversation) + shared `render_msg_list` + word-wrap |
-| `render_channel.c` | `VIEW_CHANNEL` (list mode + conversation) |
-| `render_about.c` | `VIEW_ABOUT` (version, author, credits, license, source) |
-| `render_map.c` | `VIEW_MAP` (slippy-map tiles, node markers, GPS centre) |
-| `render_toolbox.c` | `VIEW_TOOLBOX` launcher (sub-tool menu) |
-| `render_toolbox_log.c` | `VIEW_TOOLBOX_LOG` packet log (hex/dissector + SD export) |
-| `render_toolbox_coverage.c` | `VIEW_TOOLBOX_COVERAGE` repeater coverage test |
-| `render_settings_icons.c` | The Settings category glyphs, kept out of `render_settings.c` |
+| `lvgl_ui.c` | Lifecycle and the per-view dispatch (`lvgl_view_render`) |
+| `lvgl_common.c` | Screen and widget primitives, boot splash, vector glyphs, tab bar, status toast |
+| `lvgl_internal.h` | The declarations the view files share; not part of the public API |
+| `lvgl_home.c` | `VIEW_HOME` tile grid |
+| `lvgl_settings.c` | `VIEW_SETTINGS` category grid, drilldown and the category glyphs |
+| `lvgl_nodes.c` | `VIEW_NODES` list |
+| `lvgl_chat.c` | `VIEW_CHAT` plus the shared message ring renderer and word wrap |
+| `lvgl_channel.c` | `VIEW_CHANNEL` list, wizard and conversation |
+| `lvgl_map.c` | `VIEW_MAP` tile canvas and GPS overlay |
+| `lvgl_toolbox.c` | `VIEW_TOOLBOX` launcher |
+| `lvgl_log.c` | `VIEW_TOOLBOX_LOG` packet log, list and detail |
+| `lvgl_coverage.c` | `VIEW_TOOLBOX_COVERAGE` repeater coverage test |
+| `lvgl_storage.c` | `VIEW_TOOLBOX_STORAGE` storage viewer |
+| `lvgl_about.c` | `VIEW_ABOUT` |
+| `lvgl_ble.c` | `VIEW_BLE_DEVICES` paired-device list |
+| `lvgl_emoji.c` | Inline emoji and the emoji picker overlay |
+| `lvgl_qr.c` | The QR overlay (contact / channel / OwnTracks) |
+| `lvgl_port.c` | Display glue: `flush_cb` into `bsp_display_blit` |
+| `render.c` / `render.h` | Panel geometry, the `COL_*` palette and `TXT_*` sizes |
 
-Cross-file declarations (the per-view entry points + a few shared helpers
-like `render_msg_list`, the category bounds API, the home tile API)
-live in `render_internal.h`. The public API in `render.h` stays small —
-palette macros, layout constants, `render()`, `blit()`.
+Four files kept a `render_` name through the LVGL migration while holding no
+rendering at all. They are now named for what they are: `home_tiles.c`,
+`settings_fields.c`, `toolbox_tiles.c` and `packet_log.c`. Each is a single
+source of truth (tile metadata, the settings field table and save dispatch, the
+packet-log export and formatters) that the matching LVGL view reads through the
+accessors in `render_internal.h`.
 
-Drawing model: each `render_*()` writes into the framebuffer but does NOT
-blit. The dispatcher calls one (and optionally an overlay on top), then
-blits exactly once at the end. This is what kills the v2.1.x QR + emoji
-overlay flicker.
-
-The render split also gives a natural place to grow without touching the
-existing views: `render_map.c` (the Map tile) and `render_settings_icons.c`
-both dropped in this way without re-flowing any other view file.
+Drawing model: LVGL owns the panel. Each `render_<view>_lvgl()` rebuilds the
+screen's widget tree and `lvgl_port.c`'s `flush_cb` blits it. Input is keyboard
+only, read from the BSP input queue and dispatched by `input.c`; there is no
+LVGL indev.

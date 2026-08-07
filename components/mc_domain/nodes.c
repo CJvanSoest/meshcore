@@ -73,6 +73,12 @@ const char* role_label(meshcore_device_role_t role) {
     }
 }
 
+static display_row_t s_display_rows[NODE_DISPLAY_ROWS_MAX];
+
+display_row_t* node_display_rows(void) {
+    return s_display_rows;
+}
+
 int build_node_display(display_row_t* rows, int max_rows) {
     int n = 0;
 

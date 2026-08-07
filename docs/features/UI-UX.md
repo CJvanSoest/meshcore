@@ -31,10 +31,10 @@ bitmap font is gone.
 
 Home tile-grid geometry now lives in `lvgl_ui.c` as `HOME_HEADER_H=50`,
 `HOME_FOOTER_H=60`, `HOME_H_MARGIN=30`, `HOME_V_MARGIN=20`, with a **4×3** tile
-layout (`HOME_TILE_COLS=4` × `HOME_TILE_ROWS=3` = 12 tiles). `render_home.c`
+layout (`HOME_TILE_COLS=4` × `HOME_TILE_ROWS=3` = 12 tiles). `home_tiles.c`
 mirrors the same `HOME_TILE_COLS`/`HOME_TILE_ROWS` and holds the non-rendering
 tile registry. The Settings grid is rendered the same way in `lvgl_ui.c`, off
-the category/field registry in `render_settings.c`.
+the category/field registry in `settings_fields.c`.
 
 ## Palettes
 
@@ -94,11 +94,11 @@ launcher *only* from home, so back-navigation can't quit by accident. Each
 submenu footer signposts the red X with a small ✗ glyph (`render_back_hint`);
 home shows `✗ home   ESC: exit`.
 
-## Home tile grid (`render_home.c` registry, `lvgl_ui.c` renderer)
+## Home tile grid (`home_tiles.c` registry, `lvgl_ui.c` renderer)
 
 4 columns × 3 rows = 12 tiles, in order: Nodes, DM, Channel, Map, Advert,
 WiFi, Bluetooth, Toolbox, Settings, About, QR, Exit. The tile metadata
-(label / target / action) is the `home_tiles[]` array in `render_home.c`; the
+(label / target / action) is the `home_tiles[]` array in `home_tiles.c`; the
 LVGL renderer in `lvgl_ui.c` mirrors that order and draws each tile. Each tile
 carries:
 
@@ -130,7 +130,7 @@ duty-cycle enforcement.
 The home screen draws its own taller (50 px) header with the advert/owner
 name on the left instead of a view name; same right-side stats.
 
-## Settings drilldown (`render_settings.c`)
+## Settings drilldown (`settings_fields.c`)
 
 Two levels:
 
@@ -143,7 +143,7 @@ Two levels:
    has its own LVGL-widget-built category glyph (`lv_line` / `lv_arc`
    primitives in `lvgl_ui.c`). Multi-line labels via embedded `\n` so the wider
    "Region & Location" wraps onto two lines. The per-category field lists live
-   in `s_categories[]` (`render_settings.c`): Identity = owner/advert name,
+   in `s_categories[]` (`settings_fields.c`): Identity = owner/advert name,
    role, radio firmware; Regulatory = country, antenna gain, duty cycle; Radio =
    freq, SF, BW, CR, power, sync, preamble, preset, RX sensitivity, path hash
    size; WiFi = slot picker + connect toggle; Bluetooth = BLE companion +
@@ -201,7 +201,7 @@ apps have no clean exit hook (see [BadgeVMS callback unsafe gotcha] in
 memory). The launcher overrides the values again as soon as it cycles
 back to its own settings.
 
-## About view (`render_about.c`)
+## About view (`lvgl_about.c`)
 
 Version + build date are pulled live from `esp_app_get_description()` so
 a clean tag (e.g. `v2.4.0`) produces a clean string with no `-dirty` /

@@ -66,11 +66,11 @@ task, and the map renderer. These read settings and feed the domain, so they sit
 above it.
 
 ### `mc_ui` — presentation (L4)
-The LVGL 9 UI: the central widget tree (`lvgl_ui.c`) and the display glue
-(`lvgl_port.c`, a `flush_cb` → `bsp_display_blit`), the view dispatch
-(`render*.c`), input handling, and the emoji picker — including the Toolbox
-launcher and its tools (`render_toolbox.c`, `render_toolbox_log.c` for the
-packet log, and the coverage test). Custom glyphs and map tiles draw onto an
+The LVGL 9 UI. `lvgl_ui.c` holds the lifecycle and the per-view dispatch only;
+each view lives in its own `lvgl_<view>.c` and the drawing primitives they share
+sit in `lvgl_common.c` behind `lvgl_internal.h`. Display glue is `lvgl_port.c`
+(a `flush_cb` → `bsp_display_blit`). That includes the Toolbox launcher and its
+tools (`lvgl_toolbox.c`, `lvgl_log.c` for the packet log, `lvgl_coverage.c`). Custom glyphs and map tiles draw onto an
 `lv_canvas`; the screen is rebuilt each frame and input is keyboard-only,
 read from the BSP input queue and dispatched by `input.c` (no touch, no LVGL
 indev).

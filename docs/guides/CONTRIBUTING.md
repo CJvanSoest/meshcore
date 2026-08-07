@@ -51,7 +51,7 @@ These keep the codebase reasoned-about rather than just compiling. Full detail
 in [Architecture.md](../architecture/Architecture.md) and [CLAUDE.md](../../CLAUDE.md).
 
 - **Respect the layers.** Higher layers include lower, never the reverse.
-  `render_*.c` does not speak the wire protocol. The component `REQUIRES`
+  nothing in `mc_ui` speaks the wire protocol. The component `REQUIRES`
   graph (`components/mc_proto`, `components/vendor`, `main`) enforces this at
   build time, and `check-arch-rules.sh` covers the in-`main` layering.
 - **`components/mc_proto/` is the upstream protocol mirror.** Keep it free of
