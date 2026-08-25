@@ -3,17 +3,15 @@
 //
 // Host-side RFC 8032 self-test for our Ed25519 implementation.
 //
-// Links against components/vendor/ed25519_mpi.c, which is the SAME translation
-// unit that ships in the device firmware: ed25519_sign and
-// ed25519_create_keypair are defined ONLY there, so mc_rx advert signing binds
-// to exactly this code. (ed25519.c is a separate TU that ships too but provides
-// only X25519 ECDH, exercised by test_mc_crypto_dm.) Catches signer regressions
-// before merge so a broken build can never reach the release pipeline. Runs
-// under the GitHub Actions host-tests job; mirrors the device-side gate in
-// identity_init().
+// Links against the SAME self-contained vendored ed25519 the firmware ships
+// (components/vendor/ed25519/, the public-domain orlp/ref10 code): ed25519_sign
+// and ed25519_create_keypair bind to exactly this code, so mc_rx advert signing
+// is what gets exercised here. Catches signer regressions before merge so a
+// broken build can never reach the release pipeline. Runs under the GitHub
+// Actions host-tests job; mirrors the device-side gate in identity_init().
 //
 // Build (see tests/Makefile):
-//     gcc test_ed25519.c ../components/vendor/ed25519_mpi.c -lmbedcrypto -o test_ed25519
+//     gcc test_ed25519.c ../components/vendor/ed25519/{keypair,sign,ge,sc,fe,sha512}.c -o test_ed25519
 //
 // Exit 0 on pass, 1 on any RFC 8032 vector mismatch.
 
@@ -21,7 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "ed25519_mpi.h"
+#include "ed25519.h"
 
 typedef struct {
     const char*    name;
