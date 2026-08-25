@@ -21,6 +21,7 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 ### Added
+- **GPS tracking on/off toggle** — Settings → Location now has a "GPS tracking" switch (default On) that stops the background task from polling the PA1010D over the QWIIC bus, for users who want to save power or run without GPS. Takes effect within about a second, no reboot needed, and persists across restarts.
 - **Chat history, DMs and the node list now survive without an SD card.** When no µSD is present the per-DM and per-channel logs plus `nodes.bin` fall back to the internal FAT store (`locfd`) instead of evaporating on every reboot, matching how contacts and channels already persist. Because that partition is small and shared with the launcher's apps and icons, the fallback is bounded: per-DM logs cap at 32 KB and per-channel logs at 48 KB (oldest messages trimmed, newest kept), the persisted node list caps at the 128 most-recently-seen, and appends pause when free space drops below 512 KB. The boot splash shows `int` instead of `ok` when the internal store is in use (issue #85).
 
 ### Changed

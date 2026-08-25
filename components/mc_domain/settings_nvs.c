@@ -34,6 +34,7 @@
 #define NVS_MAP_ZOOM        "map.zoom"     // u8  — VIEW_MAP zoom level (6..17)
 #define NVS_MAP_LOCK        "map.lock"     // u8  — lock-to-position toggle
 #define NVS_MAP_PROFILE     "map.profile"  // u8  — map_profile_t (style)
+#define NVS_GPS_ENABLED     "gps.enabled"  // u8  — 1 = poll PA1010D, 0 = off (default 1)
 #define NVS_GPS_PROFILE     "gps.profile"  // u8  — gps_profile_t
 #define NVS_GPS_INT_S       "gps.int_s"    // u16 — 0 = profile default
 #define NVS_GPS_DIST_M      "gps.dist_m"   // u16 — 0 = profile default
@@ -688,9 +689,11 @@ void save_map_profile(void) {
 void load_gps_track_prefs(void) {
     nvs_handle_t handle;
     if (nvs_open("system", NVS_READONLY, &handle) != ESP_OK) return;
-    uint8_t  p = (uint8_t)gps_profile;
-    uint16_t i = gps_custom_interval_s;
-    uint16_t d = gps_custom_distance_m;
+    uint8_t  en = gps_enabled ? 1 : 0;
+    uint8_t  p  = (uint8_t)gps_profile;
+    uint16_t i  = gps_custom_interval_s;
+    uint16_t d  = gps_custom_distance_m;
+    if (nvs_get_u8(handle, NVS_GPS_ENABLED, &en) == ESP_OK) gps_enabled = (en != 0);
     if (nvs_get_u8(handle, NVS_GPS_PROFILE, &p) == ESP_OK && p < GPS_PROFILE_COUNT) {
         gps_profile = (gps_profile_t)p;
     }
@@ -702,11 +705,12 @@ void load_gps_track_prefs(void) {
 void save_gps_track_prefs(void) {
     nvs_handle_t handle;
     if (nvs_open("system", NVS_READWRITE, &handle) != ESP_OK) return;
+    nvs_set_u8(handle, NVS_GPS_ENABLED, gps_enabled ? 1 : 0);
     nvs_set_u8(handle, NVS_GPS_PROFILE, (uint8_t)gps_profile);
     nvs_set_u16(handle, NVS_GPS_INT_S, gps_custom_interval_s);
     nvs_set_u16(handle, NVS_GPS_DIST_M, gps_custom_distance_m);
     nvs_commit(handle);
     nvs_close(handle);
-    ESP_LOGI(TAG, "GPS track prefs: profile=%s int=%us dist=%um", gps_profile_label(gps_profile),
-             (unsigned)gps_custom_interval_s, (unsigned)gps_custom_distance_m);
+    ESP_LOGI(TAG, "GPS track prefs: enabled=%d profile=%s int=%us dist=%um", (int)gps_enabled,
+             gps_profile_label(gps_profile), (unsigned)gps_custom_interval_s, (unsigned)gps_custom_distance_m);
 }
