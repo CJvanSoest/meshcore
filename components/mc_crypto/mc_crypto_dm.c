@@ -8,8 +8,8 @@
 
 #include <string.h>
 #include "ed25519.h"
-#include "mbedtls/aes.h"
-#include "mbedtls/md.h"
+#include "mbedtls/md.h"  // HMAC-SHA256 via the still-public MD API (mbedtls 4.1)
+#include "mc_aes.h"      // vendored AES-128 (mbedtls/aes.h is private in mbedtls 4.1)
 #include "mc_crypto.h"
 
 void mc_crypto_dm_encrypt(const uint8_t target_pub[MESHCORE_PUB_KEY_SIZE], const uint8_t* my_prv, const uint8_t* plain,
@@ -17,12 +17,9 @@ void mc_crypto_dm_encrypt(const uint8_t target_pub[MESHCORE_PUB_KEY_SIZE], const
     uint8_t shared[32];
     ed25519_key_exchange(shared, target_pub, my_prv);
 
-    mbedtls_aes_context aes;
-    mbedtls_aes_init(&aes);
-    mbedtls_aes_setkey_enc(&aes, shared, 128);
-    for (size_t i = 0; i < padded_len / 16; i++)
-        mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, &plain[i * 16], &out_cipher[i * 16]);
-    mbedtls_aes_free(&aes);
+    mc_aes_t aes;
+    mc_aes128_init(&aes, shared);
+    for (size_t i = 0; i < padded_len / 16; i++) mc_aes128_ecb_encrypt(&aes, &plain[i * 16], &out_cipher[i * 16]);
 
     mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), shared, 32, out_cipher, padded_len, out_mac);
 }
@@ -62,12 +59,9 @@ bool mc_crypto_dm_decrypt(const uint8_t* payload, uint8_t payload_len, const uin
         good = secret_raw;
     if (!good) return false;
 
-    mbedtls_aes_context aes_ctx;
-    mbedtls_aes_init(&aes_ctx);
-    mbedtls_aes_setkey_dec(&aes_ctx, good, 128);
-    for (int bi = 0; bi + 16 <= ct_len; bi += 16)
-        mbedtls_aes_crypt_ecb(&aes_ctx, MBEDTLS_AES_DECRYPT, ciphertext + bi, out_plaintext + bi);
-    mbedtls_aes_free(&aes_ctx);
+    mc_aes_t aes_ctx;
+    mc_aes128_init(&aes_ctx, good);
+    for (int bi = 0; bi + 16 <= ct_len; bi += 16) mc_aes128_ecb_decrypt(&aes_ctx, ciphertext + bi, out_plaintext + bi);
 
     *out_text_len = ct_len - 5;
     memcpy(out_good_secret, good, 32);

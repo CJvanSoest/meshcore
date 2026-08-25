@@ -13,7 +13,7 @@
 #include "esp_log.h"
 #include "freertos/task.h"
 #include "history.h"
-#include "mbedtls/sha256.h"
+#include "mbedtls/md.h"     // SHA-256 via the still-public MD API (mbedtls/sha256.h is private in mbedtls 4.1)
 #include "special_table.h"  // F5 special-character bank
 #include "tanmatsu_coprocessor.h"
 
@@ -115,7 +115,7 @@ void chat_init(void) {
     }
 
     uint8_t digest[32];
-    mbedtls_sha256(PUBLIC_CHANNEL_KEY, sizeof(PUBLIC_CHANNEL_KEY), digest, 0);
+    mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), PUBLIC_CHANNEL_KEY, sizeof(PUBLIC_CHANNEL_KEY), digest);
     channel_hash = digest[0];
     ESP_LOGI(TAG, "Channel hash: 0x%02X", channel_hash);
 }

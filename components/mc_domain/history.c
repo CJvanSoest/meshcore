@@ -18,8 +18,8 @@
 #include "freertos/semphr.h"
 #include "history_trim.h"
 #include "locfs.h"
-#include "mbedtls/aes.h"
-#include "mbedtls/md.h"
+#include "mbedtls/md.h"  // HMAC key derivation via the still-public MD API (mbedtls 4.1)
+#include "mc_aes.h"      // vendored AES-128 (mbedtls/aes.h is private in mbedtls 4.1)
 #include "sdmmc_cmd.h"
 
 // Tanmatsu µSD pins — slot 0 (slot 1 = hosted Wi-Fi link).
@@ -256,14 +256,12 @@ static void append_impl(const char* path, const char* text, bool is_mine, uint32
     uint8_t pad = (uint8_t)(padded - N);
     for (int i = N; i < padded; i++) pt[i] = pad;
 
-    uint8_t             ct[MAX_MSG_TEXT + 32];
-    mbedtls_aes_context aes;
-    mbedtls_aes_init(&aes);
-    mbedtls_aes_setkey_enc(&aes, s_key, 128);
-    uint8_t iv_copy[16];
-    memcpy(iv_copy, hdr.iv, 16);
-    mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, padded, iv_copy, pt, ct);
-    mbedtls_aes_free(&aes);
+    uint8_t  ct[MAX_MSG_TEXT + 32];
+    mc_aes_t aes;
+    mc_aes128_init(&aes, s_key);
+    // mc_aes128_cbc_* does not mutate the IV, so hdr.iv (written to the record
+    // header) stays the original — no throwaway copy needed.
+    mc_aes128_cbc_encrypt(&aes, hdr.iv, padded, pt, ct);
 
     // A half-written record makes load_impl read its leftovers as the next
     // header, which stops the load for good. Roll back to this length instead.
@@ -315,12 +313,10 @@ static void load_impl(const char* path, history_ring_add_fn add) {
         uint8_t ct[MAX_MSG_TEXT + 32];
         if (fread(ct, padded, 1, f) != 1) break;
 
-        uint8_t             pt[MAX_MSG_TEXT + 32];
-        mbedtls_aes_context aes;
-        mbedtls_aes_init(&aes);
-        mbedtls_aes_setkey_dec(&aes, s_key, 128);
-        mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_DECRYPT, padded, hdr.iv, ct, pt);
-        mbedtls_aes_free(&aes);
+        uint8_t  pt[MAX_MSG_TEXT + 32];
+        mc_aes_t aes;
+        mc_aes128_init(&aes, s_key);
+        mc_aes128_cbc_decrypt(&aes, hdr.iv, padded, ct, pt);
 
         uint8_t pad = pt[padded - 1];
         if (pad == 0 || pad > 16 || (padded - pad) != hdr.plain_len) {

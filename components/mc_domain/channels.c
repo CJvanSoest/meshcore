@@ -8,8 +8,8 @@
 #include "backup.h"  // backup_write — mirror channel changes to SD
 #include "esp_log.h"
 #include "esp_random.h"
-#include "locfs.h"  // internal FAT store (keeps channels off the shared NVS)
-#include "mbedtls/sha256.h"
+#include "locfs.h"       // internal FAT store (keeps channels off the shared NVS)
+#include "mbedtls/md.h"  // SHA-256 via the still-public MD API (mbedtls/sha256.h is private in mbedtls 4.1)
 #include "nvs.h"
 
 static const char* TAG = "channels";
@@ -48,13 +48,13 @@ char channel_wiz_name[CHANNEL_NAME_MAX_LEN + 1] = {0};
 
 static void compute_hash(channel_t* ch) {
     uint8_t digest[32];
-    mbedtls_sha256(ch->secret, CHANNEL_SECRET_LEN, digest, 0);
+    mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), ch->secret, CHANNEL_SECRET_LEN, digest);
     ch->hash = digest[0];
 }
 
 void channels_derive_secret_from_name(const char* name, uint8_t out_secret[CHANNEL_SECRET_LEN]) {
     uint8_t digest[32];
-    mbedtls_sha256((const uint8_t*)name, strlen(name), digest, 0);
+    mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), (const uint8_t*)name, strlen(name), digest);
     memcpy(out_secret, digest, CHANNEL_SECRET_LEN);
 }
 
