@@ -20,6 +20,8 @@ If a section for a release is missing from this file when running
 of merged PR titles since the previous tag.
 
 ## [Unreleased]
+
+## [3.7.0] - 2026-08-25
 ### Added
 - **GPS tracking on/off toggle** — Settings → Location now has a "GPS tracking" switch (default On) that stops the background task from polling the PA1010D over the QWIIC bus, for users who want to save power or run without GPS. Takes effect within about a second, no reboot needed, and persists across restarts.
 - **Chat history, DMs and the node list now survive without an SD card.** When no µSD is present the per-DM and per-channel logs plus `nodes.bin` fall back to the internal FAT store (`locfd`) instead of evaporating on every reboot, matching how contacts and channels already persist. Because that partition is small and shared with the launcher's apps and icons, the fallback is bounded: per-DM logs cap at 32 KB and per-channel logs at 48 KB (oldest messages trimmed, newest kept), the persisted node list caps at the 128 most-recently-seen, and appends pause when free space drops below 512 KB. The boot splash shows `int` instead of `ok` when the internal store is in use (issue #85).
@@ -401,6 +403,7 @@ of merged PR titles since the previous tag.
 - Advert tile no longer dimmed as "soon" placeholder — it has an
   action (`HOME_ACTION_SEND_ADVERT`), so it's live.
 
-[Unreleased]: https://github.com/CJvanSoest/meshcore/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/CJvanSoest/meshcore/compare/v3.7.0...HEAD
+[3.7.0]: https://github.com/CJvanSoest/meshcore/releases/tag/v3.7.0
 [2.2.0]: https://github.com/CJvanSoest/meshcore/releases/tag/v2.2.0
 
