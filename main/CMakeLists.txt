@@ -44,3 +44,8 @@ idf_build_set_property(COMPILE_OPTIONS "-Wno-error=unused-const-variable" APPEND
 # the mirror unedited and relax them at the build target instead (CLAUDE.md rule 2).
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=type-limits" APPEND)
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=sign-compare" APPEND)
+# SPIKE ENUMERATION ONLY (task #4): blanket-relax -Werror so the IDF6 build runs
+# past every newer-GCC warning in one pass. This reveals whether the migration is
+# purely a warning cleanup (build completes) or hides a real error. NOT for merge —
+# the real change replaces this with targeted -Wno-error=<class> lines.
+idf_build_set_property(COMPILE_OPTIONS "-Wno-error" APPEND)
