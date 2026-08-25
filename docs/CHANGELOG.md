@@ -23,6 +23,9 @@ of merged PR titles since the previous tag.
 ### Added
 - **Chat history, DMs and the node list now survive without an SD card.** When no µSD is present the per-DM and per-channel logs plus `nodes.bin` fall back to the internal FAT store (`locfd`) instead of evaporating on every reboot, matching how contacts and channels already persist. Because that partition is small and shared with the launcher's apps and icons, the fallback is bounded: per-DM logs cap at 32 KB and per-channel logs at 48 KB (oldest messages trimmed, newest kept), the persisted node list caps at the 128 most-recently-seen, and appends pause when free space drops below 512 KB. The boot splash shows `int` instead of `ok` when the internal store is in use (issue #85).
 
+### Changed
+- **Companion protocol version reported to the phone app is now v1.17.1** (firmware version code 13, matching upstream MeshCore `companion_radio`), up from v1.15.0 / code 11. Keeps the iPhone app's Position Settings and Telemetry screens unlocked and in step with the current app; the higher code only relaxes upstream receive rules and forces no new opcodes on us.
+
 ## [3.6.0] - 2026-07-21
 ### Fixed
 - **Radio configuration screen** no longer fails with "C6 unavailable" when paired with tanmatsu-radio firmware v3.4.0 or newer; `tanmatsu-lora` is bumped to the latest registry release (v0.5.7), which also fixes a build dependency bug in the component itself, so the temporary vendored copy is no longer needed (GitHub issue #80, Nicolai-Electronics/esp32-component-tanmatsu-lora#7).
