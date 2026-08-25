@@ -1,0 +1,17 @@
+# gitleaks configuration.
+#
+# Extends the default ruleset and allowlists the vendored public-domain crypto
+# under components/vendor/. Those files (tiny-AES, orlp/ed25519) carry standard
+# algorithm tables and public NIST/RFC test vectors written as contiguous hex,
+# which trip gitleaks' generic high-entropy heuristic even though they contain
+# no real secrets. Everything else is still scanned normally.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Vendored public-domain crypto (tiny-AES, orlp/ed25519): algorithm tables + public NIST/RFC test vectors, not secrets"
+paths = [
+  '''components/vendor/aes/.*''',
+  '''components/vendor/ed25519/.*''',
+]

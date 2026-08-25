@@ -19,6 +19,10 @@ idf_component_register(
         "ed25519/fe.c"
         "ed25519/sha512.c"
         "ed25519_x25519_ext.c"
+        # AES-128: vendored public-domain tiny-AES (aes/) + a thin mc_aes wrapper.
+        # Replaces mbedtls/aes.h, which mbedtls 4.1 (ESP-IDF 6) made private.
+        "aes/aes.c"
+        "mc_aes.c"
         "emoji_bitmaps.c"
     INCLUDE_DIRS
         "."
@@ -38,6 +42,7 @@ set_source_files_properties(
     "${CMAKE_CURRENT_SOURCE_DIR}/ed25519/sc.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/ed25519/fe.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/ed25519/sha512.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/aes/aes.c"
     PROPERTIES COMPILE_OPTIONS "-w")
 
 # Slim lodepng to decoder-only — we read PNGs from SD via fread and never

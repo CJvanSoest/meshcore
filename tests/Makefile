@@ -38,14 +38,20 @@ SRC_ED25519     = $(ED25519_LIB)
 SRC_GPS_NMEA    = ../components/mc_proto/gps_parser.c
 SRC_COMP_PROTO  = ../components/mc_proto/companion-radio-protocol/mc_companion_command_parser.c \
                   ../components/mc_proto/companion-radio-protocol/mc_companion_serial_interface.c
-SRC_MC_CRYPTO   = ../components/mc_crypto/mc_crypto.c
+# Vendored AES-128 (tiny-AES) + wrapper; mc_crypto*.c now use it instead of mbedtls/aes.h.
+AES_LIB         = ../components/vendor/mc_aes.c \
+                  ../components/vendor/aes/aes.c
+SRC_MC_CRYPTO   = ../components/mc_crypto/mc_crypto.c \
+                  $(AES_LIB)
 SRC_PAYLOADS    = ../components/mc_proto/meshcore/payload/grp_txt.c \
                   ../components/mc_proto/meshcore/payload/advert.c
 SRC_INTEGRATION = ../components/mc_crypto/mc_crypto.c \
                   ../components/mc_proto/meshcore/packet.c \
-                  ../components/mc_proto/meshcore/payload/grp_txt.c
+                  ../components/mc_proto/meshcore/payload/grp_txt.c \
+                  $(AES_LIB)
 SRC_DM          = ../components/mc_crypto/mc_crypto_dm.c \
-                  $(ED25519_LIB)
+                  $(ED25519_LIB) \
+                  $(AES_LIB)
 SRC_ADVERT_SIGN = ../components/mc_proto/advert_sign.c \
                   ../components/mc_proto/meshcore/payload/advert.c \
                   $(ED25519_LIB)
@@ -102,7 +108,7 @@ test_meshcore_packet: test_meshcore_packet.c ../components/mc_proto/meshcore/pac
 # firmware: GRP_TXT encrypt/decrypt round-trip, the channel-match property (a
 # wrong key fails the MAC), ciphertext-tamper rejection, and the ACK CRC.
 test_mc_crypto: test_mc_crypto.c $(SRC_MC_CRYPTO)
-	$(CC) $(CFLAGS) -I../components/mc_crypto -o $@ $^ $(LDLIBS)
+	$(CC) $(CFLAGS) -Wno-error -I../components/mc_crypto -o $@ $^ $(LDLIBS)
 
 # GRP_TXT + ADVERT payload-codec round-trips. packet.c is covered by
 # test_meshcore_packet; these guard the two payload bodies that ride inside it.
@@ -125,7 +131,7 @@ test_gps_parser_edge: test_gps_parser_edge.c $(SRC_GPS_NMEA)
 # Cross-component integration: a full GRP_TXT message lifecycle proving mc_crypto
 # and mc_proto compose (frame -> encrypt -> serialize -> deserialize -> decrypt).
 test_integration_message: test_integration_message.c $(SRC_INTEGRATION)
-	$(CC) $(CFLAGS) -I../components/mc_proto -I../components/mc_crypto -Wno-type-limits -Wno-sign-compare -o $@ $^ $(LDLIBS)
+	$(CC) $(CFLAGS) -Wno-error -I../components/mc_proto -I../components/mc_crypto -Wno-type-limits -Wno-sign-compare -o $@ $^ $(LDLIBS)
 
 # DM (TXT_MSG) ed25519-ECDH crypto round-trip. Links the self-contained vendored
 # ed25519 (ECDH + key_exchange_raw) shipped on the badge, with tests/stubs for
@@ -169,7 +175,12 @@ test_backup: test_backup.c ../components/mc_domain/backup_codec.c
 test_history_trim: test_history_trim.c ../components/mc_domain/history_trim.c
 	$(CC) $(CFLAGS) -I../components/mc_domain -o $@ $^
 
-test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup test_special_table test_history_trim
+# Vendored AES-128 (tiny-AES) + mc_aes wrapper vs NIST SP800-38A vectors. Self
+# contained, no libmbedcrypto. -Wno-error: tiny-AES is third-party.
+test_mc_aes: test_mc_aes.c $(AES_LIB)
+	$(CC) $(CFLAGS) -Wno-error -o $@ $^
+
+test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup test_special_table test_history_trim test_mc_aes
 	./test_ed25519
 	./test_gps_nmea
 	./test_companion_protocol
@@ -188,6 +199,7 @@ test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test
 	./test_backup
 	./test_special_table
 	./test_history_trim
+	./test_mc_aes
 
 clean:
-	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup test_special_table test_history_trim
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup test_special_table test_history_trim test_mc_aes

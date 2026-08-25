@@ -26,9 +26,8 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "identity.h"
-#include "mbedtls/aes.h"
-#include "mbedtls/md.h"
-#include "mbedtls/sha256.h"
+#include "mbedtls/md.h"  // HMAC + SHA-256 via the still-public MD API (mbedtls 4.1)
+#include "mc_aes.h"      // vendored AES-128 (mbedtls/aes.h is private in mbedtls 4.1)
 #include "mc_crypto.h"
 #include "meshcore/packet.h"
 #include "meshcore/payload/advert.h"
@@ -156,13 +155,11 @@ static void dm_send_path_return(const meshcore_message_t* msg, uint8_t src_hash,
     }
 
     {
-        mbedtls_aes_context aes2;
-        mbedtls_aes_init(&aes2);
-        mbedtls_aes_setkey_enc(&aes2, good_secret, 128);
+        mc_aes_t aes2;
+        mc_aes128_init(&aes2, good_secret);
         for (size_t bi = 0; bi < inner_size; bi += 16) {
-            mbedtls_aes_crypt_ecb(&aes2, MBEDTLS_AES_ENCRYPT, &inner[bi], &path_cipher[bi]);
+            mc_aes128_ecb_encrypt(&aes2, &inner[bi], &path_cipher[bi]);
         }
-        mbedtls_aes_free(&aes2);
     }
 
     // 3. Outer MAC + assemble PATH packet (still flood-routed).
@@ -381,13 +378,11 @@ static void rx_handle_path(const meshcore_message_t* msg) {
         uint8_t inner[32]      = {0};
         uint8_t ciphertext[32] = {0};
         memcpy(ciphertext, &msg->payload[4], ct_len);
-        mbedtls_aes_context aes_ctx;
-        mbedtls_aes_init(&aes_ctx);
-        mbedtls_aes_setkey_dec(&aes_ctx, secret, 128);
+        mc_aes_t aes_ctx;
+        mc_aes128_init(&aes_ctx, secret);
         for (size_t bi = 0; bi + 16 <= ct_len; bi += 16) {
-            mbedtls_aes_crypt_ecb(&aes_ctx, MBEDTLS_AES_DECRYPT, ciphertext + bi, inner + bi);
+            mc_aes128_ecb_decrypt(&aes_ctx, ciphertext + bi, inner + bi);
         }
-        mbedtls_aes_free(&aes_ctx);
 
         // inner[0] = path_len_byte, inner[1] = payload type. A wrong key yields
         // garbage that almost never reads as ACK, so try the next candidate.
@@ -580,7 +575,8 @@ void send_advert_direct(void) {
     a->bph = bph;
     if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         for (int i = 0; i < contact_count && a->n < MAX_CONTACTS; i++) {
-            mbedtls_sha256(contacts[i].pub_key, MESHCORE_PUB_KEY_SIZE, a->hashes + a->n * 32, 0);
+            mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), contacts[i].pub_key, MESHCORE_PUB_KEY_SIZE,
+                       a->hashes + a->n * 32);
             a->n++;
         }
         xSemaphoreGive(node_mutex);
