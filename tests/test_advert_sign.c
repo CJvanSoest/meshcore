@@ -18,7 +18,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "advert_sign.h"
-#include "ed25519_mpi.h"
+#include "ed25519.h"
 #include "meshcore/packet.h"
 #include "meshcore/payload/advert.h"
 

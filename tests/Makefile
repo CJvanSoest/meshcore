@@ -25,7 +25,16 @@ LDLIBS    += -lmbedcrypto
 # names in source (forward-compatible) and silence the warning here.
 
 # Source files from main/ that the tests link against.
-SRC_ED25519     = ../components/vendor/ed25519_mpi.c
+ED25519_LIB     = ../components/vendor/ed25519/keypair.c \
+                  ../components/vendor/ed25519/sign.c \
+                  ../components/vendor/ed25519/verify.c \
+                  ../components/vendor/ed25519/key_exchange.c \
+                  ../components/vendor/ed25519/ge.c \
+                  ../components/vendor/ed25519/sc.c \
+                  ../components/vendor/ed25519/fe.c \
+                  ../components/vendor/ed25519/sha512.c \
+                  ../components/vendor/ed25519_x25519_ext.c
+SRC_ED25519     = $(ED25519_LIB)
 SRC_GPS_NMEA    = ../components/mc_proto/gps_parser.c
 SRC_COMP_PROTO  = ../components/mc_proto/companion-radio-protocol/mc_companion_command_parser.c \
                   ../components/mc_proto/companion-radio-protocol/mc_companion_serial_interface.c
@@ -36,11 +45,10 @@ SRC_INTEGRATION = ../components/mc_crypto/mc_crypto.c \
                   ../components/mc_proto/meshcore/packet.c \
                   ../components/mc_proto/meshcore/payload/grp_txt.c
 SRC_DM          = ../components/mc_crypto/mc_crypto_dm.c \
-                  ../components/vendor/ed25519.c \
-                  ../components/vendor/ed25519_mpi.c
+                  $(ED25519_LIB)
 SRC_ADVERT_SIGN = ../components/mc_proto/advert_sign.c \
                   ../components/mc_proto/meshcore/payload/advert.c \
-                  ../components/vendor/ed25519_mpi.c
+                  $(ED25519_LIB)
 SRC_DIAG_DECODE = ../components/mc_proto/diag_decode.c \
                   ../components/mc_proto/meshcore/packet.c \
                   ../components/mc_proto/meshcore/payload/advert.c
@@ -50,8 +58,10 @@ SRC_TRACE       = ../components/mc_proto/trace.c
 
 all: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup test_special_table
 
+# Now links the self-contained vendored orlp/ed25519 (no libmbedcrypto).
+# -Wno-error: the ref10 sources are third-party and not held to our -Werror bar.
 test_ed25519: test_ed25519.c $(SRC_ED25519)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
+	$(CC) $(CFLAGS) -Wno-error -o $@ $^
 
 # Pure-C parser test -- no libmbedcrypto link needed. Catches NMEA regressions
 # (checksum gate, DDMM→decimal conversion, talker-agnostic match) before merge.
@@ -117,19 +127,19 @@ test_gps_parser_edge: test_gps_parser_edge.c $(SRC_GPS_NMEA)
 test_integration_message: test_integration_message.c $(SRC_INTEGRATION)
 	$(CC) $(CFLAGS) -I../components/mc_proto -I../components/mc_crypto -Wno-type-limits -Wno-sign-compare -o $@ $^ $(LDLIBS)
 
-# DM (TXT_MSG) ed25519-ECDH crypto round-trip. Links the vendored ed25519.c
-# (ECDH) + ed25519_mpi.c (keypair) shipped on the badge, with tests/stubs for
-# esp_random. -Wno-unused-function: ed25519.c keeps sign/verify statics this
-# call graph does not reach.
+# DM (TXT_MSG) ed25519-ECDH crypto round-trip. Links the self-contained vendored
+# ed25519 (ECDH + key_exchange_raw) shipped on the badge, with tests/stubs for
+# esp_random. -Wno-error: the ref10 sources are third-party; -lmbedcrypto is
+# still needed for the AES half in mc_crypto_dm.c.
 test_mc_crypto_dm: test_mc_crypto_dm.c $(SRC_DM)
-	$(CC) $(CFLAGS) -Wno-unused-function -Istubs -I../components/mc_crypto -o $@ $^ $(LDLIBS)
+	$(CC) $(CFLAGS) -Wno-error -Wno-unused-function -Istubs -I../components/mc_crypto -o $@ $^ $(LDLIBS)
 
 # ADVERT signature layout. Guards the to_sign byte range (pub_key + timestamp +
 # post-signature tail) that meshcore_advert_signable_bytes feeds ed25519_sign --
 # the layout half of the direct-advert signing bug; the math half is test_ed25519.
 # -D_GNU_SOURCE: advert.c uses strnlen, matching the IDF build.
 test_advert_sign: test_advert_sign.c $(SRC_ADVERT_SIGN)
-	$(CC) $(CFLAGS) -D_GNU_SOURCE -I../components/mc_proto -Wno-type-limits -Wno-sign-compare -o $@ $^ $(LDLIBS)
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -I../components/mc_proto -Wno-error -Wno-type-limits -Wno-sign-compare -o $@ $^
 
 # Toolbox packet-log decoder. Builds real frames with the shipping serializers
 # and asserts diag_decode lifts header + per-type fields. -D_GNU_SOURCE for
