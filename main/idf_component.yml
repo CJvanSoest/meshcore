@@ -1,16 +1,15 @@
 dependencies:
-  idf: ">=5.5.1"
-  badgeteam/badge-bsp: "^0.9.9"
+  # SPIKE (task #4): ESP-IDF 6 migration. Nicolai's P4 stack (tanmatsu-launcher)
+  # moved to idf >=6.0.2; the component majors below are the versions it pins.
+  # badge-bsp 0.9->1.4 and appfs 1->2 are breaking API bumps — expect churn.
+  idf: ">=6.0.2"
+  badgeteam/badge-bsp: "^1.4.0"
   # AppFS metadata (free/total) for the Storage Viewer — same component + API
   # (appfsGetFreeMem/appfsGetTotalMem) the launcher uses under its Apps tile.
-  badgeteam/appfs: "^1.0.2"
-  nicolaielectronics/tanmatsu-wifi: "^1.1.2"
+  badgeteam/appfs: "^2.1.0"
+  nicolaielectronics/tanmatsu-wifi: "^1.3.1"
   # LVGL 9 — the sole UI toolkit (pax-gfx was retired in the LVGL-only cleanup).
   lvgl/lvgl: "^9.2.0"
   # rx_boost shipped upstream in tanmatsu-lora v0.3.0 (paired with
-  # tanmatsu-radio v3.2.0). Bumped to ^0.5.5 (2026-07-20, #80): the v0.3.x
-  # client's GET_CONFIG used a fixed response buffer sized for the older,
-  # smaller config struct and hard-fails (ESP_ERR_INVALID_SIZE) against
-  # radio firmware >=v3.4.0's larger reply. tanmatsu-radio and
-  # tanmatsu-launcher already track ^0.5.5.
-  nicolaielectronics/tanmatsu-lora: "^0.5.5"
+  # tanmatsu-radio v3.2.0). tanmatsu-launcher tracks 0.6.0 on the IDF6 line.
+  nicolaielectronics/tanmatsu-lora: "^0.6.0"
