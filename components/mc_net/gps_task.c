@@ -39,6 +39,7 @@ static const uint16_t s_profile_distance_m[GPS_PROFILE_COUNT] = {
 };
 
 // ── User-tunable runtime state ──────────────────────────────────────────────
+bool          gps_enabled           = true;  // master toggle; false = never touch the QWIIC bus
 gps_profile_t gps_profile           = GPS_PROFILE_WALKING;
 uint16_t      gps_custom_interval_s = 0;
 uint16_t      gps_custom_distance_m = 0;
@@ -127,6 +128,14 @@ static void task_loop(void* arg) {
     ESP_LOGI(TAG, "starting (profile=%s)", gps_profile_label(gps_profile));
     int empty_polls = 0;  // consecutive polls with no NMEA -> triggers backoff
     while (1) {
+        if (!gps_enabled) {
+            // Master toggle off: leave the QWIIC bus alone entirely. Re-check
+            // each second so the setting flips at runtime without a reboot.
+            gps_live_bus_ok = false;
+            empty_polls     = 0;
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
         uint16_t interval_s = effective_interval_s();
         if (interval_s == 0) {
             // Manual profile: sleep for a second and re-check the user's

@@ -24,6 +24,7 @@ typedef enum {
     GPS_PROFILE_COUNT,
 } gps_profile_t;
 
+extern bool          gps_enabled;  // master on/off for the PA1010D polling task
 extern gps_profile_t gps_profile;
 extern uint16_t      gps_custom_interval_s;  // 0 = use profile default
 extern uint16_t      gps_custom_distance_m;  // 0 = use profile default

@@ -261,6 +261,10 @@ void field_adjust(int field, int delta) {
         case FIELD_WIFI_ENABLED:
             wifi_enabled = !wifi_enabled;
             break;
+        case FIELD_GPS_ENABLED:
+            // Master GPS toggle; gps_task picks it up within ~1 s (no reboot).
+            gps_enabled = !gps_enabled;
+            break;
         case FIELD_WIFI_NETWORK: {
             int n = wifi_slots_count();
             if (n == 0) break;

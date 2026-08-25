@@ -171,6 +171,7 @@ static const field_def_t s_fields[FIELD_COUNT] = {
     [FIELD_GPS_LON]            = {"GPS longitude", save_gps_coords},
     [FIELD_GPS_SOURCE]         = {"GPS source", NULL},
     // ── Tracking (live GPS background task) ──
+    [FIELD_GPS_ENABLED]        = {"GPS tracking", save_gps_track_prefs},
     [FIELD_GPS_PROFILE]        = {"Profile", save_gps_track_prefs},
     [FIELD_GPS_INTERVAL_S]     = {"Poll interval", save_gps_track_prefs},
     [FIELD_GPS_DISTANCE_M]     = {"Commit distance", save_gps_track_prefs},
@@ -436,6 +437,9 @@ void settings_field_value(field_t f, char* out, size_t cap) {
             snprintf(out, cap, "%s", src_str);
             break;
         }
+        case FIELD_GPS_ENABLED:
+            snprintf(out, cap, "%s", gps_enabled ? "On" : "Off");
+            break;
         case FIELD_GPS_PROFILE:
             snprintf(out, cap, "%s", gps_profile_label(gps_profile));
             break;

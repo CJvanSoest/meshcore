@@ -55,6 +55,7 @@ typedef enum {
     FIELD_GPS_LON,
     FIELD_GPS_SOURCE,  // Read-only: shows whether coords are from PA1010D / Manual / CDC / BLE
     // ── Live GPS tracking (background gps_task) ──
+    FIELD_GPS_ENABLED,     // Master on/off for the PA1010D polling task
     FIELD_GPS_PROFILE,     // Walking / Cycling / Driving / Manual
     FIELD_GPS_INTERVAL_S,  // Custom poll interval seconds; 0 = use profile default
     FIELD_GPS_DISTANCE_M,  // Custom commit distance metres; 0 = use profile default
