@@ -38,3 +38,11 @@ idf_component_register(
 
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=unused-variable" APPEND)
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=unused-const-variable" APPEND)
+# ESP-IDF 6's newer GCC promotes these to errors on the vendored meshcore/ and
+# companion-radio-protocol/ mirrors (uint8_t range checks, int/size_t length math,
+# a const-qualifier drop). The host-test Makefile already suppresses the first two
+# for packet.c; keep the mirrors unedited and relax them at the build target
+# instead (CLAUDE.md rule 2). Harmless on the IDF 5.5.1 toolchain.
+idf_build_set_property(COMPILE_OPTIONS "-Wno-error=type-limits" APPEND)
+idf_build_set_property(COMPILE_OPTIONS "-Wno-error=sign-compare" APPEND)
+idf_build_set_property(COMPILE_OPTIONS "-Wno-error=discarded-qualifiers" APPEND)
