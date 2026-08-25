@@ -66,8 +66,7 @@ jobs:
               -DSDKCONFIG_DEFAULTS="sdkconfigs/general;sdkconfigs/tanmatsu" \
               -DSDKCONFIG=sdkconfig_tanmatsu \
               -DIDF_TARGET=esp32p4 \
-              -DFAT=0 \
-              -DCMAKE_C_FLAGS=-Wno-error -DCMAKE_CXX_FLAGS=-Wno-error'
+              -DFAT=0'
 
       - name: Upload application.bin
         uses: actions/upload-artifact@v5
