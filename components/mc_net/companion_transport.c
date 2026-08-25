@@ -94,10 +94,13 @@ static void handle_set_advert_latlon(const companion_cmd_set_advert_latlon_args_
 static void handle_device_query(void) {
     companion_resp_device_info_args_t info = {0};
     // Mirror upstream MeshCore companion_radio (MyMesh.h FIRMWARE_VER_CODE):
-    // v1.15.0 → ver_code 11. iPhone gates Position Settings + Telemetry
-    // behind ver_code >= 6 (v1.6.0+), so claiming 11 unlocks those screens
-    // and stays future-compatible until upstream bumps further.
-    info.firmware_version_code             = 11;
+    // v1.17.1 → ver_code 13 (upstream build 14 Aug 2026). iPhone gates
+    // Position Settings + Telemetry behind ver_code >= 6 (v1.6.0+); claiming
+    // 13 keeps those screens unlocked and matches the current app. Newer
+    // ver_code only relaxes upstream RX rules (13+ = accept non-contact
+    // requests) — it does not force new opcodes on us, and any opcode the app
+    // does send that we don't wire is stub-acked in the dispatcher below.
+    info.firmware_version_code             = 13;
     info.max_contacts                      = 200;           // wire format: divide by 2 → max 100 real contacts
     info.max_group_channels                = CHANNELS_MAX;  // matches channels[] capacity
     const esp_app_desc_t* desc             = esp_app_get_description();
@@ -107,7 +110,7 @@ static void handle_device_query(void) {
     // Report the upstream protocol version string the iPhone app expects.
     // Our actual app version lives in the build_date / settings UI -- this
     // field is the compatibility tag the app keys off.
-    strncpy(info.firmware_version, "v1.15.0", sizeof(info.firmware_version) - 1);
+    strncpy(info.firmware_version, "v1.17.1", sizeof(info.firmware_version) - 1);
     strncpy(info.board_manufacturer_name, "Nicolai Electronics Tanmatsu", sizeof(info.board_manufacturer_name) - 1);
     companion_send_response(COMPANION_RESPONSE_CODE_DEVICE_INFO, &info, sizeof(info));
 }
