@@ -73,6 +73,38 @@ const char* role_label(meshcore_device_role_t role) {
     }
 }
 
+// Re-insert a formerly-favorited peer as a plain node row (name/role only, no
+// radio stats) so unfavoriting demotes it in the Nodes list instead of erasing
+// it. Caller must hold node_mutex. No-op if the pubkey is already present;
+// skips silently when the list is full (the next advert re-adds it properly).
+void nodes_ensure_entry_locked(const uint8_t* pub, const char* name, uint8_t role) {
+    int free_slot = -1;
+    for (int i = 0; i < MAX_NODES; i++) {
+        if (node_list[i].active) {
+            if (memcmp(node_list[i].pub_key, pub, MESHCORE_PUB_KEY_SIZE) == 0) return;
+        } else if (free_slot < 0) {
+            free_slot = i;
+        }
+    }
+    if (free_slot < 0) return;
+    node_entry_t* n = &node_list[free_slot];
+    memset(n, 0, sizeof(*n));
+    n->active = true;
+    memcpy(n->pub_key, pub, MESHCORE_PUB_KEY_SIZE);
+    if (name && name[0]) {
+        strncpy(n->name, name, sizeof(n->name) - 1);
+    } else {
+        snprintf(n->name, sizeof(n->name), "%02X%02X%02X%02X", pub[0], pub[1], pub[2], pub[3]);
+    }
+    n->role    = (meshcore_device_role_t)role;
+    // last_seen_ms/_unix stay 0 (unknown) -- same convention as a loaded entry.
+    node_count = 0;
+    for (int i = 0; i < MAX_NODES; i++) {
+        if (node_list[i].active) node_count++;
+    }
+    s_dirty = true;
+}
+
 static display_row_t s_display_rows[NODE_DISPLAY_ROWS_MAX];
 
 display_row_t* node_display_rows(void) {

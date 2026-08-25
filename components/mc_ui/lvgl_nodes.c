@@ -271,4 +271,6 @@ void render_nodes_lvgl(void) {
         }
         add_label(scr, 10, fy_text + TXT_BODY + 6, TXT_SMALL, COL_GRAY, adv_buf);
     }
+
+    status_toast_lvgl(scr, w, h);  // favorite add/remove feedback
 }
