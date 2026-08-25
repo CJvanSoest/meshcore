@@ -10,6 +10,7 @@
 #include "contacts.h"
 #include "esp_log.h"
 #include "freertos/task.h"
+#include "history.h"  // history_root() / history_on_internal() — shared storage backend
 #include "identity.h"
 
 static const char* TAG = "nodes";
@@ -29,10 +30,10 @@ static volatile bool s_dirty = false;
 // SD layout. Header is fixed-size; records follow back-to-back. Version
 // bumps if the record layout changes -- load_from_sd rejects mismatched
 // versions so an upgrade doesn't try to interpret old data.
-#define NODES_FILE     "/sd/meshcore/nodes.bin"
-#define NODES_FILE_TMP "/sd/meshcore/nodes.bin.tmp"
-#define NODES_MAGIC    "NODE"
-#define NODES_VERSION  1
+#define NODES_BASENAME     "nodes.bin"
+#define NODES_INTERNAL_MAX 128  // cap persisted records on the small internal FAT store
+#define NODES_MAGIC        "NODE"
+#define NODES_VERSION      1
 
 typedef struct __attribute__((packed)) {
     char     magic[4];  // "NODE"
@@ -262,31 +263,62 @@ void update_node(const meshcore_advert_t* advert, uint32_t now_ms, const lora_pa
     xSemaphoreGive(node_mutex);
 }
 
-// ── SD load / save ───────────────────────────────────────────────────────────
+// ── SD / internal FAT load / save ────────────────────────────────────────────
+
+// True if node `a` was seen more recently than `b`. Real (unix) timestamps
+// dominate a zero (pre-sync) stamp; boot-relative ms breaks ties among peers
+// heard before the clock was set. Used to keep the newest nodes when the
+// internal store caps the persisted count.
+static bool node_newer(int a, int b) {
+    int64_t ua = node_list[a].last_seen_unix, ub = node_list[b].last_seen_unix;
+    if (ua != ub) return ua > ub;
+    return node_list[a].last_seen_ms > node_list[b].last_seen_ms;
+}
+
 void nodes_save_to_sd(void) {
     if (node_mutex == NULL) return;
+    const char* root = history_root();
+    if (root == NULL) return;  // no backend mounted (no SD, no internal store)
+    char file[64], tmp[72];
+    snprintf(file, sizeof(file), "%s/" NODES_BASENAME, root);
+    snprintf(tmp, sizeof(tmp), "%s/" NODES_BASENAME ".tmp", root);
+
     if (xSemaphoreTake(node_mutex, pdMS_TO_TICKS(200)) != pdTRUE) return;
 
     // Write to a temp file then rename, so a power-cut mid-write can't
     // corrupt the canonical file.
-    FILE* f = fopen(NODES_FILE_TMP, "wb");
+    FILE* f = fopen(tmp, "wb");
     if (!f) {
         xSemaphoreGive(node_mutex);
-        ESP_LOGW(TAG, "nodes_save: fopen failed (SD missing?)");
+        ESP_LOGW(TAG, "nodes_save: fopen failed (store missing?)");
         return;
     }
+
+    // Collect active nodes newest-first so an internal-store cap keeps the most
+    // recently seen. selection is a small insertion sort (<=200 entries).
+    int idx[MAX_NODES];
+    int m = 0;
+    for (int i = 0; i < MAX_NODES; i++)
+        if (node_list[i].active) idx[m++] = i;
+    for (int a = 1; a < m; a++) {
+        int k = idx[a], b = a - 1;
+        while (b >= 0 && node_newer(k, idx[b])) {
+            idx[b + 1] = idx[b];
+            b--;
+        }
+        idx[b + 1] = k;
+    }
+    int cap = history_on_internal() ? NODES_INTERNAL_MAX : MAX_NODES;
+    if (m > cap) m = cap;
+
     node_file_hdr_t hdr = {0};
     memcpy(hdr.magic, NODES_MAGIC, 4);
     hdr.version = NODES_VERSION;
-    hdr.count   = 0;
-    // Count active first so the header is accurate.
-    for (int i = 0; i < MAX_NODES; i++) {
-        if (node_list[i].active) hdr.count++;
-    }
+    hdr.count   = (uint16_t)m;
     if (fwrite(&hdr, sizeof(hdr), 1, f) != 1) goto fail;
 
-    for (int i = 0; i < MAX_NODES; i++) {
-        if (!node_list[i].active) continue;
+    for (int a = 0; a < m; a++) {
+        int           i = idx[a];
         node_record_t r = {0};
         memcpy(r.pub_key, node_list[i].pub_key, MESHCORE_PUB_KEY_SIZE);
         strncpy(r.name, node_list[i].name, sizeof(r.name) - 1);
@@ -302,8 +334,8 @@ void nodes_save_to_sd(void) {
     }
     fclose(f);
     // Atomic-ish swap.
-    remove(NODES_FILE);
-    if (rename(NODES_FILE_TMP, NODES_FILE) != 0) {
+    remove(file);
+    if (rename(tmp, file) != 0) {
         ESP_LOGW(TAG, "nodes_save: rename failed");
     } else {
         ESP_LOGI(TAG, "nodes saved: %u records", (unsigned)hdr.count);
@@ -314,14 +346,18 @@ void nodes_save_to_sd(void) {
 
 fail:
     fclose(f);
-    remove(NODES_FILE_TMP);
+    remove(tmp);
     xSemaphoreGive(node_mutex);
-    ESP_LOGW(TAG, "nodes_save: write failed (SD full?)");
+    ESP_LOGW(TAG, "nodes_save: write failed (store full?)");
 }
 
 void nodes_load_from_sd(void) {
     if (node_mutex == NULL) return;
-    FILE* f = fopen(NODES_FILE, "rb");
+    const char* root = history_root();
+    if (root == NULL) return;  // no backend mounted
+    char file[64];
+    snprintf(file, sizeof(file), "%s/" NODES_BASENAME, root);
+    FILE* f = fopen(file, "rb");
     if (!f) {
         ESP_LOGI(TAG, "nodes_load: no saved file (fresh boot)");
         return;

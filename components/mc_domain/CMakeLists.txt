@@ -13,6 +13,7 @@ idf_component_register(
         "nodes.c"
         "coverage.c"
         "history.c"
+        "history_trim.c"
         "settings_nvs.c"
         "sounds.c"
     INCLUDE_DIRS

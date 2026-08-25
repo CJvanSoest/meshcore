@@ -16,6 +16,8 @@
 #include "esp_vfs_fat.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "history_trim.h"
+#include "locfs.h"
 #include "mbedtls/aes.h"
 #include "mbedtls/md.h"
 #include "sdmmc_cmd.h"
@@ -29,18 +31,31 @@
 #define MC_SDCARD_D3  42
 
 #define SD_MOUNT_POINT    "/sd"
-#define HISTORY_DIR       "/sd/meshcore"
-#define HISTORY_DM_DIR    "/sd/meshcore/dm"
-#define HISTORY_CH_DIR    "/sd/meshcore/ch"
 #define HISTORY_REC_MAGIC "MCR1"
+
+// Fallback caps applied ONLY when running on the internal FAT store (locfd),
+// which is small and shared with the launcher's apps/icons. On an SD card
+// these are effectively disabled (SIZE_CAP_NONE) since the card is large.
+#define SIZE_CAP_NONE     UINT32_MAX
+#define INTERNAL_DM_CAP   (32u * 1024u)  // per-DM log ceiling on internal store
+#define INTERNAL_CH_CAP   (48u * 1024u)  // per-channel log ceiling on internal store
+#define INTERNAL_FLOOR_KB 512u           // stop appending when free space drops below this
 
 static const char* TAG = "history";
 
-static bool              s_ready   = false;
-static const char*       s_status  = "off";
-static uint8_t           s_key[32] = {0};
-static SemaphoreHandle_t s_mutex   = NULL;
-static sdmmc_card_t*     s_card    = NULL;
+static bool              s_ready       = false;
+static const char*       s_status      = "off";
+static uint8_t           s_key[32]     = {0};
+static SemaphoreHandle_t s_mutex       = NULL;
+static sdmmc_card_t*     s_card        = NULL;
+static bool              s_on_internal = false;  // true when using locfd, not SD
+static bool              s_floor_hit   = false;  // rate-limit the "store full" warning
+
+// Base directory + the dm/ subdir built once at init, so the same code path
+// serves SD ("/sd/meshcore") and the internal FAT store ("/locfd/meshcore").
+static char s_root[32]   = {0};
+static char s_dm_dir[40] = {0};
+static char s_ch_dir[40] = {0};
 
 typedef struct __attribute__((packed)) {
     uint8_t  magic[4];   // "MCR1"
@@ -50,6 +65,7 @@ typedef struct __attribute__((packed)) {
     uint32_t ts_unix;  // seconds since epoch (LE)
     uint8_t  iv[16];
 } history_rec_hdr_t;  // 28 bytes
+_Static_assert(sizeof(history_rec_hdr_t) == HISTORY_REC_HDR_SIZE, "history header size drift");
 
 static esp_err_t mount_sd(void) {
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
@@ -74,26 +90,52 @@ static esp_err_t mount_sd(void) {
     return esp_vfs_fat_sdmmc_mount(SD_MOUNT_POINT, &host, &slot, &mnt, &s_card);
 }
 
+// Point the log root at `base`, deriving the dm/ and ch/ subdirs. `internal`
+// selects the fallback caps (small shared partition) vs the SD path (no caps).
+static void set_root(const char* base, bool internal) {
+    snprintf(s_root, sizeof(s_root), "%s", base);
+    snprintf(s_dm_dir, sizeof(s_dm_dir), "%s/dm", base);
+    snprintf(s_ch_dir, sizeof(s_ch_dir), "%s/ch", base);
+    s_on_internal = internal;
+}
+
 void history_init(const uint8_t prv_key[32]) {
     s_mutex = xSemaphoreCreateMutex();
 
     esp_err_t e = mount_sd();
-    if (e != ESP_OK) {
-        ESP_LOGW(TAG, "SD mount failed: %s — chat history disabled", esp_err_to_name(e));
+    if (e == ESP_OK) {
+        ESP_LOGI(TAG, "SD mounted at %s", SD_MOUNT_POINT);
+        set_root(SD_MOUNT_POINT "/meshcore", false);
+        s_status = "ok";
+    } else if (locfs_ready()) {
+        // No card: keep DMs, channel logs and the node list across reboots on
+        // the always-present internal FAT store, bounded so we don't crowd out
+        // the launcher's apps/icons on the shared partition (issue #85).
+        ESP_LOGW(TAG, "SD mount failed (%s) — chat history on internal FAT store", esp_err_to_name(e));
+        set_root(LOCFS_MOUNT "/meshcore", true);
+        s_status = "int";
+    } else {
+        ESP_LOGW(TAG, "no SD and no internal FAT store — chat history disabled");
         s_status = (e == ESP_ERR_NOT_FOUND || e == ESP_ERR_TIMEOUT) ? "no-sd" : "err";
         return;
     }
-    ESP_LOGI(TAG, "SD mounted at %s", SD_MOUNT_POINT);
 
-    mkdir(HISTORY_DIR, 0775);  // ignores EEXIST
-    mkdir(HISTORY_DM_DIR, 0775);
-    mkdir(HISTORY_CH_DIR, 0775);
+    mkdir(s_root, 0775);  // ignores EEXIST
+    mkdir(s_dm_dir, 0775);
+    mkdir(s_ch_dir, 0775);
 
     mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), prv_key, 32, (const uint8_t*)"mc-history-v1", 13,
                     s_key);
 
-    s_ready  = true;
-    s_status = "ok";
+    s_ready = true;
+}
+
+const char* history_root(void) {
+    return s_ready ? s_root : NULL;
+}
+
+bool history_on_internal(void) {
+    return s_ready && s_on_internal;
 }
 
 const char* history_status(void) {
@@ -108,12 +150,97 @@ uint64_t history_sd_capacity_bytes(void) {
     return (uint64_t)s_card->csd.capacity * s_card->csd.sector_size;
 }
 
-static void append_impl(const char* path, const char* text, bool is_mine) {
+// Drop the oldest records from `path` until it fits within `cap`. Walks record
+// headers to find the first byte offset whose retained tail (the newest
+// records) is <= cap, then rewrites from that offset via a temp + rename.
+// No-op when the cap is disabled or the file already fits. Caller holds s_mutex.
+static void trim_file_to_cap(const char* path, uint32_t cap) {
+    if (cap == SIZE_CAP_NONE) return;
+
+    // Size the log from the open handle rather than a separate stat() on the
+    // path, so there is no check-then-use gap on the filename (CodeQL TOCTOU).
+    FILE* f = fopen(path, "rb");
+    if (!f) return;
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return;
+    }
+    long total_l = ftell(f);
+    if (total_l <= (long)cap) {
+        fclose(f);
+        return;
+    }
+    uint32_t total = (uint32_t)total_l;
+
+    long threshold = (long)total - (long)cap;  // first boundary >= this fits the cap
+    long cut       = 0;                        // byte offset to keep from
+    long here      = 0;
+    while (1) {
+        history_rec_hdr_t hdr;
+        if (fseek(f, here, SEEK_SET) != 0) break;
+        if (fread(&hdr, sizeof(hdr), 1, f) != 1) break;
+        if (memcmp(hdr.magic, HISTORY_REC_MAGIC, 4) != 0 || hdr.plain_len == 0 || hdr.plain_len > MAX_MSG_TEXT)
+            break;  // corrupt tail — leave the file for load_impl's self-heal
+        long next = here + (long)history_rec_disk_size(hdr.plain_len);
+        cut       = here;                // keep-from candidate (also handles "keep newest")
+        if (here >= threshold) break;    // retaining from here already fits the cap
+        if (next >= (long)total) break;  // last record — keep it even if oversized
+        here = next;
+    }
+    if (cut <= 0) {
+        fclose(f);  // nothing to drop (single oversized record, or empty)
+        return;
+    }
+
+    char tmp[80];
+    snprintf(tmp, sizeof(tmp), "%s.t", path);
+    FILE* g = fopen(tmp, "wb");
+    if (!g) {
+        fclose(f);
+        return;
+    }
+    fseek(f, cut, SEEK_SET);
+    uint8_t buf[512];
+    size_t  n;
+    bool    ok = true;
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
+        if (fwrite(buf, 1, n, g) != n) {
+            ok = false;
+            break;
+        }
+    }
+    if (fclose(g) != 0) ok = false;
+    fclose(f);
+    if (ok) {
+        remove(path);
+        if (rename(tmp, path) != 0)
+            ESP_LOGW(TAG, "trim(%s): rename failed", path);
+        else
+            ESP_LOGI(TAG, "trim(%s): kept newest %u KB", path, (unsigned)((total - (uint32_t)cut) / 1024));
+    } else {
+        remove(tmp);
+        ESP_LOGW(TAG, "trim(%s): rewrite failed", path);
+    }
+}
+
+static void append_impl(const char* path, const char* text, bool is_mine, uint32_t cap) {
     if (!s_ready || text == NULL) return;
     int N = (int)strnlen(text, MAX_MSG_TEXT);
     if (N <= 0) return;
 
     if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(200)) != pdTRUE) return;
+
+    // On the small shared internal partition, stop appending before we starve
+    // the launcher's app/icon space. SD is large enough to skip this.
+    if (s_on_internal && locfs_free_kb() < INTERNAL_FLOOR_KB) {
+        if (!s_floor_hit) {
+            ESP_LOGW(TAG, "internal store < %u KB free — pausing history appends", INTERNAL_FLOOR_KB);
+            s_floor_hit = true;
+        }
+        xSemaphoreGive(s_mutex);
+        return;
+    }
+    s_floor_hit = false;
 
     history_rec_hdr_t hdr;
     memcpy(hdr.magic, HISTORY_REC_MAGIC, 4);
@@ -154,6 +281,7 @@ static void append_impl(const char* path, const char* text, bool is_mine) {
     } else {
         ESP_LOGW(TAG, "append: fopen(%s) failed", path);
     }
+    trim_file_to_cap(path, cap);
     xSemaphoreGive(s_mutex);
 }
 
@@ -231,15 +359,15 @@ static void load_impl(const char* path, history_ring_add_fn add) {
 // Per-channel path: /sd/meshcore/ch/<secret-hex8>.bin
 // 8-byte secret prefix as hex = 16 chars, unique enough for max 8 channels.
 static void ch_path(const uint8_t secret[16], char* out, size_t cap) {
-    snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin", HISTORY_CH_DIR, secret[0], secret[1], secret[2],
-             secret[3], secret[4], secret[5], secret[6], secret[7]);
+    snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin", s_ch_dir, secret[0], secret[1], secret[2], secret[3],
+             secret[4], secret[5], secret[6], secret[7]);
 }
 
 void history_append_channel(const uint8_t secret[16], const char* text, bool is_mine) {
     if (!s_ready || secret == NULL) return;
     char path[64];
     ch_path(secret, path, sizeof(path));
-    append_impl(path, text, is_mine);
+    append_impl(path, text, is_mine, s_on_internal ? INTERNAL_CH_CAP : SIZE_CAP_NONE);
 }
 
 void history_load_channel(const uint8_t secret[16], history_ring_add_fn add) {
@@ -261,15 +389,15 @@ void history_delete_channel(const uint8_t secret[16]) {
 // Per-contact path: /sd/meshcore/dm/<pubkey-hex16>.bin
 // 8-byte pubkey prefix as hex = 16 chars, unique enough for max 16 contacts.
 static void dm_path(const uint8_t pub[32], char* out, size_t cap) {
-    snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin", HISTORY_DM_DIR, pub[0], pub[1], pub[2], pub[3],
-             pub[4], pub[5], pub[6], pub[7]);
+    snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin", s_dm_dir, pub[0], pub[1], pub[2], pub[3], pub[4],
+             pub[5], pub[6], pub[7]);
 }
 
 void history_append_dm(const uint8_t peer_pub[32], const char* text, bool is_mine) {
     if (!s_ready || peer_pub == NULL) return;
     char path[64];
     dm_path(peer_pub, path, sizeof(path));
-    append_impl(path, text, is_mine);
+    append_impl(path, text, is_mine, s_on_internal ? INTERNAL_DM_CAP : SIZE_CAP_NONE);
 }
 
 void history_load_dm(const uint8_t peer_pub[32], history_ring_add_fn add) {
@@ -317,10 +445,10 @@ static bool parse_hex8(const char* name, uint8_t out[8]) {
 // takes a literal directory (keeps -Wformat-truncation quiet on a fixed buffer).
 static void prefix_path(const uint8_t id[8], bool is_dm, char* out, size_t cap) {
     if (is_dm)
-        snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin", HISTORY_DM_DIR, id[0], id[1], id[2], id[3], id[4],
+        snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin", s_dm_dir, id[0], id[1], id[2], id[3], id[4],
                  id[5], id[6], id[7]);
     else
-        snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin", HISTORY_CH_DIR, id[0], id[1], id[2], id[3], id[4],
+        snprintf(out, cap, "%s/%02x%02x%02x%02x%02x%02x%02x%02x.bin", s_ch_dir, id[0], id[1], id[2], id[3], id[4],
                  id[5], id[6], id[7]);
 }
 
@@ -352,8 +480,8 @@ int history_list_conversations(history_conv_t* out, int max, uint64_t* out_total
     if (!s_ready) return 0;
     if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(300)) != pdTRUE) return 0;
     int n = 0;
-    n     = scan_dir(HISTORY_DM_DIR, true, out, max, n, out_total);
-    n     = scan_dir(HISTORY_CH_DIR, false, out, max, n, out_total);
+    n     = scan_dir(s_dm_dir, true, out, max, n, out_total);
+    n     = scan_dir(s_ch_dir, false, out, max, n, out_total);
     if (out) {  // selection sort by size desc (n is tiny — max 31 logs)
         for (int i = 0; i < n; i++)
             for (int j = i + 1; j < n; j++)
@@ -382,7 +510,7 @@ int history_clear_all(void) {
     int removed = 0;
     for (int pass = 0; pass < 2; pass++) {
         bool        is_dm = (pass == 0);
-        const char* dir   = is_dm ? HISTORY_DM_DIR : HISTORY_CH_DIR;
+        const char* dir   = is_dm ? s_dm_dir : s_ch_dir;
         // Snapshot the ids first — removing entries while walking the dir is
         // unsafe on FAT. 40 comfortably covers the 15 channels + 16 contacts max.
         uint8_t     ids[40][8];

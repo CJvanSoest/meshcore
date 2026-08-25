@@ -34,3 +34,11 @@ void locfs_init(void) {
 bool locfs_ready(void) {
     return s_ready;
 }
+
+uint32_t locfs_free_kb(void) {
+    if (!s_ready) return 0;
+    uint64_t  total = 0, freeb = 0;
+    esp_err_t err = esp_vfs_fat_info(LOCFS_MOUNT, &total, &freeb);
+    if (err != ESP_OK) return 0;
+    return (uint32_t)(freeb / 1024);
+}
