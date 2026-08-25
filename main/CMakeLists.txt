@@ -38,14 +38,11 @@ idf_component_register(
 
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=unused-variable" APPEND)
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=unused-const-variable" APPEND)
-# SPIKE (task #4, IDF6): the newer GCC in esp-idf v6 promotes these to errors on
-# the vendored meshcore/ protocol mirror (uint8_t range checks, int/size_t length
-# math). The host-test Makefile already suppresses the same two for packet.c; keep
-# the mirror unedited and relax them at the build target instead (CLAUDE.md rule 2).
+# ESP-IDF 6's newer GCC promotes these to errors on the vendored meshcore/ and
+# companion-radio-protocol/ mirrors (uint8_t range checks, int/size_t length math,
+# a const-qualifier drop). The host-test Makefile already suppresses the first two
+# for packet.c; keep the mirrors unedited and relax them at the build target
+# instead (CLAUDE.md rule 2). Harmless on the IDF 5.5.1 toolchain.
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=type-limits" APPEND)
 idf_build_set_property(COMPILE_OPTIONS "-Wno-error=sign-compare" APPEND)
-# SPIKE ENUMERATION ONLY (task #4): blanket-relax -Werror so the IDF6 build runs
-# past every newer-GCC warning in one pass. This reveals whether the migration is
-# purely a warning cleanup (build completes) or hides a real error. NOT for merge —
-# the real change replaces this with targeted -Wno-error=<class> lines.
-idf_build_set_property(COMPILE_OPTIONS "-Wno-error" APPEND)
+idf_build_set_property(COMPILE_OPTIONS "-Wno-error=discarded-qualifiers" APPEND)
