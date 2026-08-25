@@ -5,13 +5,13 @@
 #include "mc_crypto.h"
 #include <stdio.h>
 #include <string.h>
-#include "mbedtls/md.h"  // HMAC + SHA-256 via the still-public MD API (mbedtls 4.1)
+#include "mbedtls/md.h"  // SHA-256 via the still-public MD hash API (mbedtls 4.1)
 #include "mc_aes.h"      // vendored AES-128 (mbedtls/aes.h is private in mbedtls 4.1)
+#include "mc_hmac.h"     // HMAC-SHA256 (mbedtls_md_hmac* removed in mbedtls 4.1)
 
 bool mc_crypto_grp_decrypt(meshcore_grp_txt_t* grp, const uint8_t* key) {
     uint8_t mac[32];
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, MESHCORE_CIPHER_KEY_SIZE, grp->data,
-                    grp->data_length, mac);
+    mc_hmac_sha256(key, MESHCORE_CIPHER_KEY_SIZE, grp->data, grp->data_length, mac);
     if (memcmp(mac, grp->mac, MESHCORE_CIPHER_MAC_SIZE) != 0) return false;
 
     grp->decrypted.data_length = grp->data_length;
@@ -41,8 +41,7 @@ void mc_crypto_grp_encrypt(const uint8_t* key, const uint8_t* plain, size_t padd
                               &out_cipher[i * MESHCORE_CIPHER_BLOCK_SIZE]);
     }
 
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), key, MESHCORE_CIPHER_KEY_SIZE, out_cipher,
-                    (uint16_t)padded_len, out_mac);
+    mc_hmac_sha256(key, MESHCORE_CIPHER_KEY_SIZE, out_cipher, (uint16_t)padded_len, out_mac);
 }
 
 void mc_crypto_ack_crc(const uint8_t head5[5], const char* text, size_t text_len,
@@ -81,14 +80,13 @@ uint16_t mc_crypto_region_transport_code(const char* region_name, uint8_t type, 
 
     uint8_t mac[32];
     {
-        mbedtls_md_context_t md;
-        mbedtls_md_init(&md);
-        mbedtls_md_setup(&md, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
-        mbedtls_md_hmac_starts(&md, region_key, sizeof(region_key));
-        mbedtls_md_hmac_update(&md, &type, 1);
-        mbedtls_md_hmac_update(&md, payload, payload_len);
-        mbedtls_md_hmac_finish(&md, mac);
-        mbedtls_md_free(&md);
+        // HMAC over type || payload. payload_len is bounded by the transport
+        // unit, so one concat buffer replaces the former streaming HMAC.
+        uint8_t hbuf[1 + MESHCORE_MAX_TRANS_UNIT];
+        size_t  n = payload_len < MESHCORE_MAX_TRANS_UNIT ? payload_len : MESHCORE_MAX_TRANS_UNIT;
+        hbuf[0]   = type;
+        memcpy(hbuf + 1, payload, n);
+        mc_hmac_sha256(region_key, sizeof(region_key), hbuf, 1 + n, mac);
     }
 
     uint16_t code;

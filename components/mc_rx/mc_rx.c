@@ -26,9 +26,10 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "identity.h"
-#include "mbedtls/md.h"  // HMAC + SHA-256 via the still-public MD API (mbedtls 4.1)
+#include "mbedtls/md.h"  // SHA-256 via the still-public MD hash API (mbedtls 4.1)
 #include "mc_aes.h"      // vendored AES-128 (mbedtls/aes.h is private in mbedtls 4.1)
 #include "mc_crypto.h"
+#include "mc_hmac.h"  // HMAC-SHA256 (mbedtls_md_hmac* removed in mbedtls 4.1)
 #include "meshcore/packet.h"
 #include "meshcore/payload/advert.h"
 #include "meshcore/payload/grp_txt.h"
@@ -164,7 +165,7 @@ static void dm_send_path_return(const meshcore_message_t* msg, uint8_t src_hash,
 
     // 3. Outer MAC + assemble PATH packet (still flood-routed).
     uint8_t path_mac[32];
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), good_secret, 32, path_cipher, inner_size, path_mac);
+    mc_hmac_sha256(good_secret, 32, path_cipher, inner_size, path_mac);
 
     meshcore_message_t path_msg = {0};
     path_msg.type               = MESHCORE_PAYLOAD_TYPE_PATH;

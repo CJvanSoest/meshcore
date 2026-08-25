@@ -8,9 +8,9 @@
 
 #include <string.h>
 #include "ed25519.h"
-#include "mbedtls/md.h"  // HMAC-SHA256 via the still-public MD API (mbedtls 4.1)
-#include "mc_aes.h"      // vendored AES-128 (mbedtls/aes.h is private in mbedtls 4.1)
+#include "mc_aes.h"  // vendored AES-128 (mbedtls/aes.h is private in mbedtls 4.1)
 #include "mc_crypto.h"
+#include "mc_hmac.h"  // HMAC-SHA256 (mbedtls_md_hmac* removed in mbedtls 4.1)
 
 void mc_crypto_dm_encrypt(const uint8_t target_pub[MESHCORE_PUB_KEY_SIZE], const uint8_t* my_prv, const uint8_t* plain,
                           size_t padded_len, uint8_t* out_cipher, uint8_t out_mac[32]) {
@@ -21,7 +21,7 @@ void mc_crypto_dm_encrypt(const uint8_t target_pub[MESHCORE_PUB_KEY_SIZE], const
     mc_aes128_init(&aes, shared);
     for (size_t i = 0; i < padded_len / 16; i++) mc_aes128_ecb_encrypt(&aes, &plain[i * 16], &out_cipher[i * 16]);
 
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), shared, 32, out_cipher, padded_len, out_mac);
+    mc_hmac_sha256(shared, 32, out_cipher, padded_len, out_mac);
 }
 
 bool mc_crypto_dm_decrypt(const uint8_t* payload, uint8_t payload_len, const uint8_t sender_pub[MESHCORE_PUB_KEY_SIZE],
@@ -42,10 +42,10 @@ bool mc_crypto_dm_decrypt(const uint8_t* payload, uint8_t payload_len, const uin
     ed25519_key_exchange_raw(secret_raw, sender_pub, my_prv);
 
     uint8_t hmac_conv[32], hmac_raw[32], hmac_conv16[32], hmac_raw16[32];
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), secret, 32, ciphertext, ct_len, hmac_conv);
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), secret_raw, 32, ciphertext, ct_len, hmac_raw);
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), secret, 16, ciphertext, ct_len, hmac_conv16);
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), secret_raw, 16, ciphertext, ct_len, hmac_raw16);
+    mc_hmac_sha256(secret, 32, ciphertext, ct_len, hmac_conv);
+    mc_hmac_sha256(secret_raw, 32, ciphertext, ct_len, hmac_raw);
+    mc_hmac_sha256(secret, 16, ciphertext, ct_len, hmac_conv16);
+    mc_hmac_sha256(secret_raw, 16, ciphertext, ct_len, hmac_raw16);
 
     uint8_t        exp0 = mac_ct[0], exp1 = mac_ct[1];
     const uint8_t* good = NULL;

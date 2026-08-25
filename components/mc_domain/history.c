@@ -18,8 +18,8 @@
 #include "freertos/semphr.h"
 #include "history_trim.h"
 #include "locfs.h"
-#include "mbedtls/md.h"  // HMAC key derivation via the still-public MD API (mbedtls 4.1)
-#include "mc_aes.h"      // vendored AES-128 (mbedtls/aes.h is private in mbedtls 4.1)
+#include "mc_aes.h"   // vendored AES-128 (mbedtls/aes.h is private in mbedtls 4.1)
+#include "mc_hmac.h"  // HMAC-SHA256 key derivation (mbedtls_md_hmac* removed in mbedtls 4.1)
 #include "sdmmc_cmd.h"
 
 // Tanmatsu µSD pins — slot 0 (slot 1 = hosted Wi-Fi link).
@@ -124,8 +124,7 @@ void history_init(const uint8_t prv_key[32]) {
     mkdir(s_dm_dir, 0775);
     mkdir(s_ch_dir, 0775);
 
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), prv_key, 32, (const uint8_t*)"mc-history-v1", 13,
-                    s_key);
+    mc_hmac_sha256(prv_key, 32, (const uint8_t*)"mc-history-v1", 13, s_key);
 
     s_ready = true;
 }

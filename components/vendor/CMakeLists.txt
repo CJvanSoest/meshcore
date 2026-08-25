@@ -23,11 +23,15 @@ idf_component_register(
         # Replaces mbedtls/aes.h, which mbedtls 4.1 (ESP-IDF 6) made private.
         "aes/aes.c"
         "mc_aes.c"
+        # HMAC-SHA256 built on the still-public mbedtls MD hash API, since
+        # mbedtls 4.1 dropped the mbedtls_md_hmac* helpers.
+        "mc_hmac.c"
         "emoji_bitmaps.c"
     INCLUDE_DIRS
         "."
     PRIV_REQUIRES
         esp_hw_support
+        mbedtls  # mc_hmac.c uses the public mbedtls/md.h hash API
 )
 
 # The ref10 ed25519 sources are third-party and kept verbatim; do not hold them

@@ -41,17 +41,19 @@ SRC_COMP_PROTO  = ../components/mc_proto/companion-radio-protocol/mc_companion_c
 # Vendored AES-128 (tiny-AES) + wrapper; mc_crypto*.c now use it instead of mbedtls/aes.h.
 AES_LIB         = ../components/vendor/mc_aes.c \
                   ../components/vendor/aes/aes.c
+# HMAC-SHA256 helper (mbedtls_md_hmac* removed in mbedtls 4.1). Needs libmbedcrypto.
+HMAC_SRC        = ../components/vendor/mc_hmac.c
 SRC_MC_CRYPTO   = ../components/mc_crypto/mc_crypto.c \
-                  $(AES_LIB)
+                  $(AES_LIB) $(HMAC_SRC)
 SRC_PAYLOADS    = ../components/mc_proto/meshcore/payload/grp_txt.c \
                   ../components/mc_proto/meshcore/payload/advert.c
 SRC_INTEGRATION = ../components/mc_crypto/mc_crypto.c \
                   ../components/mc_proto/meshcore/packet.c \
                   ../components/mc_proto/meshcore/payload/grp_txt.c \
-                  $(AES_LIB)
+                  $(AES_LIB) $(HMAC_SRC)
 SRC_DM          = ../components/mc_crypto/mc_crypto_dm.c \
                   $(ED25519_LIB) \
-                  $(AES_LIB)
+                  $(AES_LIB) $(HMAC_SRC)
 SRC_ADVERT_SIGN = ../components/mc_proto/advert_sign.c \
                   ../components/mc_proto/meshcore/payload/advert.c \
                   $(ED25519_LIB)

@@ -14,6 +14,7 @@
 #include "mbedtls/md.h"
 #include "mbedtls/sha256.h"
 #include "mc_crypto.h"
+#include "mc_hmac.h"
 
 static int failures = 0;
 #define CHECK(cond, msg)                 \
@@ -155,7 +156,21 @@ static void test_region_code(void) {
     CHECK(got != 0x0000 && got != 0xFFFF, "region code avoids the reserved sentinels");
 }
 
+// RFC 4231 Test Case 2 for the mc_hmac_sha256 helper that replaced the
+// mbedtls_md_hmac* functions dropped in mbedtls 4.1. A full 32-byte compare so
+// a broken HMAC can't slip through on the 2-byte MAC prefix the channel/DM
+// paths check.
+static void test_hmac_vector(void) {
+    const uint8_t exp[32] = {0x5b, 0xdc, 0xc1, 0x46, 0xbf, 0x60, 0x75, 0x4e, 0x6a, 0x04, 0x24,
+                             0x26, 0x08, 0x95, 0x75, 0xc7, 0x5a, 0x00, 0x3f, 0x08, 0x9d, 0x27,
+                             0x39, 0x83, 0x9d, 0xec, 0x58, 0xb9, 0x64, 0xec, 0x38, 0x43};
+    uint8_t       out[32];
+    mc_hmac_sha256((const uint8_t*)"Jefe", 4, (const uint8_t*)"what do ya want for nothing?", 28, out);
+    CHECK(memcmp(out, exp, 32) == 0, "HMAC-SHA256 RFC 4231 test case 2");
+}
+
 int main(void) {
+    test_hmac_vector();
     test_grp_roundtrip();
     test_grp_wrong_key();
     test_grp_tampered();
