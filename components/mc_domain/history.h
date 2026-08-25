@@ -11,13 +11,23 @@
 // time. Called while the history mutex is held — keep the body short.
 typedef void (*history_ring_add_fn)(const char* text, bool is_mine);
 
-// Mount the µSD card, derive the per-device AES-128 key from prv_key, and
-// prepare the on-disk layout. Idempotent; safe to call once at boot.
+// Mount the µSD card (or fall back to the internal FAT store when no card is
+// present), derive the per-device AES-128 key from prv_key, and prepare the
+// on-disk layout. Idempotent; safe to call once at boot. locfs_init() must run
+// first so the internal-store fallback is available.
 void history_init(const uint8_t prv_key[32]);
 
-// "off" | "ok" | "no-sd" | "err"
+// "off" | "ok" (SD) | "int" (internal FAT store) | "no-sd" | "err"
 const char* history_status(void);
 bool        history_is_ready(void);
+
+// The chosen log root ("/sd/meshcore" or "/locfd/meshcore"), or NULL when
+// history is disabled. Lets sibling stores (nodes.bin) share the same backend.
+const char* history_root(void);
+
+// True when the log is on the internal FAT store rather than an SD card. Callers
+// that persist alongside history (nodes.bin) use this to apply size caps.
+bool history_on_internal(void);
 
 // Total capacity of the mounted µSD card in bytes, or 0 if none mounted.
 // (Free space isn't exposed — statvfs is absent on the esp32p4 toolchain.)

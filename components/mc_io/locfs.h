@@ -14,6 +14,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #define LOCFS_MOUNT "/locfd"
 
@@ -23,3 +24,8 @@ void locfs_init(void);
 
 // True if the internal FAT store mounted and is usable as a file backend.
 bool locfs_ready(void);
+
+// Free space on the internal FAT store, in kibibytes. Returns 0 when the store
+// is not mounted or the query fails. Used to gate appends before the shared
+// partition (also holding the launcher's apps/icons) runs out of room.
+uint32_t locfs_free_kb(void);

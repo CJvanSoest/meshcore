@@ -152,7 +152,14 @@ test_channel_share: test_channel_share.c ../components/mc_domain/channel_share.c
 test_backup: test_backup.c ../components/mc_domain/backup_codec.c
 	$(CC) $(CFLAGS) -I../components/mc_domain -o $@ $^
 
-test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup test_special_table
+# Chat-log record geometry + trim math (issue #85). Pure-C, no libs. Guards the
+# on-disk record size and the drop-oldest-until-under-cap decision that bounds
+# the internal FAT store, so a wrong pad or off-by-one can't silently evict the
+# newest messages.
+test_history_trim: test_history_trim.c ../components/mc_domain/history_trim.c
+	$(CC) $(CFLAGS) -I../components/mc_domain -o $@ $^
+
+test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup test_special_table test_history_trim
 	./test_ed25519
 	./test_gps_nmea
 	./test_companion_protocol
@@ -170,6 +177,7 @@ test: test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test
 	./test_channel_share
 	./test_backup
 	./test_special_table
+	./test_history_trim
 
 clean:
-	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup test_special_table
+	rm -f test_ed25519 test_gps_nmea test_companion_protocol test_region_limits test_meshcore_packet test_mc_crypto test_meshcore_payloads test_region_lookup test_gps_parser_edge test_integration_message test_mc_crypto_dm test_advert_sign test_diag_decode test_trace test_channel_share test_backup test_special_table test_history_trim
