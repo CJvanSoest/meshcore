@@ -5,6 +5,7 @@ on:
     branches: [main, idf6]
   push:
     branches: [main, idf6]
+  workflow_dispatch:
 
 jobs:
   host-tests:
