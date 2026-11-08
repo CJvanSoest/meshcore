@@ -64,7 +64,7 @@ make build DEVICE=tanmatsu
 If you do not have the IDF toolchain installed, build in the same image CI uses:
 
 ```sh
-docker run --rm -v "$PWD":/project -w /project espressif/idf:v5.5.1 \
+docker run --rm -v "$PWD":/project -w /project espressif/idf:v6.0.2 \
   bash -lc '. /opt/esp/idf/export.sh && idf.py -B build/tanmatsu build \
     -DDEVICE=tanmatsu \
     -DSDKCONFIG_DEFAULTS="sdkconfigs/general;sdkconfigs/tanmatsu" \

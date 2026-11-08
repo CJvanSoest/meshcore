@@ -35,7 +35,7 @@ should fix this file.
 
 A MeshCore LoRa mesh chat client for the Tanmatsu badge: an ESP32-P4 app
 processor talking to an ESP32-C6 radio coprocessor over a system protocol, with
-an SX1262 doing the actual LoRa. One ESP-IDF v5.5.1 image, C11. Concurrency is a
+an SX1262 doing the actual LoRa. One ESP-IDF v6.0.2 image, C11. Concurrency is a
 handful of FreeRTOS tasks plus the `app_main` event loop, not threads with
 shared heaps everywhere. Most state lives behind a mutex or inside one task.
 

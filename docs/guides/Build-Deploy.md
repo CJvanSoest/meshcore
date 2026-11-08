@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Framework | **ESP-IDF v5.5.1** |
+| Framework | **ESP-IDF v6.0.2** |
 | Target | `esp32p4` (Tanmatsu app processor) |
 | Tools path | `.IDF_TOOLS_PATH` file in repo root |
 | IDF path | `.IDF_PATH` file in repo root |

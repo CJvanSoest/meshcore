@@ -10,7 +10,7 @@ make upload DEVICE=tanmatsu      # badgelink AppFS upload (keeps the launcher)
 cd tests && make test            # host tests, no IDF toolchain needed
 ```
 
-The Tanmatsu ESP-IDF v5.5.1 toolchain must be set up first (see
+The Tanmatsu ESP-IDF v6.0.2 toolchain must be set up first (see
 [docs/guides/Build-Deploy.md](../docs/guides/Build-Deploy.md)). The default board is tanmatsu
 (ESP32-P4 app processor + ESP32-C6 radio). Other targets live in `sdkconfigs/`
 (mch2022, hackerhotel-2024, heltecv3, kami, konsool,
@@ -22,7 +22,7 @@ chain.
 The same image CI uses works locally via Docker:
 
 ```sh
-docker run --rm -v "$PWD":/project -w /project espressif/idf:v5.5.1 \
+docker run --rm -v "$PWD":/project -w /project espressif/idf:v6.0.2 \
   bash -lc '. /opt/esp/idf/export.sh && idf.py -B build/tanmatsu build \
     -DDEVICE=tanmatsu \
     -DSDKCONFIG_DEFAULTS="sdkconfigs/general;sdkconfigs/tanmatsu" \
@@ -38,7 +38,7 @@ it.
 `.github/workflows/ci.yml` runs on every pull request to `main` and on `main`
 itself: a host tests job (the four lint scripts + `make test`, needing only
 `build-essential libmbedtls-dev cppcheck`) and a firmware build job that builds
-the tanmatsu target in the `espressif/idf:v5.5.1` image and uploads
+the tanmatsu target in the `espressif/idf:v6.0.2` image and uploads
 `application.bin`.
 
 ## The lint gate
