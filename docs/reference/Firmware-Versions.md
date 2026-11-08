@@ -1,11 +1,14 @@
-# Firmware versions — our forks vs. Nicolai (upstream)
+# Firmware versions — what v3.8.0 runs on
 
 The MeshCore app runs on top of three pieces of Nicolai-Electronics
-firmware. As of v2.2.0 (2026-06-04) **every radio/lora delta is upstream**:
-both rx_boost and `low_data_rate_optimization` shipped in
-`tanmatsu-lora` v0.3.0, picked up by `tanmatsu-radio` v3.2.0, and the
-MeshCore app now pins upstream registry versions instead of the CJ
-forks. The launcher fork still carries three small UX patches.
+firmware. Every radio and lora delta is upstream, and the launcher fork is
+retired, so a stock install is all you need. The app pins upstream registry
+versions of `tanmatsu-lora`, `tanmatsu-wifi` and `badge-bsp`.
+
+**v3.8.0** (2026-11-08) was tested on a Tanmatsu with launcher **v0.3.1** and
+`tanmatsu-radio` **v3.4.0**. It is built for BSP 2 on ESP-IDF 6.0.2, so it is
+offered on boards with the second display panel; on the original panel it
+runs as before. It was not tested on the second panel.
 
 The on-device **Settings → Identity** category shows the live radio
 firmware version via the system-protocol `get_information` query
@@ -13,84 +16,46 @@ introduced in `tanmatsu-radio` v3.1.1.
 
 ## 1. `tanmatsu-radio` — C6 LoRa-radio firmware
 
-| | Version | Commit |
-|---|---|---|
-| Nicolai (upstream) | **v3.2.0** | `d83ad84` |
-| `ota.tanmatsu.cloud` (Launcher Tools) | v3.2.0 | `d83ad84` |
-| `recovery.tanmatsu.cloud` | `ESP-HOSTED 2.1.0` (pre-v3.0.0 rename) | — |
-| CJ fork (retired) | v3.1.1 **+1** | `f919f91` |
+| | Version |
+|---|---|
+| Nicolai (upstream), tested with v3.8.0 | **v3.4.0** (2026-07-19) |
+| CJ fork | retired, zero delta vs. upstream |
 
-**Standard install:** stock upstream **v3.2.0**, as shipped by the
-Launcher's Tools → Firmware update path. No fork required.
-
-**v3.2.0** (released 2026-06-04) is a one-line dependency bump that
-pulls in `tanmatsu-lora` v0.3.0 — see § 2 for what that brings.
-
-**CJ fork status:** retired. The `f919f91` commit only redirected
-`idf_component.yml` to a privately hosted `tanmatsu-lora` fork while
-rx_boost was out-of-tree; with rx_boost upstream in lora v0.3.0 the
-redirect is moot and the CJ/tanmatsu-radio fork has zero delta vs.
-upstream main.
+**Standard install:** stock upstream, as shipped by the Launcher's
+Tools → Firmware update path. No fork required.
 
 ## 2. `tanmatsu-lora` — LoRa component (used by both C6 and P4)
 
-| | Version | Commit |
-|---|---|---|
-| Nicolai (upstream) | **v0.3.0** | `bdda8be` |
-| Previous upstream (used by radio v3.1.1) | v0.2.1 | `b9e87c5` |
-| CJ fork (retired) | v0.2.1 + rx_boost | `db18049` |
+| | Version |
+|---|---|
+| Nicolai (upstream), pinned by the app | **v0.6.0** (2026-07-29), `^0.6.0` in `main/idf_component.yml` |
+| CJ fork | retired |
 
-**v0.3.0** (released 2026-06-03) contains:
-- `rx_boost` config flag + RxGain register write (CJ's PR #5, merged
-  2026-06-03 as `4cc38f95`)
-- Force `low_data_rate_optimization` when SF/BW require it (`bdda8be`)
-
-**App now pins upstream.** `main/idf_component.yml` references
-`nicolaielectronics/tanmatsu-lora ^0.3.0` from the IDF component
-registry — no more `git:` redirect to a private fork. The 17-byte
-config struct is identical on both sides.
-
-**Legacy fallback still present.** The app's `lora_get_config` client
-accepts both 24-byte (v0.2.1) and 25-byte (v0.3.0+) responses, so the
-same MeshCore build still works against an older radio bundle (e.g.
-post-recovery before Tools → Firmware update has run).
+`rx_boost` and the forced `low_data_rate_optimization` have been upstream
+since v0.3.0. The app's `lora_get_config` client accepts both 24-byte
+(v0.2.1) and 25-byte (v0.3.0+) responses, so a build still works against an
+older radio bundle (for example right after recovery, before Tools →
+Firmware update has run).
 
 ## 3. `tanmatsu-launcher` — P4 launcher
 
-| | Version | Commit |
-|---|---|---|
-| Nicolai (upstream) | **v0.1.7** | (current main) |
-| CJ fork | v0.1.4 **+3** | `9dd36e8` |
-| `ota.tanmatsu.cloud` (Launcher Tools) | v0.1.7 | (current main) |
-| `recovery.tanmatsu.cloud` | v0.1.2 | — |
+| | Version |
+|---|---|
+| Nicolai (upstream), tested with v3.8.0 | **v0.3.1** (2026-11-01) |
+| CJ fork | retired, clean upstream mirror |
 
-**Standard install:** stock upstream **v0.1.7** (from Tools → Firmware
-update). Stock v0.1.7 widens the radio version check, so the
-version-mismatch screen no longer pops on the v3.2.0 radio.
-
-**Delta (3 commits, dev/personal):**
-1. **WiFi auto-connect on boot** — upstream only connects when NTP is
-   enabled; the fork connects unconditionally so apps have network
-   after every reboot. **Submitted upstream**: PR
-   [#141](https://github.com/Nicolai-Electronics/tanmatsu-launcher/pull/141),
-   open.
-2. **Accept the whole v3.1.x radio line** — upstream `a32c7ee` (in
-   v0.1.6) hard-compares against `"v3.1.1"`. A git-described developer
-   radio (`v3.1.1-1-g<sha>`) trips this; the fork prefix-matches
-   `v3.1.` so dev builds don't pop a mismatch warning. Not submitted
-   (stock users hit the exact-match path; this is dev ergonomics only).
-3. **Hide the `[C]` cached tag** in the app list (the `[M]` mismatch
-   tag stays). Cosmetic, not submitted.
-
-For stock end users the launcher fork is **optional** — the only
-behavioural diff vs. upstream v0.1.6 is the WiFi auto-connect on boot.
+**Standard install:** stock upstream from Tools → Firmware update. The three
+former fork patches are gone: WiFi auto connect on boot is upstream (PR
+[#141](https://github.com/Nicolai-Electronics/tanmatsu-launcher/pull/141)),
+the radio version prefix match became obsolete when upstream widened the
+check, and the `[C]` tag change was dropped.
 
 ## 4. `meshcore` (this app)
 
 Not a Nicolai fork — entirely ours. Consumes upstream
-`nicolaielectronics/tanmatsu-lora ^0.3.0` directly from the IDF
-component registry. Current release: **v2.2.0** (2026-06-04) — see the
-[docs index](../README.md) for the v2.2.0 highlights.
+`nicolaielectronics/tanmatsu-lora ^0.6.0` directly from the IDF
+component registry. Current release: **v3.8.0** (2026-11-08) — see the
+[changelog](../CHANGELOG.md) for the highlights.
 
 ## Recovery vs. OTA — why "Tools → Firmware update" is required after recovery
 
@@ -101,10 +66,10 @@ launcher pulls when you open Tools → Firmware update.
 
 | Source | Radio | Launcher |
 |---|---|---|
-| `recovery.tanmatsu.cloud` (WebSerial) | `ESP-HOSTED 2.1.0` | v0.1.2 |
-| `ota.tanmatsu.cloud` (Launcher Tools) | v3.2.0 (`d83ad84`) | v0.1.7 |
+| `recovery.tanmatsu.cloud` (WebSerial) | `ESP-HOSTED 2.1.0` (as last checked, 2026-06) | v0.1.2 (as last checked) |
+| `ota.tanmatsu.cloud` (Launcher Tools) | current upstream release | current upstream release |
 
-Recovery currently lags the OTA path by several minor releases. The
+Recovery lagged the OTA path by several minor releases when last checked. The
 `ESP-HOSTED 2.1.0` radio firmware predates the `tanmatsu-radio` rename
 (so it's pre-v3.0.0); its `lora_protocol_config_params_t` struct is
 smaller than the 16-byte form the MeshCore app expects, so
@@ -114,7 +79,7 @@ radio not available"**.
 
 **The fix is always: after recovery, open Launcher → Tools → Firmware
 update before installing MeshCore.** That pulls the OTA bundle, which
-brings both pieces to v3.2.0 / v0.1.7, and MeshCore connects to the C6
+brings both pieces to the current upstream releases, and MeshCore connects to the C6
 on the next boot.
 
 ## What used to be ours but is now upstream (convergence)
@@ -134,7 +99,7 @@ on the next boot.
   CJ forks.
 - **BSP 0.9.9 display types** (launcher) → fixed upstream in `7c86493`,
   so the earlier type-mismatch patch was dropped.
+- **WiFi auto connect on boot** (launcher) → merged upstream via PR #141.
 
-**Net:** every firmware-side delta is now upstream. The only thing
-still on a fork is the **launcher**, and only one of its three patches
-(WiFi auto-connect, PR #141) is in flight to upstream.
+**Net:** every firmware-side delta is now upstream, and the launcher fork is
+retired.

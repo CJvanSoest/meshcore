@@ -35,9 +35,11 @@ _All views: [screenshots](docs/features/Screenshots.md)._
 
 **Install** on a recovered Tanmatsu: open the launcher, run **Tools → Firmware
 update** (this pulls the radio firmware MeshCore needs), then install
-**MeshCore** from the appstore.
+**MeshCore** from the appstore. Version 3.8.0 and newer are built for BSP 2,
+so the app is also offered on boards with the second display panel.
 
-**Build** it yourself (needs the Tanmatsu ESP-IDF toolchain):
+**Build** it yourself (needs the Tanmatsu ESP-IDF 6.0.2 toolchain, or use the
+Docker recipe in [Build / Deploy](docs/guides/Build-Deploy.md)):
 
 ```sh
 make build  DEVICE=tanmatsu      # build/tanmatsu/*.bin

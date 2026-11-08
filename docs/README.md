@@ -60,7 +60,7 @@ The docs are grouped into four folders.
 
 ### `guides/` — using, building and contributing
 - **[Getting started](guides/Getting-Started.md)** — first run: set your Owner + Advert name, then get on the air
-- **[Build / Deploy](guides/Build-Deploy.md)** — IDF env, badgelink upload, launcher dependency, partition layout
+- **[Build / Deploy](guides/Build-Deploy.md)** — IDF env, badgelink upload, launcher dependency, chip revision, Docker build, partition layout
 - **[Map tiles via MOBAC](guides/Map-Tiles-MOBAC.md)** — download map tiles onto the SD card without Docker
 - **[Contributing](guides/CONTRIBUTING.md)** — the contributor checklist and code rules
 - **[Releases](guides/Releases.md)** — the fixed release format and how to cut a release

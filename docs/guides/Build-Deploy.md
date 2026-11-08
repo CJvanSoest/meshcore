@@ -5,12 +5,13 @@
 | | |
 |---|---|
 | Framework | **ESP-IDF v6.0.2** |
-| Target | `esp32p4` (Tanmatsu app processor) |
+| Target | `esp32p4` (Tanmatsu app processor), chip revision 1 and up |
+| BSP | `badge-bsp` 2.x (needed for boards with the second display panel) |
 | Tools path | `.IDF_TOOLS_PATH` file in repo root |
 | IDF path | `.IDF_PATH` file in repo root |
 
 Both files are populated by cloning Nicolai Electronics'
-[tanmatsu-template-pax](https://github.com/Nicolai-Electronics/tanmatsu-template-pax)
+[tanmatsu-template](https://github.com/Nicolai-Electronics/tanmatsu-template)
 once and pointing this repo at the same IDF checkout.
 
 ## One-shot build
@@ -86,22 +87,43 @@ distribute.
 
 ## Launcher dependency
 
-MeshCore requires a **patched local checkout** of the
-[tanmatsu-launcher](https://github.com/Nicolai-Electronics/tanmatsu-launcher)
-with the following two patches applied on top of the upstream `main` branch:
-
-| Patch | What it does | Why |
-|---|---|---|
-| WiFi auto-connect on boot (`main/main.c` around the wifi-init block) | Always call `wifi_connect_try_all()` regardless of NTP state | Stock launcher only reconnects when NTP is enabled — MeshCore needs WiFi for SNTP and to keep the WiFi-LED meaningful |
-| badge-elf-api / badge-bsp type fix | Renames `lcd_color_rgb_pixel_format_t` → `bsp_display_color_format_t` (and friends) in the managed_components copy | Upstream `badge-elf-api 0.6.0` was not bumped for `badge-bsp 0.9.9` signature change; build fails otherwise with `-Werror=incompatible-pointer-types` |
-
-After an upstream launcher release, check whether these have been folded in;
-if not, re-apply.
+MeshCore runs on the stock [tanmatsu-launcher](https://github.com/Nicolai-Electronics/tanmatsu-launcher).
+No local launcher patches are needed any more: WiFi auto connect on boot is
+upstream (PR #141) and the old badge-bsp type fix was dropped when the
+launcher moved to a newer BSP.
 
 ## Required launcher version
 
-`v0.1.2` (`badge-launcher 0.1.2`) or newer — earlier versions show LoRa
-frequencies in MHz wrongly (Hz fix, PR #91).
+Launcher `v0.3.1` with `tanmatsu-radio` `v3.4.0` is what v3.8.0 was tested
+on. Older launchers show LoRa frequencies in MHz wrongly (Hz fix, PR #91,
+`v0.1.2`), and this build targets BSP 2 / ESP-IDF 6, so keep the launcher
+current via **Tools → Firmware update**.
+
+## Chip revision (ESP-IDF 6)
+
+ESP-IDF 6 builds for the ESP32-P4X (chip revision 3) by default, and the
+bootloader on the badge drops such an image: the app shows a blue screen and
+prints nothing. `sdkconfigs/tanmatsu` therefore pins the chip revision with
+`CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y`, `CONFIG_ESP32P4_REV_MIN_1=y`,
+`CONFIG_ESP32P4_REV_MIN_FULL=1` and `CONFIG_ESP_REV_MIN_FULL=1`. Keep these
+lines when you change the sdkconfig defaults.
+
+## Building in Docker
+
+No local toolchain needed:
+
+```sh
+docker run --rm -v "$PWD":/project -w /project espressif/idf:v6.0.2 \
+  bash -lc 'git config --global --add safe.directory /project && \
+  idf.py -B build/tanmatsu build -DDEVICE=tanmatsu \
+  -DSDKCONFIG_DEFAULTS="sdkconfigs/general;sdkconfigs/tanmatsu" \
+  -DSDKCONFIG=sdkconfig_tanmatsu -DIDF_TARGET=esp32p4 -DFAT=0'
+```
+
+The `safe.directory` line matters: without it `git describe` fails silently and
+the app reports version `0.0.0`. On a shared drive that does not keep file
+modes, also run `git config core.fileMode false`, or the version gets a
+`-dirty` suffix.
 
 ## tanmatsu-radio (C6) firmware
 
@@ -120,4 +142,3 @@ same IDF version). Flash via esptool over USB with the C6 in DFU mode
 | Build cached for wrong target (`esp32` instead of `esp32p4`) | Stale `build/tanmatsu/` from a different target | `rm -rf build/tanmatsu` and rebuild |
 | `idf.py` warns about `python_env` mismatch | Wrong `IDF_TOOLS_PATH` exported | Re-export from the repo's `.IDF_PATH` and `.IDF_TOOLS_PATH` files (or whichever ESP-IDF install the tools were pinned to) |
 | `make upload` fails with "Device not configured" | Serial port unable to open | Make sure no monitor is attached; for raw read with DTR/RTS off, set `s.dtr = False; s.rts = False` before opening |
-| badge-elf-api type mismatch after `rm dependencies.lock + reconfigure` | The local patches in `managed_components/badgeteam__badge-elf-api/` were wiped | Re-apply the patches documented in [Launcher dependency](#launcher-dependency) |
