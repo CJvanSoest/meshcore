@@ -21,6 +21,12 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-11-08
+### Changed
+- **Built for BSP 2 on ESP-IDF 6.0.2** so the app is offered on Tanmatsu boards with the second display panel. It still runs on the original panel (confirmed on hardware with launcher 0.3.1 and radio 3.4.0, DM and channel messages sent and received). The image targets ESP32 P4 revision 1 and up, because the ESP-IDF 6 default of the P4X revision is rejected by the bootloader.
+- Dependencies move to `badge-bsp` 2, `appfs` 2, `tanmatsu-wifi` 1.3 and `tanmatsu-lora` 0.6, and the CI image is `espressif/idf:v6.0.2`.
+- The `meshcore/` and `companion-radio-protocol/` mirrors stay unedited; three GCC warnings they raise under ESP-IDF 6 are relaxed at the build target.
+
 ## [3.7.1] - 2026-08-25
 ### Changed
 - **Cryptography moved to self-contained implementations** so the app also builds on ESP-IDF 6, whose mbedtls 4.1 makes the low-level SHA-256, AES, bignum and ECP headers private. Ed25519 and X25519 now use the public-domain orlp/ed25519 (ref10) code, AES-128 uses a vendored tiny-AES, HMAC-SHA256 is computed on the still-public mbedtls MD hash API, and SHA-256 uses that same MD API. Keys, signatures and on-air behaviour are byte-for-byte unchanged — validated against the RFC 8032, NIST SP800-38A and RFC 4231 test vectors and confirmed on hardware (advert, channel and DM traffic).
@@ -407,7 +413,8 @@ of merged PR titles since the previous tag.
 - Advert tile no longer dimmed as "soon" placeholder — it has an
   action (`HOME_ACTION_SEND_ADVERT`), so it's live.
 
-[Unreleased]: https://github.com/CJvanSoest/meshcore/compare/v3.7.1...HEAD
+[Unreleased]: https://github.com/CJvanSoest/meshcore/compare/v3.8.0...HEAD
+[3.8.0]: https://github.com/CJvanSoest/meshcore/releases/tag/v3.8.0
 [3.7.1]: https://github.com/CJvanSoest/meshcore/releases/tag/v3.7.1
 [3.7.0]: https://github.com/CJvanSoest/meshcore/releases/tag/v3.7.0
 [2.2.0]: https://github.com/CJvanSoest/meshcore/releases/tag/v2.2.0

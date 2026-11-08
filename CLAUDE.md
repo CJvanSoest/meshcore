@@ -6,7 +6,7 @@ Guidance for Claude Code (and any contributor) working in this repository.
 
 A [MeshCore](https://meshcore.co.uk) LoRa mesh chat client for the **Tanmatsu
 badge** (ESP32-P4 app processor, ESP32-C6 radio co-processor, SX1262). Single
-ESP-IDF v5.5.1 image. One process; concurrency is a handful of FreeRTOS tasks
+ESP-IDF v6.0.2 image. One process; concurrency is a handful of FreeRTOS tasks
 plus the `app_main` event loop. C11.
 
 ## Start here

@@ -127,3 +127,9 @@ CONFIG_LV_USE_FLEX=n
 CONFIG_LV_USE_GRID=n
 CONFIG_LV_USE_FONT_COMPRESSED=n
 CONFIG_LV_FONT_FMT_TXT_LARGE=n
+# Build for ESP32P4, not ESP32P4X (the ESP-IDF 6 default). Without this the image
+# asks for a newer chip than the one on the badge and the bootloader drops it.
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_1=y
+CONFIG_ESP32P4_REV_MIN_FULL=1
+CONFIG_ESP_REV_MIN_FULL=1
