@@ -70,7 +70,7 @@ typedef struct __attribute__((packed)) {
 } history_rec_hdr_t;  // 28 bytes
 _Static_assert(sizeof(history_rec_hdr_t) == HISTORY_REC_HDR_SIZE, "history header size drift");
 
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
+#if ESP_IDF_VERSION_MAJOR >= 6
 // ESP-IDF 6: ESP-Hosted (slot 1, P4<->C6 link) already owns the shared SDMMC
 // controller, so a second sdmmc_host_init() fails with 0x105 "failed to create
 // new SD controller" and the card never mounts (sounds/maps/history then fall
@@ -102,7 +102,7 @@ static esp_err_t mount_sd(void) {
     host.slot            = SDMMC_HOST_SLOT_0;
     host.max_freq_khz    = SDMMC_FREQ_DEFAULT;
     host.pwr_ctrl_handle = sd_ldo();
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
+#if ESP_IDF_VERSION_MAJOR >= 6
     host.init   = &sdmmc_host_init_noop;
     host.deinit = &sdmmc_host_deinit_noop;
 #endif
