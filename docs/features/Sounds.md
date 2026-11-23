@@ -123,8 +123,8 @@ $BL fs upload /sd/meshcore/sounds/startup.wav ./startup.wav
 > host file second** — the opposite of `scp`. Easy to swap and get a
 > `No such file or directory` error.
 
-After uploading new files, reboot the badge (or pop into Settings →
-Sounds and back) so `sounds_refresh_list()` rescans the directory.
+After uploading new files, reboot the badge so `sounds_refresh_list()`
+rescans the directory (it only runs at boot).
 
 ## Testing
 
@@ -146,6 +146,8 @@ Press Enter on the row to play. If you don't hear anything, in order:
      pointer is stale (the row should show `(missing #N)` if so).
    - `sounds: unsupported format` — re-encode with the ffmpeg recipe
      above.
+   - `history: SD mount failed` / `SD: int` in the boot log — the card
+     is not mounted, so the sound list stays empty (v3.8.0 bug, fixed after that release).
    - `sounds: bsp_audio not ready` — amplifier failed to power on;
      try a reboot.
 

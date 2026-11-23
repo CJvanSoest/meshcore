@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include "app_config.h"
 #include "driver/sdmmc_host.h"
+#include "esp_idf_version.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_vfs_fat.h"
@@ -20,6 +21,8 @@
 #include "locfs.h"
 #include "mc_aes.h"   // vendored AES-128 (mbedtls/aes.h is private in mbedtls 4.1)
 #include "mc_hmac.h"  // HMAC-SHA256 key derivation (mbedtls_md_hmac* removed in mbedtls 4.1)
+#include "sd_pwr_ctrl.h"
+#include "sd_pwr_ctrl_by_on_chip_ldo.h"
 #include "sdmmc_cmd.h"
 
 // Tanmatsu µSD pins — slot 0 (slot 1 = hosted Wi-Fi link).
@@ -67,10 +70,42 @@ typedef struct __attribute__((packed)) {
 } history_rec_hdr_t;  // 28 bytes
 _Static_assert(sizeof(history_rec_hdr_t) == HISTORY_REC_HDR_SIZE, "history header size drift");
 
+#if ESP_IDF_VERSION_MAJOR >= 6
+// ESP-IDF 6: ESP-Hosted (slot 1, P4<->C6 link) already owns the shared SDMMC
+// controller, so a second sdmmc_host_init() fails with 0x105 "failed to create
+// new SD controller" and the card never mounts (sounds/maps/history then fall
+// back to internal FAT). Reuse the existing controller instead.
+static esp_err_t sdmmc_host_init_noop(void) {
+    return ESP_OK;
+}
+static esp_err_t sdmmc_host_deinit_noop(void) {
+    return ESP_OK;
+}
+#endif
+
+// SD IO rail comes from on-chip LDO channel 4 on the P4. Best-effort: if the
+// BSP/launcher already holds it the acquire fails and we mount without it.
+static sd_pwr_ctrl_handle_t sd_ldo(void) {
+    static sd_pwr_ctrl_handle_t h = NULL;
+    if (h) return h;
+    sd_pwr_ctrl_ldo_config_t cfg = {.ldo_chan_id = 4};
+    if (sd_pwr_ctrl_new_on_chip_ldo(&cfg, &h) != ESP_OK) {
+        h = NULL;
+        return NULL;
+    }
+    sd_pwr_ctrl_set_io_voltage(h, 3300);
+    return h;
+}
+
 static esp_err_t mount_sd(void) {
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    host.slot         = SDMMC_HOST_SLOT_0;
-    host.max_freq_khz = SDMMC_FREQ_DEFAULT;
+    sdmmc_host_t host    = SDMMC_HOST_DEFAULT();
+    host.slot            = SDMMC_HOST_SLOT_0;
+    host.max_freq_khz    = SDMMC_FREQ_DEFAULT;
+    host.pwr_ctrl_handle = sd_ldo();
+#if ESP_IDF_VERSION_MAJOR >= 6
+    host.init   = &sdmmc_host_init_noop;
+    host.deinit = &sdmmc_host_deinit_noop;
+#endif
 
     sdmmc_slot_config_t slot  = SDMMC_SLOT_CONFIG_DEFAULT();
     slot.clk                  = MC_SDCARD_CLK;

@@ -21,6 +21,10 @@ of merged PR titles since the previous tag.
 
 ## [Unreleased]
 
+## [3.8.1] - 2026-11-23
+### Fixed
+- **SD card and Sounds** — the SD card never mounted on v3.8.0, so history fell back to the internal FAT store and the Sounds list stayed empty (every slot showed `(missing #N)`); `sdmmc_host_init` failed with 0x105 because ESP-Hosted already owns the SDMMC controller, and `mount_sd()` now reuses it and powers the SD LDO (PR #103).
+
 ## [3.8.0] - 2026-11-08
 ### Changed
 - **Built for BSP 2 on ESP-IDF 6.0.2** so the app is offered on Tanmatsu boards with the second display panel. It still runs on the original panel (confirmed on hardware with launcher 0.3.1 and radio 3.4.0, DM and channel messages sent and received). The image targets ESP32 P4 revision 1 and up, because the ESP-IDF 6 default of the P4X revision is rejected by the bootloader.
