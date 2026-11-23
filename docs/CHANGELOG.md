@@ -20,6 +20,8 @@ If a section for a release is missing from this file when running
 of merged PR titles since the previous tag.
 
 ## [Unreleased]
+### Fixed
+- SD card never mounted on ESP-IDF 6 builds (`sdmmc_host_init` failed with 0x105 because ESP-Hosted owns the SDMMC controller), so history fell back to internal FAT and the Sounds list stayed empty (all slots showed `(missing #N)`). `mount_sd()` now reuses the existing controller and powers the SD LDO.
 
 ## [3.8.0] - 2026-11-08
 ### Changed
