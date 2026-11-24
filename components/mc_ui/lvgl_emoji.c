@@ -49,6 +49,23 @@ static int emoji_inline_d(int size) {
     return d;
 }
 
+// Advance width of a text run. A typed space did not move the compose cursor,
+// so measure trailing spaces explicitly (one space width each) instead of
+// relying on text_w() to count them.
+static int run_width(char* run, int size) {
+    int n     = (int)strlen(run);
+    int trail = 0;
+    while (n > 0 && run[n - 1] == ' ') {
+        n--;
+        trail++;
+    }
+    if (trail == 0) return text_w(run, size);
+    run[n]      = '\0';
+    int w       = n > 0 ? text_w(run, size) : 0;
+    int space_w = text_w("i i", size) - text_w("ii", size);
+    return w + trail * space_w;
+}
+
 // Draw (parent != NULL) or just measure (parent == NULL) `text` at (x, y) with
 // inline emoji, returning the advance width. Faithful port of emoji.c's
 // render_or_measure so the wrap/measure math lines up 1:1 with what's drawn.
@@ -74,7 +91,7 @@ int emoji_text(lv_obj_t* parent, int x, int y, int size, uint32_t col, const cha
             if (run_len > 0) {
                 run[run_len] = '\0';
                 if (parent) add_label(parent, x + dx, y, size, col, run);
-                dx      += text_w(run, size);
+                dx      += run_width(run, size);
                 run_len  = 0;
             }
             if (parent) {
@@ -108,7 +125,7 @@ int emoji_text(lv_obj_t* parent, int x, int y, int size, uint32_t col, const cha
     if (run_len > 0) {
         run[run_len] = '\0';
         if (parent) add_label(parent, x + dx, y, size, col, run);
-        dx += text_w(run, size);
+        dx += run_width(run, size);
     }
     return dx;
 }

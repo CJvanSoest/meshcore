@@ -20,6 +20,9 @@ If a section for a release is missing from this file when running
 of merged PR titles since the previous tag.
 
 ## [Unreleased]
+### Fixed
+- **DM unread badge** — the `DM n` badge stayed lit after opening and reading the active conversation from the DM inbox; the pinned active conversation skipped `dm_select_target`, which is what clears the unread count, so it now clears it directly.
+- **Compose cursor** — pressing space did not move the cursor in the DM and channel input; trailing spaces are now counted when measuring the typed text.
 
 ## [3.8.1] - 2026-11-23
 ### Fixed

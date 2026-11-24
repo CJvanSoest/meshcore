@@ -568,6 +568,12 @@ static void nav_chat(uint32_t key) {
                 if (e >= 0 && xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
                     dm_select_target(contacts[e].pub_key, contacts[e].alias);
                     xSemaphoreGive(node_mutex);
+                } else if (e < 0 && xSemaphoreTake(node_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                    // The active conversation is pinned on top (e == -1) and is
+                    // already loaded, so dm_select_target is skipped; clear its
+                    // unread here or the "DM n" badge stays lit.
+                    contact_clear_unread(dm_target_pub);
+                    xSemaphoreGive(node_mutex);
                 }
                 dm_inbox_mode  = false;
                 led_dm_pending = false;
